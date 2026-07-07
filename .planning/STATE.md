@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 1
-current_phase_name: FORCE Harness, Geometry Model & Direct Path
-status: phase-complete
-stopped_at: Completed 01-03-PLAN.md (direct path at 1/12-octave complex resolution) — Phase 1 complete
-last_updated: "2026-07-07T17:45:00.000Z"
+current_phase: 2
+current_phase_name: Ground Effect & Diffraction
+status: in-progress
+stopped_at: Completed 02-01-PLAN.md (Nord2000-native numerics core) — wave 1 of Phase 2
+last_updated: "2026-07-07T18:40:00.000Z"
 last_activity: 2026-07-07
-last_activity_desc: Completed 01-03 — divergence + ISO 9613-1 air absorption + complex TransferSpectrum; ENG-01/ENG-04/SRC-01 done; FreeField capability green; walking skeleton complete
+last_activity_desc: Completed 02-01 — Faddeeva w(ẑ) + Fresnel fits, Ẑ_G→Q̂ chain + ρᵢ, cancellation-free straight-ray ΔR, coherence F with injected FΔν seam; committed scipy oracle; module shells registered for wave 2
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 25
+  total_plans: 5
+  completed_plans: 1
+  percent: 30
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** A numerically faithful Nord2000 engine — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain.
-**Current focus:** Phase 1 — FORCE Harness, Geometry Model & Direct Path
+**Current focus:** Phase 2 — Ground Effect & Diffraction
 
 ## Current Position
 
-Phase: 1 of 4 (FORCE Harness, Geometry Model & Direct Path) — COMPLETE
-Plan: 3 of 3 in current phase (01-01, 01-02, 01-03 all complete)
-Status: Phase 1 complete — walking skeleton stands end-to-end (case file → Scene → engine complex spectrum → dB-domain comparison → report). Next: Phase 2 (ground + diffraction)
-Last activity: 2026-07-07 — Completed 01-03-PLAN.md: geometrical divergence (Eq.330) + ISO 9613-1 air absorption (Eq.286) + Nord2000 band correction (Eq.287) as complex values per 1/12-octave point; FreeField capability green; ENG-01/ENG-04/SRC-01 done; all quality gates pass
+Phase: 2 of 4 (Ground Effect & Diffraction) — IN PROGRESS
+Plan: 1 of 5 in current phase complete (02-01 done; 02-02/02-03 are wave 2, 02-04/02-05 later waves)
+Status: Wave 1 complete — the Nord2000-native complex numerics core (Faddeeva w(ẑ), Fresnel f/g, Ẑ_G→Q̂ chain + ρᵢ, straight-ray cancellation-free ΔR, coherence F) is implemented, anchored, and cross-checked against a committed scipy oracle. Module shells registered so wave-2 plans (02-02, 02-03) run without mod.rs conflicts.
+Last activity: 2026-07-07 — Completed 02-01-PLAN.md: special/ground/rays/coherence modules; |Q̂|>1 preserved; impedance class B corrected 31.6→31.5; all quality gates pass (build/test/clippy/fmt, engine deps unchanged)
 
-Progress: [██████████] 100% (3/3 plans in phase 1)
+Progress: [██░░░░░░░░] 20% (1/5 plans in phase 2)
 
 ## Performance Metrics
 
@@ -51,13 +51,14 @@ Progress: [██████████] 100% (3/3 plans in phase 1)
 
 **Recent Trend:**
 
-- Last 5 plans: 25min, 17min, 35min
+- Last 5 plans: 25min, 17min, 35min, 55min
 - Trend: —
 
 *Updated after each plan completion*
 | Phase 01 P01 | 25min | 3 tasks | 17 files |
 | Phase 01 P02 | 17min | 3 tasks | 12 files |
 | Phase 01 P03 | 35min | 3 tasks | 14 files |
+| Phase 02 P01 | 55min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,13 @@ Recent decisions affecting current work:
 - [Phase 1, 01-03]: band_attenuation_db (Eq.287, 300 dB clamp) is the SOLE alpha·R→band converter (Pitfall 4); applied at all 105 grid points as band centres (Assumption A5, revisit Phase 4)
 - [Phase 1, 01-03]: Free-field gate = strict 1e-9 dB analytic identity (harsher than FORCE 1 dB); independent dB-domain oracle (compare::analytic_freefield_reference) validates the complex roundtrip, not just the formulas
 - [Phase 1, 01-03, Rule 1]: Eq.335 with coeff 20.05 gives c(15°C)=340.348 m/s (not the RESEARCH parenthetical 340.29 which uses ≈20.047); the mandated formula is the frozen phase-τ contract, so the test anchor was corrected to the formula's value
+- [Phase 2, 02-01]: Nord2000-native modules quarantine the e^{−jωt} convention (special/ground/rays/coherence/terrain_effect) — the single conj() to ENVI's e^{+jωt} lands in transfer.rs in plan 02-05; no conj() in propagation modules
+- [Phase 2, 02-01]: |Q̂| is NEVER clamped — |Q̂|=1.2572 at σ=200/f=250 is correct surface-wave physics, pinned by a test (anti-pattern guard)
+- [Phase 2, 02-01]: Δτ via the cancellation-free identity ΔR = 4·hS·hR/(R₁+R₂) (flat) / image-point dot-product form (sloped) — the only Δτ path; hS=0.01/d=1000 regression
+- [Phase 2, 02-01]: impedance_class B corrected 31.6→31.5 (Table 2 verified — resolves Phase 1 Assumption A1); all eight classes now verified
+- [Phase 2, 02-01, Rule 1]: research w(7+1j) anchor (0.019924+0.139158j) is a transcription error — true wofz(7+1j)=0.011630+0.079732j (asymptote-confirmed); engine matches scipy, not the mistyped anchor
+- [Phase 2, 02-01, Rule 3]: ground_impedance returns Result (σ≤0 typed error, T-02-01) and CoherenceInputs gained d_m (Fc needs distance) — both documented interface-block extensions
+- [Phase 2, 02-01]: committed scipy oracle (tools/nord2000_oracle) generates ground_w_qhat.toml fixtures (sha256 provenance); Rust tests run without Python. Oracle w-tolerance 3e-6 (three-pole near-border intrinsic error ~2.5e-6, not a bug)
 
 ### Pending Todos
 
@@ -100,6 +108,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-07T17:45:00.000Z
-Stopped at: Completed 01-03-PLAN.md (direct path at 1/12-octave complex resolution) — Phase 1 complete
+Last session: 2026-07-07T18:40:00.000Z
+Stopped at: Completed 02-01-PLAN.md (Nord2000-native numerics core) — wave 1 of Phase 2; wave 2 (02-02, 02-03) ready to run
 Resume file: None
