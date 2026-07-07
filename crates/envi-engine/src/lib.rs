@@ -17,3 +17,4 @@
 #![deny(unsafe_code)]
 
 pub mod freq;
+pub mod scene;
