@@ -41,6 +41,9 @@ use crate::propagation::fresnel::{fresnel_zone_w, fresnel_zone_wm};
 use crate::propagation::ground::{gamma_p, ground_impedance};
 use crate::propagation::rays::straight_rays;
 
+/// A surface type key `(σ, r)` — flow resistivity and roughness.
+type TypeKey = (f64, f64);
+
 /// Flat-terrain geometry shared by every surface type in a Sub-model 2 call.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FlatGeometry {
@@ -81,28 +84,36 @@ pub fn submodel2(
     geom: &FlatGeometry,
     coh: &CoherenceInputs,
 ) -> Result<GroundResult, PropagationError> {
-    let _ = (f_hz, strips, geom, coh);
-    let _ = (
-        Complex::<f64>::I,
-        PI,
-        submodel1_eval,
-        fresnel_zone_w,
-        fresnel_zone_wm,
-        gamma_p,
-        ground_impedance,
-        straight_rays,
-        FreqAxis::new,
-    );
-    todo!("Eqs. 124–133")
+    let weights = type_weights(f_hz, strips, geom)?;
+    let rays = straight_rays(geom.d, geom.h_s, geom.h_r, geom.c0)?;
+
+    // Blend the per-type Sub-model 1 results (Eq. 124, two-channel extension):
+    // h_coh sums complex-linearly with w′; p_incoh sums with w′² (see module docs).
+    let mut h_coh = Complex::new(0.0, 0.0);
+    let mut p_incoh = 0.0;
+    for ((sigma, rough), w) in weights {
+        // ΔL_{ii,ir}: Sub-model 1 as if the whole ground were this type
+        // (grouped by TYPE, evaluated once per type — Pitfall 3).
+        let g = submodel1_eval(f_hz, &rays, sigma, rough, coh, None)?;
+        h_coh += w * g.h_coh_factor;
+        p_incoh += w * w * g.p_incoh;
+    }
+    Ok(GroundResult::from_channels(h_coh, p_incoh))
 }
 
 /// Distinct surface types `(σ, r)` in first-occurrence order (Eq. 127 grouping).
 /// Sub-model 1 is evaluated once per returned type — never per strip
 /// (Pitfall 3).
 #[must_use]
-pub(crate) fn group_types(strips: &[SurfaceStrip]) -> Vec<(f64, f64)> {
-    let _ = strips;
-    todo!("Eq. 127 grouping")
+pub(crate) fn group_types(strips: &[SurfaceStrip]) -> Vec<TypeKey> {
+    let mut types: Vec<TypeKey> = Vec::new();
+    for s in strips {
+        let key = (s.sigma_kpa, s.roughness_r);
+        if !types.iter().any(|t| t.0 == key.0 && t.1 == key.1) {
+            types.push(key);
+        }
+    }
+    types
 }
 
 /// `PhaseDiffFreq` (Eqs. 378–381): the frequency `f` at which the phase
@@ -128,8 +139,61 @@ pub(crate) fn phase_diff_freq(
     c0: f64,
     target_psi: f64,
 ) -> f64 {
-    let _ = (d, h_s, h_r, sigma_min, c0, target_psi);
-    todo!("Eqs. 378–381")
+    use std::f64::consts::TAU;
+
+    // Eq. 379 geometry: ΔR = R₂ − R₁ and the grazing angle ψ_G.
+    let r2 = (d * d + (h_s + h_r).powi(2)).sqrt();
+    let r1 = (d * d + (h_s - h_r).powi(2)).sqrt();
+    let dr = r2 - r1;
+    let psi_g = ((h_s + h_r) / r2).asin();
+
+    // Ψ(f) = 2πf·ΔR/c₀ + arg Γ̂_p(f, ψ_G, Ẑ_G,min) — increasing with f.
+    let psi_of = |f: f64| -> f64 {
+        let arg_gp = match ground_impedance(f, sigma_min) {
+            Ok(z) => gamma_p(psi_g, z).arg(),
+            Err(_) => 0.0,
+        };
+        TAU * f * dr / c0 + arg_gp
+    };
+
+    // 1/3-octave grid 25 Hz … 10 kHz (every 4th 1/12-octave centre).
+    let axis = FreqAxis::new();
+    let grid: Vec<f64> = (0..crate::freq::N_THIRD_OCT)
+        .map(|k| axis.third_octave_pick(k))
+        .collect();
+    let f_lo = grid[0]; // ≈ 25 Hz
+    let f_hi = *grid.last().unwrap(); // 10 kHz
+    let psi_lo = psi_of(f_lo);
+    let psi_hi = psi_of(f_hi);
+
+    // Below the grid: logarithmic extrapolation f = 25·Ψ/Ψ(25 Hz) (Eq. 381).
+    if target_psi <= psi_lo {
+        if psi_lo.abs() < 1e-30 {
+            return f_lo;
+        }
+        return (f_lo * target_psi / psi_lo).max(1e-6);
+    }
+    // Above the grid: linear extrapolation from 8–10 kHz up to 100 kHz cap.
+    if target_psi >= psi_hi {
+        let f_8k = grid[crate::freq::N_THIRD_OCT - 3]; // 8 kHz
+        let psi_8k = psi_of(f_8k);
+        let slope = (f_hi - f_8k) / (psi_hi - psi_8k).max(1e-30);
+        let f = f_hi + (target_psi - psi_hi) * slope;
+        return f.clamp(f_hi, 100_000.0);
+    }
+    // Bracket on the grid and log-interpolate (Eq. 380).
+    for w in grid.windows(2) {
+        let (f1, f2) = (w[0], w[1]);
+        let (p1, p2) = (psi_of(f1), psi_of(f2));
+        if target_psi >= p1 && target_psi <= p2 {
+            if (p2 - p1).abs() < 1e-30 {
+                return f1;
+            }
+            let log_f = f1.ln() + (target_psi - p1) / (p2 - p1) * (f2.ln() - f1.ln());
+            return log_f.exp();
+        }
+    }
+    f_hi // fallback (Ψ non-monotone corner) — finite by construction
 }
 
 /// Per-type modified Fresnel-zone weights `w′_{ii,ir}(f)` (Eqs. 125–132),
@@ -138,9 +202,115 @@ pub(crate) fn type_weights(
     f_hz: f64,
     strips: &[SurfaceStrip],
     geom: &FlatGeometry,
-) -> Result<Vec<((f64, f64), f64)>, PropagationError> {
-    let _ = (f_hz, strips, geom);
-    todo!("Eqs. 125–132")
+) -> Result<Vec<(TypeKey, f64)>, PropagationError> {
+    if strips.is_empty() {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "Sub-model 2 requires at least one surface strip",
+        });
+    }
+    if !(f_hz.is_finite() && f_hz > 0.0) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "Sub-model 2 requires a positive finite frequency",
+        });
+    }
+
+    let types = group_types(strips);
+    let n = types.len();
+    let type_idx = |sigma: f64, rough: f64| {
+        types
+            .iter()
+            .position(|t| t.0 == sigma && t.1 == rough)
+            .expect("strip type is in the grouped set")
+    };
+
+    // Per-strip Fresnel weights accumulated per TYPE (Eq. 127). Low-frequency
+    // wᵢ via FresnelZoneW and high-frequency rᵢ via FresnelZoneWm, both with
+    // F_λ = 0.25·λ (Eqs. 125–126, Sub-model 2's own fraction).
+    let flp = 0.25 * geom.c0 / f_hz; // 0.25·λ
+    let mut w_low = vec![0.0_f64; n]; // w_{ii,ir,L}
+    let mut r_wm = vec![0.0_f64; n]; // r_{ii,ir}
+    for s in strips {
+        let wl = fresnel_zone_w(geom.d, geom.h_s, geom.h_r, s.x_start, s.x_end, flp)?;
+        let wm = fresnel_zone_wm(geom.d, geom.h_s, geom.h_r, s.x_start, s.x_end, flp)?;
+        let i = type_idx(s.sigma_kpa, s.roughness_r);
+        w_low[i] += wl;
+        r_wm[i] += wm;
+    }
+
+    // High-frequency per-type weight (Eq. 128). tan ψ_G = (hS+hR)/d.
+    let tan_psi = (geom.h_s + geom.h_r) / geom.d;
+    let r_h = if tan_psi >= 0.04 {
+        1.0
+    } else if tan_psi > 0.005 {
+        (200.0 * tan_psi).ln() / 8.0_f64.ln()
+    } else {
+        0.0
+    };
+    // r̄_ii = Σ_ir r_{ii,ir} over roughness types sharing the same σ.
+    let rbar_of_sigma = |sigma: f64| -> f64 {
+        types
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.0 == sigma)
+            .map(|(i, _)| r_wm[i])
+            .sum()
+    };
+    // r"_ii = 8.78·r̄⁵ − 21.95·r̄⁴ + 21.76·r̄³ − 10.69·r̄² + 3.1·r̄  (Eq. 128 — the
+    // last coefficient is 3.1, giving P(0)=0, P(1)=1: an S-curve on [0,1]).
+    let poly =
+        |r: f64| 8.78 * r.powi(5) - 21.95 * r.powi(4) + 21.76 * r.powi(3) - 10.69 * r * r + 3.1 * r;
+    let mut sigmas: Vec<f64> = Vec::new();
+    for (sigma, _) in &types {
+        if !sigmas.contains(sigma) {
+            sigmas.push(*sigma);
+        }
+    }
+    let sum_rpp: f64 = sigmas.iter().map(|&s| poly(rbar_of_sigma(s))).sum();
+    let mut w_high = vec![0.0_f64; n]; // w_{ii,ir,H}
+    for (i, (sigma, _)) in types.iter().enumerate() {
+        let rbar = rbar_of_sigma(*sigma);
+        let r_prime = if sum_rpp > 0.0 && rbar > 0.0 {
+            (poly(rbar) / sum_rpp) * (r_wm[i] / rbar)
+        } else {
+            0.0
+        };
+        w_high[i] = (r_wm[i] - r_prime) * r_h + r_prime;
+    }
+
+    // fL / fH from PhaseDiffFreq at the softest ground (Ẑ_G,min), Eqs. 130–132.
+    let sigma_min = types.iter().map(|t| t.0).fold(f64::INFINITY, f64::min);
+    let h_min = geom.h_s.min(geom.h_r).max(0.01); // Eq. 132
+    let d_alpha_l = PI - (1.9483 * h_min.ln() + 18.052) * tan_psi; // Δα_L (Eq. 132)
+    let f_h = phase_diff_freq(geom.d, geom.h_s, geom.h_r, sigma_min, geom.c0, PI);
+    let mut f_l = phase_diff_freq(geom.d, geom.h_s, geom.h_r, sigma_min, geom.c0, d_alpha_l);
+    if f_l > 0.8 * f_h {
+        f_l = 0.8 * f_h; // clamp (Eq. 132 tail)
+    }
+
+    // Log-frequency blend of low/high per type (Eq. 129).
+    let blend = |wl: f64, wh: f64| -> f64 {
+        if f_hz <= f_l {
+            wl
+        } else if f_hz >= f_h {
+            wh
+        } else {
+            let t = (f_h.ln() - f_hz.ln()) / (f_h.ln() - f_l.ln());
+            t * (wl - wh) + wh
+        }
+    };
+    let mut w_prime: Vec<f64> = (0..n).map(|i| blend(w_low[i], w_high[i])).collect();
+
+    // Normalize the per-type weights to sum to 1 (the standard's consistency
+    // requirement — a single surface type must reduce Sub-model 2 to Sub-model 1
+    // exactly; §5.8 sum rule). A no-op when the profile already spans the zone.
+    let total: f64 = w_prime.iter().sum();
+    if total > 1e-12 {
+        for w in &mut w_prime {
+            *w /= total;
+        }
+    }
+
+    Ok(types.iter().copied().zip(w_prime).collect())
 }
 
 #[cfg(test)]
@@ -267,10 +437,16 @@ mod tests {
             let tw = type_weights(f, &strips, &g).unwrap();
             let mut total = 0.0;
             for (_, w) in &tw {
-                assert!((-1e-12..=1.0 + 1e-9).contains(w), "w′={w} out of [0,1] at {f} Hz");
+                assert!(
+                    (-1e-12..=1.0 + 1e-9).contains(w),
+                    "w′={w} out of [0,1] at {f} Hz"
+                );
                 total += *w;
             }
-            assert!(total <= 2.0 + 1e-9, "Σ w′ = {total} must respect the ≤2 rule");
+            assert!(
+                total <= 2.0 + 1e-9,
+                "Σ w′ = {total} must respect the ≤2 rule"
+            );
         }
     }
 
