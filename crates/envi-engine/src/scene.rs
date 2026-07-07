@@ -316,23 +316,20 @@ pub struct Scene {
 
 /// Nordtest ground-impedance class → flow resistivity σ (kNs·m⁻⁴).
 ///
-/// Classes A..H map to 12.5 / 31.6 / 80 / 200 / 500 / 2000 / 20000 / 200000.
+/// Classes A..H map to 12.5 / 31.5 / 80 / 200 / 500 / 2000 / 20000 / 200000.
 ///
 /// # Provenance
 ///
-/// **A, D, G are VERIFIED** against Env. Project 1335 + the FORCE `.xls` this
-/// research cycle (case 1 grass = "impedance A" = 12.5; ground class D = 200;
-/// road class G = 20000). **B, C, E, F, H are the standard Nordtest table,
-/// flagged ASSUMED** (01-RESEARCH Assumption A1) — confirm against
-/// AV 1106/07 §5.3 before Phase 2 relies on them. Impedance is unused in the
-/// Phase 1 free-field path, so the risk is deferred, not live.
+/// **All eight classes VERIFIED** against AV 1106/07 Table 2 (02-RESEARCH §2,
+/// this phase — resolves Phase 1 Assumption A1). Class **B is 31.5**, not the
+/// 31.6 Phase 1 assumed; corrected here.
 ///
 /// Returns `None` for any character outside `A..=H`.
 #[must_use]
 pub fn impedance_class(class: char) -> Option<f64> {
     match class {
         'A' => Some(12.5),
-        'B' => Some(31.6),
+        'B' => Some(31.5),
         'C' => Some(80.0),
         'D' => Some(200.0),
         'E' => Some(500.0),

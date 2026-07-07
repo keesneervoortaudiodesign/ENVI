@@ -38,18 +38,23 @@ use super::special::faddeeva_w;
 /// [`PropagationError::InvalidFlowResistivity`] if `sigma_kpa` is not strictly
 /// positive and finite (untrusted terrain data — threat T-02-01).
 pub fn ground_impedance(f_hz: f64, sigma_kpa: f64) -> Result<Complex<f64>, PropagationError> {
-    let _ = f_hz;
-    let _ = sigma_kpa;
-    Ok(Complex::new(0.0, 0.0))
+    if !(sigma_kpa.is_finite() && sigma_kpa > 0.0) {
+        return Err(PropagationError::InvalidFlowResistivity { sigma_kpa });
+    }
+    let x = f_hz / sigma_kpa; // ≡ 1000·f/σ_SI (Eq. 57 unit note)
+    Ok(Complex::new(
+        1.0 + 9.08 * x.powf(-0.75),
+        11.9 * x.powf(-0.73),
+    ))
 }
 
 /// Plane-wave reflection coefficient `Γ̂_p = (sin ψ_G − 1/Ẑ_G)/(sin ψ_G + 1/Ẑ_G)`
 /// (AV 1106/07 Eq. 59).
 #[must_use]
 pub fn gamma_p(psi_g: f64, z_g: Complex<f64>) -> Complex<f64> {
-    let _ = psi_g;
-    let _ = z_g;
-    Complex::new(0.0, 0.0)
+    let s = psi_g.sin();
+    let inv_z = z_g.inv();
+    (s - inv_z) / (s + inv_z)
 }
 
 /// Spherical-wave reflection coefficient `Q̂` (AV 1106/07 Eqs. 58 + 60).
@@ -66,8 +71,15 @@ pub fn gamma_p(psi_g: f64, z_g: Complex<f64>) -> Complex<f64> {
 /// gives `|Q̂| = 1.257`).
 #[must_use]
 pub fn spherical_q(f_hz: f64, tau2_s: f64, psi_g: f64, z_g: Complex<f64>) -> Complex<f64> {
-    let _ = (f_hz, tau2_s, psi_g, z_g);
-    Complex::new(0.0, 0.0)
+    let s = psi_g.sin();
+    let inv_z = z_g.inv();
+    let gp = (s - inv_z) / (s + inv_z); // Γ̂_p (Eq. 59)
+    let omega_tau = 2.0 * PI * f_hz * tau2_s;
+    // ρ̂ = ((1+j)/2)·√(ω·τ₂)·(sin ψ_G + 1/Ẑ_G)  (Eq. 60)
+    let rho = Complex::new(0.5, 0.5) * omega_tau.sqrt() * (s + inv_z);
+    // Ê = 1 + j·√π·ρ̂·w(ρ̂)  (Eq. 60)
+    let e_hat = Complex::new(1.0, 0.0) + Complex::<f64>::I * PI.sqrt() * rho * faddeeva_w(rho);
+    gp + (Complex::new(1.0, 0.0) - gp) * e_hat // Q̂ (Eq. 58) — never clamped
 }
 
 /// Incoherent (random-incidence) reflection coefficient `ρᵢ = √(1 − ᾱ_ri)`
@@ -78,8 +90,24 @@ pub fn spherical_q(f_hz: f64, tau2_s: f64, psi_g: f64, z_g: Complex<f64>) -> Com
 /// accepted for signature symmetry with the rest of the chain.
 #[must_use]
 pub fn incoherent_rho(f_hz: f64, z_g: Complex<f64>) -> f64 {
-    let _ = (f_hz, z_g);
-    0.0
+    let _ = f_hz; // ρᵢ depends on f only through Ẑ_G
+    // Random-incidence (Paris) absorption coefficient ᾱ_ri in X = Re Ẑ_G,
+    // Y = Im Ẑ_G, m = |Ẑ_G|² (AV 1106/07 Eq. 76). This is the standard
+    // closed-form statistical-absorption result; the pypdf text dump garbles
+    // the arctan/ln arguments, so the canonical Paris form is used — it
+    // reduces correctly to the real-impedance limit 8/X·[1 + 1/(1+X) −
+    // (2/X)·ln(1+X)] as Y→0 (02-RESEARCH Assumption A1). Verified ᾱ_ri ∈ (0,1)
+    // for every impedance class A–H at the FORCE bands.
+    let x = z_g.re;
+    let y = z_g.im;
+    let m = x * x + y * y;
+    let alpha_ri = (8.0 * x / m)
+        * (1.0 - (x / m) * (1.0 + 2.0 * x + m).ln()
+            + ((x * x - y * y) / (y * m)) * (y / (1.0 + x)).atan());
+    // ρᵢ = √(1 − ᾱ_ri): ρᵢ² is the reflected-energy fraction in Eq. 120's
+    // incoherent residual (the radical is the physically consistent reading,
+    // AV 1106/07 Eq. 75). Clamp the radicand to [0, 1] for numerical safety.
+    (1.0 - alpha_ri).clamp(0.0, 1.0).sqrt()
 }
 
 #[cfg(test)]

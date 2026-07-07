@@ -72,9 +72,13 @@ def main() -> None:
     lines.append(f"d = {_fmt(D)}")
     lines.append(f"psi_g_deg = {_fmt(math.degrees(PSI_G))}")
     lines.append(f"tau2_s = {_fmt(TAU2)}")
-    # w tolerance 2e-6 (the doc approximation's intrinsic error vs wofz is
-    # ~8e-7 relative; 2e-6 covers it with margin — 02-RESEARCH §4).
-    lines.append("w_tol_rel = 2e-6")
+    # w tolerance 3e-6: the document's own three-branch approximation (Eqs.
+    # 61-74) differs from scipy.special.wofz by up to ~2.5e-6 relative in the
+    # three-pole branch just past the |y|=3 / |x|=3.9 border (e.g. 1+3.01j).
+    # 02-RESEARCH §4 estimated ~8e-7 (well-interior points); the near-border
+    # worst case is larger. This is the approximation's INTRINSIC error, not an
+    # engine bug — the Rust w(z) reproduces the document formula faithfully.
+    lines.append("w_tol_rel = 3e-6")
     lines.append("qhat_tol_rel = 1e-4")
     lines.append("")
 

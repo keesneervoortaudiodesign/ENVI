@@ -10,7 +10,7 @@ h_r = 1.5
 d = 97.5
 psi_g_deg = 1.1751332372393646
 tau2_s = 0.28653143701725636
-w_tol_rel = 2e-6
+w_tol_rel = 3e-6
 qhat_tol_rel = 1e-4
 
 [[w]]
