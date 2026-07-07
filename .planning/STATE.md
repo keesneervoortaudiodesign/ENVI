@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 1
 current_phase_name: FORCE Harness, Geometry Model & Direct Path
 status: executing
-stopped_at: Completed 01-01-PLAN.md (FORCE harness spine)
-last_updated: "2026-07-07T16:46:10.132Z"
+stopped_at: Completed 01-02-PLAN.md (scene model + path geometry)
+last_updated: "2026-07-07T17:06:08.000Z"
 last_activity: 2026-07-07
-last_activity_desc: Roadmap created for Milestone 1 (validated core engine); 30/30 v1 requirements mapped across 4 phases
+last_activity_desc: Completed 01-02 — semantic 2.5D scene + path geometry; GEO-01/02/03 done; first capability (Geometry) green
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -29,25 +29,25 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 1 of 4 (FORCE Harness, Geometry Model & Direct Path)
-Plan: 2 of 3 in current phase (01-01 complete)
-Status: Executing — plan 01-01 (FORCE harness spine) complete; next is 01-02 (scene + geometry)
-Last activity: 2026-07-07 — Completed 01-01-PLAN.md: two-crate workspace + FORCE test-harness spine, all quality gates green
+Plan: 3 of 3 in current phase (01-01, 01-02 complete)
+Status: Executing — plans 01-01 (harness spine) and 01-02 (scene + geometry) complete; next is 01-03 (direct path at 1/12-octave complex resolution)
+Last activity: 2026-07-07 — Completed 01-02-PLAN.md: semantic 2.5D scene model + azimuth/image-source reflection; FORCE 97.5 m anchor; Geometry capability green; all quality gates pass
 
-Progress: [███░░░░░░░] 33% (1/3 plans in phase 1)
+Progress: [███████░░░] 67% (2/3 plans in phase 1)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 1
-- Average duration: 25min
-- Total execution time: ~0.4 hours
+- Total plans completed: 2
+- Average duration: 21min
+- Total execution time: ~0.7 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 | 1 | 25min | 25min |
+| 1 | 2 | 42min | 21min |
 
 **Recent Trend:**
 
@@ -56,6 +56,7 @@ Progress: [███░░░░░░░] 33% (1/3 plans in phase 1)
 
 *Updated after each plan completion*
 | Phase 01 P01 | 25min | 3 tasks | 17 files |
+| Phase 01 P02 | 17min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,9 @@ Recent decisions affecting current work:
 - Numerics guarded from the start: f64 throughout, ξ singularity clamps, cancellation-safe Δτ reformulation (Phase 3)
 - [Phase 1]: Harness-before-physics enforced via capability gating: implemented_capabilities() empty, so all 66 FORCE/TOML cases report Skipped(requires: …) until later plans flip flags
 - [Phase 1]: I/O quarantine: envi-engine depends only on ndarray/num-complex/thiserror; all .xls/TOML parsing lives in envi-harness
+- [Phase 1, 01-02]: FORCE source line at x=2.5 m and receiver at the last profile X give horizontal distance 97.5 m (NOT 100); hSv/hRv (Z above first/last profile point) encoded solely in TerrainProfile::endpoints
+- [Phase 1, 01-02]: Ground row→segment impedance rule = "row that STARTS the segment"; verified against the MIXED-impedance case 1 (road σ=20000 + grass σ=12.5) — the planned "all class A" assumption was wrong, authoritative .xls wins (Pitfall 1)
+- [Phase 1, 01-02]: FORCE cases use a single placeholder SubSource (uniform-0 spectrum, height 0.0 above first point); real road sub-source heights 0.01/0.30/0.75 m are Phase 4
 
 ### Pending Todos
 
@@ -90,6 +94,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-07T16:46:10.122Z
-Stopped at: Completed 01-01-PLAN.md (FORCE harness spine)
+Last session: 2026-07-07T17:06:08.000Z
+Stopped at: Completed 01-02-PLAN.md (scene model + path geometry)
 Resume file: None

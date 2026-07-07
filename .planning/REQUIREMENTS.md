@@ -45,9 +45,9 @@
 
 ### Geometry model (GEO)
 
-- [ ] **GEO-01**: Represent a canonical semantic 2.5D scene (Source, Receiver, Barrier, Building, TerrainProfile) in a projected metric CRS, Z-up
-- [ ] **GEO-02**: Consume a source→receiver terrain profile + ground-impedance segments + screen edges from FORCE test-case files
-- [ ] **GEO-03**: Compute source→receiver azimuth and reflection-path geometry
+- [x] **GEO-01**: Represent a canonical semantic 2.5D scene (Source, Receiver, Barrier, Building, TerrainProfile) in a projected metric CRS, Z-up
+- [x] **GEO-02**: Consume a source→receiver terrain profile + ground-impedance segments + screen edges from FORCE test-case files
+- [x] **GEO-03**: Compute source→receiver azimuth and reflection-path geometry
 
 ### Validation (VAL)
 
@@ -154,9 +154,9 @@ Mapped during roadmap creation (2026-07-07). See `.planning/ROADMAP.md`.
 | SRC-02 | Phase 4 | Pending |
 | SRC-03 | Phase 4 | Pending |
 | SRC-04 | Phase 4 | Pending |
-| GEO-01 | Phase 1 | Pending |
-| GEO-02 | Phase 1 | Pending |
-| GEO-03 | Phase 1 | Pending |
+| GEO-01 | Phase 1 | Complete |
+| GEO-02 | Phase 1 | Complete |
+| GEO-03 | Phase 1 | Complete |
 | VAL-01 | Phase 1 | Complete |
 | VAL-02 | Phase 4 | Pending |
 | VAL-03 | Phase 4 | Pending |
