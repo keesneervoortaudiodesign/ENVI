@@ -73,7 +73,11 @@ impl FreqAxis {
     /// Build the axis: `1000 · G^(x/12)` for `x = −64 ..= 40`.
     #[must_use]
     pub fn new() -> Self {
-        todo!("Task 1 GREEN: build the 105-point 1/12-octave grid")
+        let mut centres = [0.0; N_BANDS];
+        for (i, x) in (-64_i32..=40).enumerate() {
+            centres[i] = 1000.0 * G.powf(f64::from(x) / 12.0);
+        }
+        Self { centres }
     }
 
     /// Exact 1/3-octave centre frequency for `third_idx ∈ 0..27`.
