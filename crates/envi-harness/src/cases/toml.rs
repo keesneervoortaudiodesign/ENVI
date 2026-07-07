@@ -10,8 +10,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use super::{
-    CaseDefinition, CaseKind, CaseLoadError, PropagationParams, ReferenceVersion,
-    SyntheticExpected,
+    CaseDefinition, CaseKind, CaseLoadError, PropagationParams, ReferenceVersion, SyntheticExpected,
 };
 
 /// Raw serde mirror of the TOML case schema.
@@ -149,7 +148,10 @@ pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
     if raw.expected.tolerance_db <= 0.0 {
         return Err(CaseLoadError::Invalid {
             context,
-            message: format!("expected.tolerance_db = {} must be positive", raw.expected.tolerance_db),
+            message: format!(
+                "expected.tolerance_db = {} must be positive",
+                raw.expected.tolerance_db
+            ),
         });
     }
 
@@ -206,7 +208,9 @@ mod tests {
         assert_eq!(case.receiver_position, Some([100.0, 0.0, 1.5]));
         assert_relative_eq!(case.propagation.t0_c.unwrap(), 15.0);
         assert_relative_eq!(case.propagation.rh_percent, 70.0);
-        let expected = case.expected.expect("synthetic case carries an expected block");
+        let expected = case
+            .expected
+            .expect("synthetic case carries an expected block");
         assert_relative_eq!(expected.tolerance_db, 1e-9);
         assert_eq!(expected.bands, "analytic:divergence+iso9613");
         assert_eq!(case.id, "toml::freefield_100m");
@@ -231,9 +235,15 @@ bands = "analytic:divergence"
 "#,
         );
         let err = load_toml_case(&path).unwrap_err();
-        assert!(matches!(err, CaseLoadError::UnknownKind { .. }), "got {err:?}");
+        assert!(
+            matches!(err, CaseLoadError::UnknownKind { .. }),
+            "got {err:?}"
+        );
         let msg = err.to_string();
-        assert!(msg.contains("free-field"), "error must list accepted kinds: {msg}");
+        assert!(
+            msg.contains("free-field"),
+            "error must list accepted kinds: {msg}"
+        );
     }
 
     #[test]
@@ -255,7 +265,10 @@ bands = "analytic:divergence"
 "#,
         );
         let err = load_toml_case(&path).unwrap_err();
-        assert!(matches!(err, CaseLoadError::NonFinite { .. }), "got {err:?}");
+        assert!(
+            matches!(err, CaseLoadError::NonFinite { .. }),
+            "got {err:?}"
+        );
     }
 
     #[test]

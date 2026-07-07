@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
+use envi_harness::Outcome;
 use libtest_mimic::{Arguments, Trial};
 
 /// Workspace root, resolved from this crate's manifest dir so the test binary
@@ -38,7 +39,36 @@ fn main() -> std::process::ExitCode {
         Ok(())
     }));
 
-    // Per-case trials arrive in Task 3.
+    // One Trial per discovered case. A case that failed to load surfaces as a
+    // real (non-ignored) failing trial; a runnable case is dispatched through
+    // the capability gate — every FORCE road case gates to Skipped in this
+    // plan and is marked ignored with its requires-list as the trial kind, so
+    // `cargo test` output shows WHY each case is ignored before any propagation
+    // code exists.
+    for discovered in discovery.cases {
+        let name = discovered.id;
+        match discovered.case {
+            Err(err) => {
+                let message = format!("failed to load: {err}");
+                trials.push(Trial::test(name, move || Err(message.into())).with_kind("load-error"));
+            }
+            Ok(case) => match envi_harness::run_case(&case) {
+                Outcome::Pass => trials.push(Trial::test(name, || Ok(()))),
+                Outcome::Fail(report) => {
+                    let table = report.render_table();
+                    trials.push(Trial::test(name, move || Err(table.into())));
+                }
+                Outcome::Skipped(why) => {
+                    let reason = why.clone();
+                    trials.push(
+                        Trial::test(name, move || Err(format!("SKIP (expected): {why}").into()))
+                            .with_kind(reason)
+                            .with_ignored_flag(true),
+                    );
+                }
+            },
+        }
+    }
 
     libtest_mimic::run(&args, trials).exit_code()
 }

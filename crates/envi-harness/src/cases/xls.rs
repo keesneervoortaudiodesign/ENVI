@@ -17,8 +17,8 @@ use std::path::Path;
 use calamine::{Data, Range, Reader, Xls, open_workbook};
 
 use super::{
-    CaseDefinition, CaseKind, CaseLoadError, DiscoveredCase, PropagationParams,
-    ReferenceSpectrum, ReferenceVersion, SpectrumRow, TerrainRow,
+    CaseDefinition, CaseKind, CaseLoadError, DiscoveredCase, PropagationParams, ReferenceSpectrum,
+    ReferenceVersion, SpectrumRow, TerrainRow,
 };
 
 /// DoS guard: maximum number of worksheets accepted per workbook.
@@ -31,11 +31,7 @@ pub const MAX_PROFILE_ROWS: usize = 10_000;
 pub const SPECTRUM_ROWS: usize = 27;
 
 /// Require a finite `f64`, with context for the error message.
-pub(crate) fn require_finite(
-    value: f64,
-    context: &str,
-    what: &str,
-) -> Result<f64, CaseLoadError> {
+pub(crate) fn require_finite(value: f64, context: &str, what: &str) -> Result<f64, CaseLoadError> {
     if value.is_finite() {
         Ok(value)
     } else {
@@ -48,10 +44,7 @@ pub(crate) fn require_finite(
 
 /// Validate a parsed terrain profile: finite values, strictly ascending X,
 /// row cap enforced.
-pub(crate) fn validate_profile(
-    rows: &[TerrainRow],
-    context: &str,
-) -> Result<(), CaseLoadError> {
+pub(crate) fn validate_profile(rows: &[TerrainRow], context: &str) -> Result<(), CaseLoadError> {
     if rows.len() > MAX_PROFILE_ROWS {
         return Err(CaseLoadError::TooManyProfileRows {
             context: context.to_string(),
@@ -88,7 +81,11 @@ fn cell_str(range: &Range<Data>, row: u32, col: u32) -> Option<String> {
     match range.get_value((row, col)) {
         Some(Data::String(s)) => {
             let t = s.trim();
-            if t.is_empty() { None } else { Some(t.to_string()) }
+            if t.is_empty() {
+                None
+            } else {
+                Some(t.to_string())
+            }
         }
         _ => None,
     }
@@ -113,9 +110,8 @@ fn last_row(range: &Range<Data>) -> u32 {
 /// (trimmed, exact match — prefix matching would confuse "LAE"/"LAeq,24h").
 fn find_label_row(range: &Range<Data>, col: u32, labels: &[&str]) -> Option<u32> {
     let start = range.start().map_or(0, |(r, _)| r);
-    (start..=last_row(range)).find(|&row| {
-        cell_str(range, row, col).is_some_and(|s| labels.iter().any(|l| s == *l))
-    })
+    (start..=last_row(range))
+        .find(|&row| cell_str(range, row, col).is_some_and(|s| labels.iter().any(|l| s == *l)))
 }
 
 /// Read the value adjacent to a label: label-anchored as the PRIMARY key,
@@ -185,10 +181,12 @@ fn parse_sheet(range: &Range<Data>, sheet: &str) -> Result<CaseDefinition, CaseL
 
     // Overall results: labels in col F (5), values in col G (6).
     // Exact label match matters: "LAeq,24h" also starts with "LAE".
-    let laeq_24h_db = labelled_num(range, sheet, 5, 6, &["LAeq,24h", "LAeq"], 6)?
-        .ok_or_else(|| CaseLoadError::MissingLabel {
-            sheet: sheet.to_string(),
-            label: "LAeq,24h".to_string(),
+    let laeq_24h_db =
+        labelled_num(range, sheet, 5, 6, &["LAeq,24h", "LAeq"], 6)?.ok_or_else(|| {
+            CaseLoadError::MissingLabel {
+                sheet: sheet.to_string(),
+                label: "LAeq,24h".to_string(),
+            }
         })?;
     let lae_db = labelled_num(range, sheet, 5, 6, &["LAE"], 7)?.ok_or_else(|| {
         CaseLoadError::MissingLabel {
@@ -318,10 +316,12 @@ fn parse_sheet(range: &Range<Data>, sheet: &str) -> Result<CaseDefinition, CaseL
 /// Returns a workbook-level error only when the file cannot be opened or the
 /// sheet cap is exceeded.
 pub fn load_straight_road(path: &Path) -> Result<Vec<DiscoveredCase>, CaseLoadError> {
-    let mut workbook = open_workbook::<Xls<std::io::BufReader<std::fs::File>>, _>(path)
-        .map_err(|e| CaseLoadError::Workbook {
-            path: path.to_path_buf(),
-            message: e.to_string(),
+    let mut workbook =
+        open_workbook::<Xls<std::io::BufReader<std::fs::File>>, _>(path).map_err(|e| {
+            CaseLoadError::Workbook {
+                path: path.to_path_buf(),
+                message: e.to_string(),
+            }
         })?;
     let sheet_names = workbook.sheet_names();
     if sheet_names.len() > MAX_SHEETS {
@@ -395,7 +395,10 @@ mod tests {
             case1.description
         );
 
-        let spectrum = case1.reference_spectrum.as_ref().expect("FORCE case has reference");
+        let spectrum = case1
+            .reference_spectrum
+            .as_ref()
+            .expect("FORCE case has reference");
         // Full-precision cell value, abs 1e-9 (the report appendix prints 39.4)
         assert_abs_diff_eq!(spectrum.laeq_24h_db, 39.39836757521, epsilon = 1e-9);
         assert_eq!(spectrum.bands.len(), SPECTRUM_ROWS);
@@ -412,7 +415,10 @@ mod tests {
         // Every xls case carries Force2009 provenance and all cases load.
         for c in &cases {
             let def = c.case.as_ref().unwrap_or_else(|e| panic!("{}: {e}", c.id));
-            assert_eq!(def.reference_version, super::super::ReferenceVersion::Force2009);
+            assert_eq!(
+                def.reference_version,
+                super::super::ReferenceVersion::Force2009
+            );
             assert_eq!(def.kind, super::super::CaseKind::ForceStraightRoad);
         }
     }
@@ -421,18 +427,27 @@ mod tests {
     fn nan_cell_values_are_rejected() {
         let rows = [row(3.25, 0.0, f64::NAN, 0.0)];
         let err = validate_profile(&rows, "test").unwrap_err();
-        assert!(matches!(err, CaseLoadError::NonFinite { .. }), "got {err:?}");
+        assert!(
+            matches!(err, CaseLoadError::NonFinite { .. }),
+            "got {err:?}"
+        );
     }
 
     #[test]
     fn non_ascending_profile_x_is_rejected() {
         let rows = [row(3.25, 0.0, 12.5, 0.0), row(3.25, 0.0, 12.5, 0.0)];
         let err = validate_profile(&rows, "test").unwrap_err();
-        assert!(matches!(err, CaseLoadError::NonAscendingProfile { .. }), "got {err:?}");
+        assert!(
+            matches!(err, CaseLoadError::NonAscendingProfile { .. }),
+            "got {err:?}"
+        );
 
         let rows = [row(5.0, 0.0, 12.5, 0.0), row(3.0, 0.0, 12.5, 0.0)];
         let err = validate_profile(&rows, "test").unwrap_err();
-        assert!(matches!(err, CaseLoadError::NonAscendingProfile { .. }), "got {err:?}");
+        assert!(
+            matches!(err, CaseLoadError::NonAscendingProfile { .. }),
+            "got {err:?}"
+        );
     }
 
     #[test]
@@ -441,7 +456,10 @@ mod tests {
             .map(|i| row(i as f64, 0.0, 12.5, 0.0))
             .collect();
         let err = validate_profile(&rows, "test").unwrap_err();
-        assert!(matches!(err, CaseLoadError::TooManyProfileRows { .. }), "got {err:?}");
+        assert!(
+            matches!(err, CaseLoadError::TooManyProfileRows { .. }),
+            "got {err:?}"
+        );
     }
 
     #[test]

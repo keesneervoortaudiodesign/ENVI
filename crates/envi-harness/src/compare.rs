@@ -77,7 +77,43 @@ impl ComparisonReport {
     /// error path and the CLI report).
     #[must_use]
     pub fn render_table(&self) -> String {
-        todo!("Task 3 GREEN: per-band deviation table")
+        use std::fmt::Write as _;
+
+        let mut out = String::new();
+        let _ = writeln!(
+            out,
+            "{:>4} {:>10} {:>10} {:>10} {:>8}  verdict",
+            "band", "nom. Hz", "got dB", "want dB", "dev dB"
+        );
+        for (d, v) in self.deviations.iter().zip(&self.verdicts) {
+            let verdict = match v {
+                BandVerdict::Ok => "ok",
+                BandVerdict::DipShiftWarning => "WARN (dip shift)",
+                BandVerdict::Fail => "FAIL",
+            };
+            let _ = writeln!(
+                out,
+                "{:>4} {:>10} {:>10.3} {:>10.3} {:>+8.3}  {verdict}",
+                d.band, d.nominal_hz, d.got_db, d.want_db, d.dev_db
+            );
+        }
+        let _ = writeln!(
+            out,
+            "max |dev| = {:.3} dB (band tol {:.1} dB)",
+            self.max_abs_dev_db, self.tol_band_db
+        );
+        if let Some(overall) = self.overall_dev_db {
+            let _ = writeln!(
+                out,
+                "overall dev = {overall:+.3} dB (tol {:.1} dB)",
+                self.tol_overall_db
+            );
+        }
+        for w in &self.warnings {
+            let _ = writeln!(out, "warning: {w}");
+        }
+        let _ = writeln!(out, "verdict: {}", if self.pass { "PASS" } else { "FAIL" });
+        out
     }
 }
 
@@ -88,8 +124,21 @@ impl ComparisonReport {
 /// space); indices map to [`NOMINAL_THIRD_OCT`] labels for display.
 #[must_use]
 pub fn compare_spectrum(got: &[f64], want: &[f64], tol_db: f64) -> (Vec<BandDeviation>, bool) {
-    let _ = (got, want, tol_db);
-    todo!("Task 3 GREEN: per-band signed deviations")
+    debug_assert_eq!(got.len(), want.len(), "band spectra must be equal length");
+    let deviations: Vec<BandDeviation> = got
+        .iter()
+        .zip(want)
+        .enumerate()
+        .map(|(i, (&g, &w))| BandDeviation {
+            band: i,
+            nominal_hz: NOMINAL_THIRD_OCT.get(i).copied().unwrap_or(f64::NAN),
+            got_db: g,
+            want_db: w,
+            dev_db: g - w,
+        })
+        .collect();
+    let pass = deviations.iter().all(|d| d.dev_db.abs() <= tol_db);
+    (deviations, pass)
 }
 
 /// Full FORCE-style comparison: per-band deviations with the dip-shift
@@ -108,8 +157,66 @@ pub fn compare_27_band(
     overall: Option<(f64, f64)>,
     dip_shift_rule: bool,
 ) -> ComparisonReport {
-    let _ = (got, want, overall, dip_shift_rule);
-    todo!("Task 3 GREEN: full comparison report")
+    let (deviations, _) = compare_spectrum(got, want, FORCE_TOL_BAND_DB);
+
+    let mut warnings = Vec::new();
+    let verdicts: Vec<BandVerdict> = deviations
+        .iter()
+        .map(|d| {
+            if d.dev_db.abs() <= FORCE_TOL_BAND_DB {
+                return BandVerdict::Ok;
+            }
+            if dip_shift_rule {
+                // EP1335 §6 dip-shift allowance: does the got-spectrum
+                // shifted by ±1 band index explain this band?
+                let i = d.band;
+                let shifted_ok = [i.checked_sub(1), i.checked_add(1)]
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|j| got.get(j))
+                    .any(|&g| (g - d.want_db).abs() <= FORCE_TOL_BAND_DB);
+                if shifted_ok {
+                    warnings.push(format!(
+                        "band {} ({} Hz): {:+.2} dB deviation covered by the \
+                         ±1-band dip-shift allowance (EP1335 §6)",
+                        d.band, d.nominal_hz, d.dev_db
+                    ));
+                    return BandVerdict::DipShiftWarning;
+                }
+            }
+            BandVerdict::Fail
+        })
+        .collect();
+
+    let max_abs_dev_db = deviations
+        .iter()
+        .map(|d| d.dev_db.abs())
+        .fold(0.0_f64, f64::max);
+
+    let overall_dev_db = overall.map(|(g, w)| g - w);
+    let overall_ok = overall_dev_db.is_none_or(|dev| dev.abs() <= FORCE_TOL_OVERALL_DB);
+    if let Some(dev) = overall_dev_db
+        && dev.abs() > FORCE_INVESTIGATE_DB
+        && dev.abs() <= FORCE_TOL_OVERALL_DB
+    {
+        warnings.push(format!(
+            "overall deviation {dev:+.2} dB exceeds the {FORCE_INVESTIGATE_DB} dB \
+             investigation threshold (EP1335 §6)"
+        ));
+    }
+
+    let pass = overall_ok && !verdicts.contains(&BandVerdict::Fail);
+
+    ComparisonReport {
+        deviations,
+        verdicts,
+        max_abs_dev_db,
+        overall_dev_db,
+        tol_band_db: FORCE_TOL_BAND_DB,
+        tol_overall_db: FORCE_TOL_OVERALL_DB,
+        warnings,
+        pass,
+    }
 }
 
 /// Pick the 27 exact-1/3-octave band values out of a 105-point 1/12-octave
@@ -138,8 +245,12 @@ pub fn exact_third_octave_centres(axis: &FreqAxis) -> [f64; N_THIRD_OCT] {
 /// (Phase 4 gate; implemented now, anchored by tests).
 #[must_use]
 pub fn a_weighting_db(f_hz: f64) -> f64 {
-    let _ = f_hz;
-    todo!("Task 3 GREEN: IEC 61672-1 A-weighting")
+    let f2 = f_hz * f_hz;
+    let r_a = 12_194.0_f64.powi(2) * f2 * f2
+        / ((f2 + 20.6_f64.powi(2))
+            * ((f2 + 107.7_f64.powi(2)) * (f2 + 737.9_f64.powi(2))).sqrt()
+            * (f2 + 12_194.0_f64.powi(2)));
+    20.0 * r_a.log10() + 2.00
 }
 
 #[cfg(test)]
@@ -185,7 +296,7 @@ mod tests {
         got[20] -= 0.9;
         let report = compare_27_band(&got, &want, Some((40.2, 40.0)), false);
         assert!(report.pass);
-        assert_relative_eq!(report.max_abs_dev_db, 0.9);
+        assert_relative_eq!(report.max_abs_dev_db, 0.9, epsilon = 1e-12);
         assert_relative_eq!(report.overall_dev_db.unwrap(), 0.2, epsilon = 1e-12);
         let table = report.render_table();
         assert!(table.contains("1000"), "table lists nominal bands: {table}");
@@ -210,7 +321,10 @@ mod tests {
         assert!(!strict.pass);
         // With the rule: shifting by ±1 band explains both -> warnings, pass.
         let lenient = compare_27_band(&got, &want, None, true);
-        assert!(lenient.pass, "dip shift by one band is acceptable per EP1335 §6");
+        assert!(
+            lenient.pass,
+            "dip shift by one band is acceptable per EP1335 §6"
+        );
         assert!(!lenient.warnings.is_empty());
         assert!(lenient.verdicts.contains(&BandVerdict::DipShiftWarning));
     }

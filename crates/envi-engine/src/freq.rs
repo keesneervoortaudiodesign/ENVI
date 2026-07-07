@@ -88,7 +88,10 @@ impl FreqAxis {
     /// "evaluate at the centre frequency" semantics.
     #[must_use]
     pub fn third_octave_pick(&self, third_idx: usize) -> f64 {
-        debug_assert!(third_idx < N_THIRD_OCT, "third_idx out of range: {third_idx}");
+        debug_assert!(
+            third_idx < N_THIRD_OCT,
+            "third_idx out of range: {third_idx}"
+        );
         self.centres[third_idx * 4]
     }
 }
@@ -133,7 +136,10 @@ mod tests {
         assert_relative_eq!(axis.third_octave_pick(16), 1000.0, max_relative = 1e-12);
         for i in 0..N_THIRD_OCT {
             // bit-identical: the pick IS the grid point, not a recomputation
-            assert_eq!(axis.third_octave_pick(i).to_bits(), axis.centres[i * 4].to_bits());
+            assert_eq!(
+                axis.third_octave_pick(i).to_bits(),
+                axis.centres[i * 4].to_bits()
+            );
         }
     }
 

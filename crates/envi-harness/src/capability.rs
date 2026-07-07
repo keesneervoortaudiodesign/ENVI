@@ -46,10 +46,45 @@ impl Capability {
 }
 
 /// The capability set a case needs before it can produce a comparable result.
+///
+/// FORCE straight-road cases require `EmissionModel + GroundEffect` at
+/// minimum; screen groups additionally require `Diffraction` (derived from
+/// the case description); wind / temperature-gradient variants additionally
+/// require `Refraction` (nonzero `u` or `dt/dz`, or a wind mention in the
+/// description).
 #[must_use]
 pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
-    let _ = case;
-    todo!("Task 3 GREEN: derive requirements from kind, description and params")
+    let mut required = BTreeSet::new();
+    match case.kind {
+        CaseKind::FreeField => {
+            required.insert(Capability::FreeField);
+        }
+        CaseKind::Geometry => {
+            required.insert(Capability::Geometry);
+        }
+        CaseKind::ForceStraightRoad
+        | CaseKind::ForceCurvedRoad
+        | CaseKind::ForceCityStreet
+        | CaseKind::ForceYearlyAverage => {
+            required.insert(Capability::EmissionModel);
+            required.insert(Capability::GroundEffect);
+
+            let description = case.description.to_lowercase();
+            if description.contains("screen") {
+                required.insert(Capability::Diffraction);
+            }
+
+            let nonzero = |v: Option<f64>| v.is_some_and(|x| x != 0.0);
+            if nonzero(case.propagation.u_ms)
+                || nonzero(case.propagation.dtdz)
+                || description.contains("downwind")
+                || description.contains("upwind")
+            {
+                required.insert(Capability::Refraction);
+            }
+        }
+    }
+    required
 }
 
 /// The capability set the engine currently implements.
@@ -123,7 +158,10 @@ mod tests {
         gradient.propagation.dtdz = Some(0.1);
         assert!(required_capabilities(&gradient).contains(&Capability::Refraction));
 
-        let calm = base_case(CaseKind::ForceStraightRoad, "Flat terrain, homogeneous atm.");
+        let calm = base_case(
+            CaseKind::ForceStraightRoad,
+            "Flat terrain, homogeneous atm.",
+        );
         assert!(!required_capabilities(&calm).contains(&Capability::Refraction));
     }
 

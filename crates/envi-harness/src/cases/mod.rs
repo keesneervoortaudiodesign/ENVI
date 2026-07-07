@@ -354,10 +354,12 @@ pub(crate) fn confine(root: &Path, candidate: &Path) -> Result<PathBuf, CaseLoad
         path: root.to_path_buf(),
         source,
     })?;
-    let canon = candidate.canonicalize().map_err(|source| CaseLoadError::Io {
-        path: candidate.to_path_buf(),
-        source,
-    })?;
+    let canon = candidate
+        .canonicalize()
+        .map_err(|source| CaseLoadError::Io {
+            path: candidate.to_path_buf(),
+            source,
+        })?;
     if canon.starts_with(&canon_root) {
         Ok(canon)
     } else {
@@ -386,7 +388,8 @@ pub fn discover(refs_dir: &Path, cases_dir: &Path) -> Discovery {
                 .filter_map(Result::ok)
                 .map(|e| e.path())
                 .filter(|p| {
-                    p.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
+                    p.extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
                 })
                 .collect();
             paths.sort();
@@ -395,8 +398,7 @@ pub fn discover(refs_dir: &Path, cases_dir: &Path) -> Discovery {
                     .file_stem()
                     .map(|s| s.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "unnamed".to_string());
-                let case =
-                    confine(cases_dir, &path).and_then(|safe| toml::load_toml_case(&safe));
+                let case = confine(cases_dir, &path).and_then(|safe| toml::load_toml_case(&safe));
                 discovery.cases.push(DiscoveredCase {
                     id: format!("toml::{stem}"),
                     case,
@@ -430,8 +432,18 @@ pub fn discover(refs_dir: &Path, cases_dir: &Path) -> Discovery {
     // 3. Remaining FORCE workbooks: counted but not parsed until Phases 3-4;
     //    each present workbook surfaces as one Skipped placeholder case.
     for (file, group, kind, label) in [
-        ("TestCurvedRoad.xls", "curved_road", CaseKind::ForceCurvedRoad, "Curved Road"),
-        ("TestCityStreet.xls", "city_street", CaseKind::ForceCityStreet, "City Street"),
+        (
+            "TestCurvedRoad.xls",
+            "curved_road",
+            CaseKind::ForceCurvedRoad,
+            "Curved Road",
+        ),
+        (
+            "TestCityStreet.xls",
+            "city_street",
+            CaseKind::ForceCityStreet,
+            "City Street",
+        ),
         (
             "TestYearlyAverage.xls",
             "yearly_average",
@@ -494,7 +506,10 @@ mod tests {
         // deterministic order: sorted by id within the toml group
         let mut sorted = toml_ids.clone();
         sorted.sort_unstable();
-        assert_eq!(toml_ids, sorted, "TOML cases must be discovered in sorted order");
+        assert_eq!(
+            toml_ids, sorted,
+            "TOML cases must be discovered in sorted order"
+        );
     }
 
     #[test]
