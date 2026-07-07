@@ -55,8 +55,33 @@ pub fn calc_fz_d(
     theta: f64,
     f_lambda_prod: f64,
 ) -> Result<f64, PropagationError> {
-    let _ = (r_s, r_r, theta, f_lambda_prod);
-    todo!("Eq. 339")
+    let pos = |v: f64| v.is_finite() && v > 0.0;
+    if !(pos(r_s) && pos(r_r) && pos(f_lambda_prod) && theta.is_finite()) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "CalcFZd requires positive finite r_S, r_R, F_λ·λ and finite θ",
+        });
+    }
+    let r = r_s + r_r;
+    let l = r + f_lambda_prod; // ℓ = r + F_λ·λ
+    let cos_t = theta.cos();
+    // A, B, C of the quadratic in d (Eq. 339). A = 4(ℓ² − (r cosθ)²) > 0 for F_λ·λ > 0.
+    let a = 4.0 * (l * l - (r * cos_t).powi(2));
+    let b = 4.0 * r * cos_t * (r_r * r_r - r_s * r_s)
+        + 4.0 * (r_s - r_r) * l * l * cos_t;
+    let c = -l.powi(4) + 2.0 * (r_s * r_s + r_r * r_r) * l * l - (r_s * r_s - r_r * r_r).powi(2);
+    let disc = b * b - 4.0 * a * c;
+    if a.abs() <= f64::MIN_POSITIVE || disc < 0.0 {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "CalcFZd ellipse is degenerate (A≈0 or negative discriminant)",
+        });
+    }
+    let d = (-b + disc.sqrt()) / (2.0 * a);
+    if !d.is_finite() {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "CalcFZd produced a non-finite distance",
+        });
+    }
+    Ok(d)
 }
 
 /// `FresnelZoneSize` — the source-side (`a₁`), receiver-side (`a₂`) reach of the
@@ -85,8 +110,31 @@ pub fn fresnel_zone_size(
     h_r: f64,
     f_lambda_prod: f64,
 ) -> Result<(f64, f64, f64), PropagationError> {
-    let _ = (d, h_s, h_r, f_lambda_prod);
-    todo!("Eqs. 340–344")
+    let pos = |v: f64| v.is_finite() && v > 0.0;
+    if !(pos(d) && pos(f_lambda_prod) && h_s.is_finite() && h_r.is_finite() && h_s + h_r > 0.0) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "FresnelZoneSize requires positive finite d, F_λ·λ and hS+hR",
+        });
+    }
+    // Eq. 344: ψ_G, the image-source→receiver distance r (= R₂), and the split
+    // r_S : r_R = hS : hR of that path at the reflection point.
+    let hsum = h_s + h_r;
+    let psi_g = (hsum / d).atan();
+    let r = (hsum * hsum + d * d).sqrt();
+    let r_s = h_s / hsum * r;
+    let r_r = h_r / hsum * r;
+    // Eqs. 341–343: source-side reach a₁ (direction π−ψ_G), receiver-side a₂
+    // (direction ψ_G), half-width b (perpendicular π/2 reach, deprojected).
+    let a1 = calc_fz_d(r_s, r_r, std::f64::consts::PI - psi_g, f_lambda_prod)?;
+    let a2 = calc_fz_d(r_s, r_r, psi_g, f_lambda_prod)?;
+    let b_perp = calc_fz_d(r_s, r_r, std::f64::consts::FRAC_PI_2, f_lambda_prod)?;
+    let denom = 1.0 - ((a2 - a1) / (a2 + a1)).powi(2);
+    let b = if denom > 0.0 {
+        (b_perp * b_perp / denom).sqrt()
+    } else {
+        b_perp
+    };
+    Ok((a1, a2, b))
 }
 
 /// `FresnelZoneW` — the frequency-dependent low-frequency Fresnel-zone weight of
@@ -118,8 +166,14 @@ pub fn fresnel_zone_w(
     d2: f64,
     f_lambda_prod: f64,
 ) -> Result<f64, PropagationError> {
-    let _ = (d, h_s, h_r, d1, d2, f_lambda_prod);
-    todo!("Eqs. 345–351")
+    if !(d1.is_finite() && d2.is_finite() && d2 >= d1) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "FresnelZoneW requires finite strip endpoints with d₂ ≥ d₁",
+        });
+    }
+    let (_, d1_fz, d2_fz) = zone_borders(d, h_s, h_r, f_lambda_prod)?;
+    // Eq. 351: fraction of the zone [d_{1,Fz}, d_{2,Fz}] covered by [d₁, d₂].
+    Ok(overlap_fraction(d1, d2, d1_fz, d2_fz))
 }
 
 /// `FresnelZoneWm` — the modified (symmetric) high-frequency Fresnel-zone weight
@@ -145,8 +199,50 @@ pub fn fresnel_zone_wm(
     d2: f64,
     f_lambda_prod: f64,
 ) -> Result<f64, PropagationError> {
-    let _ = (d, h_s, h_r, d1, d2, f_lambda_prod);
-    todo!("Eqs. 352–353")
+    if !(d1.is_finite() && d2.is_finite() && d2 >= d1) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "FresnelZoneWm requires finite strip endpoints with d₂ ≥ d₁",
+        });
+    }
+    let (d_refl, d1_fz, d2_fz) = zone_borders(d, h_s, h_r, f_lambda_prod)?;
+    // Eq. 353: equal weight to each side of the reflection point.
+    let w_s = overlap_fraction(d1, d2, d1_fz, d_refl);
+    let w_r = overlap_fraction(d1, d2, d_refl, d2_fz);
+    Ok(0.5 * (w_s + w_r))
+}
+
+/// The reflection point `d_refl` and zone borders `(d_{1,Fz}, d_{2,Fz})` along
+/// the extended segment (Eqs. 348–350, homogeneous). Heights are clamped to
+/// ≥ 0.01 m per Eq. 345.
+fn zone_borders(
+    d: f64,
+    h_s: f64,
+    h_r: f64,
+    f_lambda_prod: f64,
+) -> Result<(f64, f64, f64), PropagationError> {
+    if !(d.is_finite() && d > 0.0 && h_s.is_finite() && h_r.is_finite()) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "FresnelZone weight requires positive finite d and finite heights",
+        });
+    }
+    let h_s = h_s.max(0.01); // Eq. 345: hS < 0.01 → 0.01
+    let h_r = h_r.max(0.01);
+    // Reflection point (Eq. 348: d̆_refl = R_S·cos ψ_G = d·hS/(hS+hR)).
+    let d_refl = d * h_s / (h_s + h_r);
+    let (a1, a2, _) = fresnel_zone_size(d, h_s, h_r, f_lambda_prod)?;
+    Ok((d_refl, d_refl - a1, d_refl + a2)) // Eq. 350
+}
+
+/// Length of `[lo, hi] ∩ [a, b]` divided by the zone width `(b − a)` — the
+/// covered fraction, clamped to `[0, 1]`. Returns 0 for a degenerate zone.
+fn overlap_fraction(lo: f64, hi: f64, a: f64, b: f64) -> f64 {
+    let width = b - a;
+    if width <= 0.0 {
+        return 0.0;
+    }
+    let left = lo.max(a);
+    let right = hi.min(b);
+    ((right - left).max(0.0) / width).clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
@@ -214,10 +310,14 @@ mod tests {
             a1_hi + a2_hi,
             a1_lo + a2_lo
         );
-        // A strip sitting at the zone edge loses weight as frequency rises.
-        let w_lo = fresnel_zone_w(97.5, 0.5, 1.5, 20.0, 30.0, 0.25 * lambda(250.0)).unwrap();
-        let w_hi = fresnel_zone_w(97.5, 0.5, 1.5, 20.0, 30.0, 0.25 * lambda(4000.0)).unwrap();
-        assert!(w_hi <= w_lo + 1e-12, "edge strip weight must not grow: {w_hi} vs {w_lo}");
+        // A strip at the outer (receiver-side) zone edge loses weight as the
+        // zone contracts toward the reflection point. At 250 Hz the zone reaches
+        // ~94.5 m so [80, 95] is partly covered; at 4 kHz the zone ends near 69 m
+        // so the strip falls entirely outside and its weight drops to zero.
+        let w_lo = fresnel_zone_w(97.5, 0.5, 1.5, 80.0, 95.0, 0.25 * lambda(250.0)).unwrap();
+        let w_hi = fresnel_zone_w(97.5, 0.5, 1.5, 80.0, 95.0, 0.25 * lambda(4000.0)).unwrap();
+        assert!(w_lo > 0.0, "strip must be partly covered at 250 Hz: {w_lo}");
+        assert!(w_hi <= w_lo + 1e-12, "outer-edge strip weight must not grow: {w_hi} vs {w_lo}");
         // Zone at F_λ = λ/16 is smaller than at F_λ = λ/4.
         let lam = lambda(1000.0);
         let (a1_s, a2_s, _) = fresnel_zone_size(97.5, 0.5, 1.5, lam / 16.0).unwrap();
