@@ -216,7 +216,52 @@ impl TerrainProfile {
     /// - [`SceneError::NonFinite`] if any coordinate or segment property is NaN/∞
     /// - [`SceneError::NonAscendingX`] if profile X is not strictly ascending
     pub fn new(points: Vec<[f64; 2]>, segments: Vec<GroundSegment>) -> Result<Self, SceneError> {
-        todo!("GREEN")
+        if points.is_empty() {
+            return Err(SceneError::EmptyProfile);
+        }
+        let expected = points.len() - 1;
+        if segments.len() != expected {
+            return Err(SceneError::SegmentCountMismatch {
+                points: points.len(),
+                segments: segments.len(),
+                expected,
+            });
+        }
+        for (i, p) in points.iter().enumerate() {
+            if !p[0].is_finite() {
+                return Err(SceneError::NonFinite {
+                    what: format!("profile X (point {i})"),
+                });
+            }
+            if !p[1].is_finite() {
+                return Err(SceneError::NonFinite {
+                    what: format!("profile Z (point {i})"),
+                });
+            }
+            if i > 0 {
+                let prev_x = points[i - 1][0];
+                if p[0] <= prev_x {
+                    return Err(SceneError::NonAscendingX {
+                        index: i,
+                        prev_x,
+                        x: p[0],
+                    });
+                }
+            }
+        }
+        for (i, s) in segments.iter().enumerate() {
+            if !s.flow_resistivity.is_finite() {
+                return Err(SceneError::NonFinite {
+                    what: format!("flow resistivity (segment {i})"),
+                });
+            }
+            if !s.roughness.is_finite() {
+                return Err(SceneError::NonFinite {
+                    what: format!("roughness (segment {i})"),
+                });
+            }
+        }
+        Ok(Self { points, segments })
     }
 
     /// Profile points `(x, z)`.
@@ -241,7 +286,14 @@ impl TerrainProfile {
     /// point" is wrong. Heights are expected non-negative (`debug_assert`ed).
     #[must_use]
     pub fn endpoints(&self, h_s: f64, h_r: f64) -> ([f64; 2], [f64; 2]) {
-        todo!("GREEN")
+        debug_assert!(h_s >= 0.0, "source height must be non-negative: {h_s}");
+        debug_assert!(h_r >= 0.0, "receiver height must be non-negative: {h_r}");
+        // Invariant: `new` rejects an empty profile, so `first`/`last` exist.
+        let first = self.points[0];
+        let last = self.points[self.points.len() - 1];
+        let source = [first[0], first[1] + h_s];
+        let receiver = [last[0], last[1] + h_r];
+        (source, receiver)
     }
 }
 
@@ -320,24 +372,22 @@ mod tests {
         );
 
         // non-ascending X
-        let err =
-            TerrainProfile::new(vec![[10.0, 0.0], [5.0, 0.0]], vec![seg(12.5)]).unwrap_err();
+        let err = TerrainProfile::new(vec![[10.0, 0.0], [5.0, 0.0]], vec![seg(12.5)]).unwrap_err();
         assert!(
             matches!(err, SceneError::NonAscendingX { .. }),
             "got {err:?}"
         );
 
         // duplicate X (not strictly ascending)
-        let err =
-            TerrainProfile::new(vec![[3.25, 0.0], [3.25, 0.0]], vec![seg(12.5)]).unwrap_err();
+        let err = TerrainProfile::new(vec![[3.25, 0.0], [3.25, 0.0]], vec![seg(12.5)]).unwrap_err();
         assert!(
             matches!(err, SceneError::NonAscendingX { .. }),
             "got {err:?}"
         );
 
         // non-finite z
-        let err = TerrainProfile::new(vec![[0.0, f64::NAN], [10.0, 0.0]], vec![seg(12.5)])
-            .unwrap_err();
+        let err =
+            TerrainProfile::new(vec![[0.0, f64::NAN], [10.0, 0.0]], vec![seg(12.5)]).unwrap_err();
         assert!(matches!(err, SceneError::NonFinite { .. }), "got {err:?}");
 
         // a valid profile constructs
