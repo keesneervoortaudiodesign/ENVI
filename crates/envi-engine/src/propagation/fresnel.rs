@@ -66,8 +66,7 @@ pub fn calc_fz_d(
     let cos_t = theta.cos();
     // A, B, C of the quadratic in d (Eq. 339). A = 4(ℓ² − (r cosθ)²) > 0 for F_λ·λ > 0.
     let a = 4.0 * (l * l - (r * cos_t).powi(2));
-    let b = 4.0 * r * cos_t * (r_r * r_r - r_s * r_s)
-        + 4.0 * (r_s - r_r) * l * l * cos_t;
+    let b = 4.0 * r * cos_t * (r_r * r_r - r_s * r_s) + 4.0 * (r_s - r_r) * l * l * cos_t;
     let c = -l.powi(4) + 2.0 * (r_s * r_s + r_r * r_r) * l * l - (r_s * r_s - r_r * r_r).powi(2);
     let disc = b * b - 4.0 * a * c;
     if a.abs() <= f64::MIN_POSITIVE || disc < 0.0 {
@@ -288,13 +287,19 @@ mod tests {
         assert!((0.0..=1.0).contains(&w), "w={w}");
         // Whole plane → full weight.
         let full = fresnel_zone_w(97.5, 0.5, 1.5, -1.0e6, 1.0e6, flp).unwrap();
-        assert!((full - 1.0).abs() < 1e-9, "covering strip must weight ~1: {full}");
+        assert!(
+            (full - 1.0).abs() < 1e-9,
+            "covering strip must weight ~1: {full}"
+        );
         // Far outside the zone → zero.
         let none = fresnel_zone_w(97.5, 0.5, 1.5, 1.0e5, 2.0e5, flp).unwrap();
         assert!(none.abs() < 1e-12, "far strip must weight 0: {none}");
         // FresnelZoneWm bounded and full for a covering strip too.
         let wm_full = fresnel_zone_wm(97.5, 0.5, 1.5, -1.0e6, 1.0e6, flp).unwrap();
-        assert!((wm_full - 1.0).abs() < 1e-9, "wm covering must weight ~1: {wm_full}");
+        assert!(
+            (wm_full - 1.0).abs() < 1e-9,
+            "wm covering must weight ~1: {wm_full}"
+        );
     }
 
     // Test 3: frequency behaviour — the zone shrinks with frequency; a smaller
@@ -317,12 +322,18 @@ mod tests {
         let w_lo = fresnel_zone_w(97.5, 0.5, 1.5, 80.0, 95.0, 0.25 * lambda(250.0)).unwrap();
         let w_hi = fresnel_zone_w(97.5, 0.5, 1.5, 80.0, 95.0, 0.25 * lambda(4000.0)).unwrap();
         assert!(w_lo > 0.0, "strip must be partly covered at 250 Hz: {w_lo}");
-        assert!(w_hi <= w_lo + 1e-12, "outer-edge strip weight must not grow: {w_hi} vs {w_lo}");
+        assert!(
+            w_hi <= w_lo + 1e-12,
+            "outer-edge strip weight must not grow: {w_hi} vs {w_lo}"
+        );
         // Zone at F_λ = λ/16 is smaller than at F_λ = λ/4.
         let lam = lambda(1000.0);
         let (a1_s, a2_s, _) = fresnel_zone_size(97.5, 0.5, 1.5, lam / 16.0).unwrap();
         let (a1_b, a2_b, _) = fresnel_zone_size(97.5, 0.5, 1.5, 0.25 * lam).unwrap();
-        assert!(a1_s + a2_s < a1_b + a2_b, "λ/16 zone must be smaller than λ/4");
+        assert!(
+            a1_s + a2_s < a1_b + a2_b,
+            "λ/16 zone must be smaller than λ/4"
+        );
     }
 
     // Test 4: symmetry / reciprocity — hS == hR puts the zone centre at the
@@ -332,7 +343,10 @@ mod tests {
         let flp = 0.25 * lambda(1000.0);
         // hS == hR → symmetric ellipse, a₁ == a₂, reflection point at d/2.
         let (a1, a2, _) = fresnel_zone_size(100.0, 1.0, 1.0, flp).unwrap();
-        assert!((a1 - a2).abs() < 1e-9, "symmetric geometry: a₁={a1} a₂={a2}");
+        assert!(
+            (a1 - a2).abs() < 1e-9,
+            "symmetric geometry: a₁={a1} a₂={a2}"
+        );
         // Swapping S↔R with a mirrored strip leaves the weight unchanged.
         let (d, h_s, h_r) = (97.5, 0.5, 1.5);
         let (d1, d2) = (20.0, 35.0);
