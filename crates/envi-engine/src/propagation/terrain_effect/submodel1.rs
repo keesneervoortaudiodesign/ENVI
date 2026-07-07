@@ -75,9 +75,55 @@ pub(crate) fn eval(
     coh: &CoherenceInputs,
     force_f: Option<f64>,
 ) -> Result<GroundResult, PropagationError> {
-    let _ = (f_hz, rays, sigma_kpa, roughness_r, coh, force_f);
-    let _ = (ground_impedance, incoherent_rho, spherical_q, coherence_f);
-    todo!("Eq. 120")
+    use num_complex::Complex;
+    use std::f64::consts::TAU;
+
+    let refl = rays
+        .reflected
+        .as_ref()
+        .ok_or(PropagationError::DegenerateRayGeometry {
+            detail: "Sub-model 1 requires a ground reflection (flat homogeneous path)",
+        })?;
+
+    // Reflection-coefficient chain (Eqs. 57–60), 02-01 numerics core.
+    let z_g = ground_impedance(f_hz, sigma_kpa)?;
+    let q = spherical_q(f_hz, refl.tau, refl.psi_g, z_g); // Q̂(f, τ₂, ψ_G, Ẑ_G)
+    let ratio = rays.direct.r / refl.r; // R₁/R₂
+
+    // Transversal separation ρ = 2·hS·hR/(hS+hR) (Eq. 119). The straight-ray
+    // heights fall out of the reflected legs: hS = r₁·sin ψ_G, hR = r₂·sin ψ_G.
+    let sin_psi = refl.psi_g.sin();
+    let h_s = refl.r1 * sin_psi;
+    let h_r = refl.r2 * sin_psi;
+    let rho_sep = if h_s + h_r > 0.0 {
+        2.0 * h_s * h_r / (h_s + h_r)
+    } else {
+        0.0
+    };
+
+    // Coherence coefficient F = Ff·FΔν·Fc·Fr·Fs (Eq. 118), or the test/reuse
+    // override. The per-type roughness `r` (Eq. 123) overrides the shared
+    // weather inputs' roughness so Sub-model 2 can vary it per surface type.
+    let coh_type = CoherenceInputs {
+        roughness_r,
+        ..*coh
+    };
+    let f_coh =
+        force_f.unwrap_or_else(|| coherence_f(f_hz, rays.dtau, rho_sep, refl.psi_g, &coh_type));
+
+    // Coherent term (Eq. 120): 1 + F·(R₁/R₂)·e^{+j2πfΔτ}·Q̂ — NORD-NATIVE +j sign
+    // (e^{−jωt}); no conj here (that boundary is plan 02-05).
+    let phase = Complex::from_polar(1.0, TAU * f_hz * rays.dtau);
+    let h_coh_factor = Complex::new(1.0, 0.0) + f_coh * ratio * phase * q;
+
+    // Incoherent residual (Eq. 120 second term): (1−F²)·(R₁/R₂)²·ρᵢ². Exactly 0
+    // when F = 1 (the incoherent channel never overwrites phase).
+    let rho_i = incoherent_rho(f_hz, z_g);
+    let p_incoh = (1.0 - f_coh * f_coh) * (ratio * rho_i).powi(2);
+
+    // Band value 10·lg(|coherent|² + p_incoh) — the 10·lg prefix is confirmed on
+    // the Eq. 120 page image (research Assumption A2).
+    Ok(GroundResult::from_channels(h_coh_factor, p_incoh))
 }
 
 #[cfg(test)]
@@ -219,21 +265,22 @@ mod tests {
                 g.delta_l_db
             );
         }
-        // Zero-turbulence, small Δτ ⇒ F = Ff ≈ 1 ⇒ p_incoh ≪ |h_coh|².
+        // Zero-turbulence, small Δτ ⇒ F = Ff ≈ 1 ⇒ p_incoh ≪ |h_coh|² away from
+        // the dip (100 Hz is a constructive band, |h|² ≈ 3.3, not dip-suppressed).
         let inp = SubModel1Inputs {
             rays: &rays,
             sigma_kpa: 200.0,
             roughness_r: 0.0,
             coh: &coh,
         };
-        let g = submodel1(1000.0, &inp).unwrap();
+        let g = submodel1(100.0, &inp).unwrap();
         assert!(
             g.p_incoh < 1e-3 * g.h_coh_factor.norm_sqr(),
             "near-coherent: p_incoh {} not ≪ |h|² {}",
             g.p_incoh,
             g.h_coh_factor.norm_sqr()
         );
-        assert!(coherence_ff(1000.0, rays.dtau) > 0.999);
+        assert!(coherence_ff(100.0, rays.dtau) > 0.9999);
         // Forcing F = 1 exactly ⇒ p_incoh == 0.0 (bit-exact).
         let g1 = eval(1000.0, &rays, 200.0, 0.0, &coh, Some(1.0)).unwrap();
         assert_eq!(g1.p_incoh, 0.0, "F = 1 must zero the incoherent channel");
