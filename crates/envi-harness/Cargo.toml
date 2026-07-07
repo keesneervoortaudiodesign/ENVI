@@ -1,0 +1,24 @@
+[package]
+name = "envi-harness"
+description = "ENVI validation harness — FORCE/TOML case loading, comparison, reporting (all I/O lives here)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+envi-engine = { path = "../envi-engine" }
+calamine = "0.36"
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+anyhow = "1"
+thiserror = "2"
+libtest-mimic = "0.8"
+
+[dev-dependencies]
+approx = "0.5"
+
+# Dynamic case-driven test runner: one libtest-mimic Trial per discovered
+# FORCE worksheet / TOML case (01-RESEARCH "Dynamic FORCE tests").
+[[test]]
+name = "force"
+harness = false

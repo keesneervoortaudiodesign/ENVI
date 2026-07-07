@@ -1,0 +1,25 @@
+# Synthetic free-field case: 100 m propagation at FORCE atmosphere conditions.
+# Reference is the analytic identity ΔL_d = −10·log10(4πR²) plus ISO 9613-1
+# air absorption — an exact identity, hence the 1e-9 dB tolerance.
+# Schema: 01-RESEARCH "Recommended harness input schema".
+
+[meta]
+name = "free-field 100 m, 15C 70% RH"
+kind = "free-field"          # engine capability tag
+reference = "analytic"       # vs "force-2009" / "force-2010"
+
+[source]
+position = [0.0, 0.0, 0.5]   # metric CRS, Z-up
+spectrum = { kind = "unit" } # L_W = 0 dB in every band (transfer test)
+
+[receiver]
+position = [100.0, 0.0, 1.5]
+
+[atmosphere]
+t_air_c = 15.0
+rh_percent = 70.0
+pressure_kpa = 101.325
+
+[expected]
+tolerance_db = 1e-9          # analytic identity for divergence
+bands = "analytic:divergence+iso9613"

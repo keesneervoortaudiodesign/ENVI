@@ -1,3 +1,7 @@
 .planning/research/.cache/
-refs/
+# refs/ holds fetched COPYRIGHTED reference artifacts (FORCE .xls, AV PDFs) —
+# never commit them (Pitfall 7). Only the fetch script + SHA-256 manifest are tracked.
+refs/*
+!refs/fetch.sh
+!refs/refs.sha256
 target/

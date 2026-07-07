@@ -1,0 +1,16 @@
+[package]
+name = "envi-engine"
+description = "ENVI Nord2000 sound-propagation engine — pure math, zero I/O dependencies"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# Boundary rule (01-RESEARCH "Architectural Responsibility Map"): this crate
+# carries ZERO I/O dependencies. All file parsing lives in envi-harness.
+[dependencies]
+ndarray = "0.17"
+num-complex = "0.4"
+thiserror = "2"
+
+[dev-dependencies]
+approx = "0.5"
