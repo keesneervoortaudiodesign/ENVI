@@ -238,6 +238,30 @@ pub fn dwedge(
     Ok(p * geo.l * Complex::from_polar(1.0, -TAU * f_hz * geo.tau))
 }
 
+/// The non-reflecting wedge `pwedge0` (AV 1106/07 Eqs. 105–107): keeps only the
+/// `n = 1` term of the four-term sum and drops the source/receiver face-reflected
+/// lit contributions (Eqs. 89/90). Used by Phase-3 shadow-zone shielding and v2
+/// finite screens. No face impedances (the faces are assumed non-reflecting).
+///
+/// # Errors
+///
+/// [`PropagationError::DegenerateRayGeometry`] on a non-finite/non-physical wedge.
+pub fn pwedge0(f_hz: f64, geo: &WedgeGeometry) -> Result<Complex<f64>, PropagationError> {
+    let _ = (f_hz, geo);
+    unimplemented!("Task 2 GREEN")
+}
+
+/// The non-reflecting diffraction coefficient `D̂ = pwedge0·ℓ·e^{−jωτ}`
+/// (AV 1106/07 Eq. 107).
+///
+/// # Errors
+///
+/// Propagates [`pwedge0`]'s domain error.
+pub fn dwedge0(f_hz: f64, geo: &WedgeGeometry) -> Result<Complex<f64>, PropagationError> {
+    let p = pwedge0(f_hz, geo)?;
+    Ok(p * geo.l * Complex::from_polar(1.0, -TAU * f_hz * geo.tau))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,5 +404,104 @@ mod tests {
         let lo = Complex::new(fresnel_f(4.999), -fresnel_g(4.999));
         let hi = Complex::new(fresnel_f(5.001), -fresnel_g(5.001));
         assert!((lo - hi).norm() / lo.norm() < 1e-3);
+    }
+
+    /// A symmetric shadow-boundary wedge with `θ_S − θ_R = π + δ`.
+    fn boundary_wedge(delta_deg: f64) -> WedgeGeometry {
+        let c0 = sound_speed_ms(15.0);
+        let (r_s, r_r) = (50.2494_f64, 50.2494_f64);
+        let theta_r = 84.28940686_f64.to_radians();
+        let th1 = PI + delta_deg.to_radians();
+        WedgeGeometry {
+            tau_s: r_s / c0,
+            tau_r: r_r / c0,
+            tau: (r_s + r_r) / c0,
+            r_s,
+            r_r,
+            l: r_s + r_r,
+            theta_s: theta_r + th1,
+            theta_r,
+            beta: TAU * 0.9999,
+        }
+    }
+
+    // --- Task 2 Test 1: shadow-boundary half-field limit from BOTH sides ----
+    #[test]
+    fn shadow_boundary_magnitude_approaches_one_half_from_both_sides() {
+        for delta in [0.01_f64, -0.01] {
+            let geo = boundary_wedge(delta);
+            let p = pwedge(1000.0, &geo, HARD, HARD).unwrap();
+            let mag = p.norm() * geo.l;
+            assert!(
+                (mag - 0.5).abs() <= 0.01,
+                "|p̂|·ℓ = {mag:.5} at δ={delta}°, want 0.500 ± 0.01"
+            );
+        }
+    }
+
+    // --- Task 2 Test 3: Dwedge → 0.5 at the shadow boundary -----------------
+    #[test]
+    fn dwedge_is_normalized_to_one_half_at_the_shadow_boundary() {
+        let geo = boundary_wedge(0.01);
+        let d = dwedge(1000.0, &geo, HARD, HARD).unwrap();
+        assert!((d.norm() - 0.5).abs() <= 0.01, "|D̂| = {:.5}, want 0.5", d.norm());
+    }
+
+    // --- Task 2 Test 2: deep lit zone recovers the free-field direct field --
+    #[test]
+    fn deep_lit_zone_recovers_the_free_field_within_one_percent() {
+        // Edge far below the S→R line ⇒ θ₁ ≪ π, no screening: |p̂|·R_SR → 1.
+        let (s, t, r) = ((0.0, 5.0), (50.0, 0.2), (100.0, 5.0));
+        let geo = thin_wedge(s, t, r, 0.9999);
+        let r_sr = (r.0 - s.0).hypot(r.1 - s.1);
+        let p = pwedge(2000.0, &geo, HARD, HARD).unwrap();
+        let rel = (p.norm() * r_sr - 1.0).abs();
+        assert!(rel < 0.01, "free-field recovery off by {:.4} (|p̂|·R_SR)", rel);
+    }
+
+    // --- Task 2 Test 4: pwedge0 equals the n=1 term of pwedge ---------------
+    #[test]
+    fn pwedge0_keeps_only_the_first_term() {
+        // Deep-shadow geometry; pwedge0 must equal pwedge computed with only the
+        // n=1 term (no face reflections). We reconstruct the n=1 reference via
+        // hard faces AND dropping terms 2–4 — done inside pwedge0 by n1_only.
+        let geo = boundary_wedge(0.3); // shadow side (θ₁ > π), no lit additions
+        let p0 = pwedge0(1000.0, &geo).unwrap();
+        // The n=1 term is independent of face impedance (Q₁ = 1); a direct
+        // recomputation of just term 1:
+        let n1 = super::wedge_sum(
+            1000.0, geo.theta_s, geo.theta_r, geo.beta, geo.tau, geo.tau_s, geo.tau_r,
+            geo.l, HARD, HARD, true,
+        );
+        assert!((p0 - n1).norm() < 1e-12, "pwedge0 must be exactly the n=1 term");
+        // And it differs from the full four-term pwedge (terms 2–4 are nonzero).
+        let full = pwedge(1000.0, &geo, HARD, HARD).unwrap();
+        assert!((p0 - full).norm() > 1e-6, "pwedge0 must drop terms 2–4");
+    }
+
+    // --- Task 2 Test 5: angle-modification admits image-ray geometries ------
+    #[test]
+    fn angle_modification_admits_image_points_inside_the_wedge() {
+        // An image receiver reflected below the receiver face lands at θ_R < 0.
+        // The p. 43 scheme must map it into the valid domain — no error, finite,
+        // and continuous across θ_R = 0.
+        let c0 = sound_speed_ms(15.0);
+        let mk = |theta_r: f64| WedgeGeometry {
+            tau_s: 40.0 / c0,
+            tau_r: 60.0 / c0,
+            tau: 100.0 / c0,
+            r_s: 40.0,
+            r_r: 60.0,
+            l: 100.0,
+            theta_s: 4.0,
+            theta_r,
+            beta: TAU * 0.9999,
+        };
+        let inside = pwedge(1000.0, &mk(-0.05), HARD, HARD).unwrap();
+        assert!(inside.re.is_finite() && inside.im.is_finite());
+        // Continuity across θ_R = 0 (modification maps θ_R < 0 → θ′_R = 0).
+        let below = pwedge(1000.0, &mk(-1e-7), HARD, HARD).unwrap();
+        let above = pwedge(1000.0, &mk(1e-7), HARD, HARD).unwrap();
+        assert!((below - above).norm() < 1e-4, "discontinuity at θ_R = 0");
     }
 }
