@@ -64,22 +64,33 @@ impl Atmosphere {
     ///   non-finite
     /// - [`PropagationError::InvalidPressure`] if `pressure_kpa` ≤ 0 or
     ///   non-finite
-    pub fn new(
-        t_air_c: f64,
-        rh_percent: f64,
-        pressure_kpa: f64,
-    ) -> Result<Self, PropagationError> {
-        todo!("GREEN")
+    pub fn new(t_air_c: f64, rh_percent: f64, pressure_kpa: f64) -> Result<Self, PropagationError> {
+        // Reject non-finite explicitly (NaN and ±∞): a bare `x > bound` lets
+        // +∞ through, which would poison every downstream α as NaN/∞.
+        if !t_air_c.is_finite() || t_air_c <= -273.15 {
+            return Err(PropagationError::InvalidTemperature { t_air_c });
+        }
+        if !rh_percent.is_finite() || !(0.0..=100.0).contains(&rh_percent) {
+            return Err(PropagationError::InvalidHumidity { rh_percent });
+        }
+        if !pressure_kpa.is_finite() || pressure_kpa <= 0.0 {
+            return Err(PropagationError::InvalidPressure { pressure_kpa });
+        }
+        Ok(Self {
+            t_air_c,
+            rh_percent,
+            pressure_kpa,
+        })
     }
 
     /// Absolute temperature in kelvin.
     fn temperature_k(&self) -> f64 {
-        todo!("GREEN")
+        self.t_air_c + 273.15
     }
 
     /// Pressure ratio `p_a / p_r`.
     fn pressure_ratio(&self) -> f64 {
-        todo!("GREEN")
+        self.pressure_kpa / P_R_KPA
     }
 }
 
@@ -91,7 +102,10 @@ impl Atmosphere {
 /// ```
 #[must_use]
 pub fn molar_h2o_percent(atmos: &Atmosphere) -> f64 {
-    todo!("GREEN")
+    let t = atmos.temperature_k();
+    let p_rel = atmos.pressure_ratio();
+    let c = -6.8346 * (T01_K / t).powf(1.261) + 4.6151;
+    atmos.rh_percent * 10f64.powf(c) / p_rel
 }
 
 /// Oxygen relaxation frequency `f_rO` (Hz), ISO 9613-1:
@@ -101,7 +115,9 @@ pub fn molar_h2o_percent(atmos: &Atmosphere) -> f64 {
 /// ```
 #[must_use]
 pub fn f_r_oxygen(atmos: &Atmosphere) -> f64 {
-    todo!("GREEN")
+    let p_rel = atmos.pressure_ratio();
+    let h = molar_h2o_percent(atmos);
+    p_rel * (24.0 + 4.04e4 * h * (0.02 + h) / (0.391 + h))
 }
 
 /// Nitrogen relaxation frequency `f_rN` (Hz), ISO 9613-1:
@@ -111,7 +127,11 @@ pub fn f_r_oxygen(atmos: &Atmosphere) -> f64 {
 /// ```
 #[must_use]
 pub fn f_r_nitrogen(atmos: &Atmosphere) -> f64 {
-    todo!("GREEN")
+    let t = atmos.temperature_k();
+    let p_rel = atmos.pressure_ratio();
+    let h = molar_h2o_percent(atmos);
+    let tr = t / T0_K;
+    p_rel * tr.powf(-0.5) * (9.0 + 280.0 * h * (-4.170 * (tr.powf(-1.0 / 3.0) - 1.0)).exp())
 }
 
 /// Pure-tone atmospheric absorption coefficient α(f), dB/m (ISO 9613-1
@@ -128,7 +148,18 @@ pub fn f_r_nitrogen(atmos: &Atmosphere) -> f64 {
 /// Pitfall 3).
 #[must_use]
 pub fn alpha_db_per_m(f_hz: f64, atmos: &Atmosphere) -> f64 {
-    todo!("GREEN")
+    let t = atmos.temperature_k();
+    let p_rel = atmos.pressure_ratio();
+    let f_ro = f_r_oxygen(atmos);
+    let f_rn = f_r_nitrogen(atmos);
+    let tr = t / T0_K;
+    let f2 = f_hz * f_hz;
+    8.686
+        * f2
+        * (1.84e-11 * (1.0 / p_rel) * tr.sqrt()
+            + tr.powf(-2.5)
+                * (0.01275 * (-2239.1 / t).exp() / (f_ro + f2 / f_ro)
+                    + 0.1068 * (-3352.0 / t).exp() / (f_rn + f2 / f_rn)))
 }
 
 /// Nord2000 band correction (AV 1106/07 Eq. (287)) converting a pure-tone path
@@ -146,7 +177,8 @@ pub fn alpha_db_per_m(f_hz: f64, atmos: &Atmosphere) -> f64 {
 /// deviation (01-RESEARCH Assumption A5, revisit in Phase 4).
 #[must_use]
 pub fn band_attenuation_db(a0_db: f64) -> f64 {
-    todo!("GREEN")
+    let a0 = a0_db.min(BAND_CORRECTION_CLAMP_DB);
+    a0 * (1.0053255 - 0.00122622 * a0).powf(1.6)
 }
 
 #[cfg(test)]
@@ -175,9 +207,21 @@ mod tests {
         // Independent published anchors (ISO 9613-2 Table 2), 20 °C / 70 % / 1 atm,
         // evaluated at the table's nominal frequencies; within table rounding (2 %).
         let atmos = Atmosphere::new(20.0, 70.0, 101.325).unwrap();
-        assert_relative_eq!(alpha_db_per_m(1000.0, &atmos) * 1000.0, 5.0, max_relative = 0.02);
-        assert_relative_eq!(alpha_db_per_m(4000.0, &atmos) * 1000.0, 22.9, max_relative = 0.02);
-        assert_relative_eq!(alpha_db_per_m(8000.0, &atmos) * 1000.0, 76.6, max_relative = 0.02);
+        assert_relative_eq!(
+            alpha_db_per_m(1000.0, &atmos) * 1000.0,
+            5.0,
+            max_relative = 0.02
+        );
+        assert_relative_eq!(
+            alpha_db_per_m(4000.0, &atmos) * 1000.0,
+            22.9,
+            max_relative = 0.02
+        );
+        assert_relative_eq!(
+            alpha_db_per_m(8000.0, &atmos) * 1000.0,
+            76.6,
+            max_relative = 0.02
+        );
     }
 
     #[test]
@@ -211,7 +255,10 @@ mod tests {
         let mut prev = f64::NEG_INFINITY;
         for i in 0..=300 {
             let v = band_attenuation_db(f64::from(i));
-            assert!(v >= prev, "band correction must be non-decreasing at A0 = {i}");
+            assert!(
+                v >= prev,
+                "band correction must be non-decreasing at A0 = {i}"
+            );
             prev = v;
         }
 
