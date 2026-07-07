@@ -95,7 +95,14 @@ fn a_d(b: f64) -> Complex<f64> {
 /// Reject a non-finite or non-physical wedge before any square-root/division.
 fn validate(geo: &WedgeGeometry) -> Result<(), PropagationError> {
     let finite = [
-        geo.tau_s, geo.tau_r, geo.tau, geo.r_s, geo.r_r, geo.l, geo.theta_s, geo.theta_r,
+        geo.tau_s,
+        geo.tau_r,
+        geo.tau,
+        geo.r_s,
+        geo.r_r,
+        geo.l,
+        geo.theta_s,
+        geo.theta_r,
         geo.beta,
     ]
     .iter()
@@ -129,6 +136,7 @@ fn validate(geo: &WedgeGeometry) -> Result<(), PropagationError> {
 /// `τ₂ = τ_S + τ_R` (the total diffracted travel time) and the grazing angles
 /// `min(β − θ_S, π/2)` / `min(θ_R, π/2)` — do not re-derive (research
 /// anti-pattern). Q₁ = 1; Q₄ = Q₂·Q₃.
+#[allow(clippy::too_many_arguments)]
 fn face_q(
     n: usize,
     f_hz: f64,
@@ -171,8 +179,8 @@ fn wedge_sum(
     let w = TAU * f_hz;
     let nu = PI / beta; // wedge index ν = π/β
     let thetas = [
-        theta_s - theta_r,            // θ₁ (Eq. 79)
-        theta_s + theta_r,            // θ₂
+        theta_s - theta_r,                // θ₁ (Eq. 79)
+        theta_s + theta_r,                // θ₂
         2.0 * beta - (theta_s + theta_r), // θ₃
         2.0 * beta - (theta_s - theta_r), // θ₄
     ];
@@ -182,19 +190,26 @@ fn wedge_sum(
     let eps = 1.0e-8; // p. 41 singularity guard: |θₙ − π| < ε ⇒ θₙ −= ε.
     let mut acc = Complex::new(0.0, 0.0);
     for (i, &theta_n0) in thetas.iter().enumerate().take(n_terms) {
-        let theta_n = if (theta_n0 - PI).abs() < eps { theta_n0 - eps } else { theta_n0 };
+        let theta_n = if (theta_n0 - PI).abs() < eps {
+            theta_n0 - eps
+        } else {
+            theta_n0
+        };
         // A(θₙ) = (ν/2)(−β − π + θₙ) + π·H(π − θₙ)  (Eq. 82).
         let a = 0.5 * nu * (-beta - PI + theta_n) + PI * heaviside(PI - theta_n);
         let abs_a = a.abs();
         let cos_a = abs_a.cos();
         // sinc guard: |A| < 1e-6 ⇒ sin|A|/|A| → 1 (Taylor limit, Pitfall 6).
-        let sinc = if abs_a < 1.0e-6 { 1.0 } else { abs_a.sin() / abs_a };
+        let sinc = if abs_a < 1.0e-6 {
+            1.0
+        } else {
+            abs_a.sin() / abs_a
+        };
         // B (Eq. 83) and Ê_ν (Eq. 81) share the spread denominator.
         let denom_e = (1.0 + coef * cos_a * cos_a / (nu * nu)).sqrt();
         let b = (4.0 * w * tau_s * tau_r / (PI * tau)).sqrt() * cos_a
             / (nu * nu + coef * cos_a * cos_a).sqrt();
-        let e_nu =
-            (PI / SQRT_2) * sinc * Complex::from_polar(1.0, FRAC_PI_4) / denom_e * a_d(b);
+        let e_nu = (PI / SQRT_2) * sinc * Complex::from_polar(1.0, FRAC_PI_4) / denom_e * a_d(b);
         let qn = if n1_only {
             Complex::new(1.0, 0.0)
         } else {
@@ -307,8 +322,7 @@ fn pwedge_inner(
         f_hz, theta_s, theta_r, beta, geo.tau, geo.tau_s, geo.tau_r, geo.l, z_s, z_r, n1_only,
     );
     p += lit_additions(
-        f_hz, theta_s, theta_r, beta, geo.tau_s, geo.tau_r, geo.r_s, geo.r_r, z_s, z_r,
-        !n1_only,
+        f_hz, theta_s, theta_r, beta, geo.tau_s, geo.tau_r, geo.r_s, geo.r_r, z_s, z_r, !n1_only,
     );
     Ok(p)
 }
@@ -430,8 +444,95 @@ pub fn p2wedge(
     primary: WedgePrimary,
     z: &TwoWedgeImpedances,
 ) -> Result<Complex<f64>, PropagationError> {
-    let _ = (f_hz, geo, primary, z);
-    unimplemented!("Task 3 GREEN")
+    let (g1, g2) = composite_geoms(geo, primary);
+    let d1 = dwedge(f_hz, &g1, z.z_1s, z.z_1r)?;
+    let d2 = dwedge(f_hz, &g2, z.z_2s, z.z_2r)?;
+    Ok(compose(f_hz, geo, d1, d2, 1.0))
+}
+
+/// Hard-face placeholder for a wedge top forced to `Ẑ = ∞` (p2edge, Eq. 102/103).
+const HARD_FACE: Complex<f64> = Complex::new(1.0e9, 0.0);
+
+/// Build the two sub-wedge geometries for a composite kernel from the raw Fig.
+/// 10/11 inputs. The mapping is fixed by Eq. 97 (`First`) / Eq. 98 (`Second`)
+/// — identical to Eq. 102/103 for the thick screen (only the impedances and the
+/// 0.5 factor differ). The **primary** wedge receives the total `τ`/`ℓ`.
+fn composite_geoms(
+    geo: &TwoWedgeGeometry,
+    primary: WedgePrimary,
+) -> (WedgeGeometry, WedgeGeometry) {
+    let tau = geo.tau_s + geo.tau_m + geo.tau_r;
+    let ell = geo.r_s + geo.r_m + geo.r_r;
+    match primary {
+        WedgePrimary::First => {
+            // Eq. 97: D̂₁ carries τ, τ_S, τ_M+τ_R, ℓ, R_S, R_M+R_R.
+            let g1 = WedgeGeometry {
+                tau_s: geo.tau_s,
+                tau_r: geo.tau_m + geo.tau_r,
+                tau,
+                r_s: geo.r_s,
+                r_r: geo.r_m + geo.r_r,
+                l: ell,
+                theta_s: geo.theta_1s,
+                theta_r: geo.theta_1r,
+                beta: geo.beta1,
+            };
+            // D̂₂ carries τ_M+τ_R, τ_M, τ_R, R_M+R_R, R_M, R_R.
+            let g2 = WedgeGeometry {
+                tau_s: geo.tau_m,
+                tau_r: geo.tau_r,
+                tau: geo.tau_m + geo.tau_r,
+                r_s: geo.r_m,
+                r_r: geo.r_r,
+                l: geo.r_m + geo.r_r,
+                theta_s: geo.theta_2s,
+                theta_r: geo.theta_2r,
+                beta: geo.beta2,
+            };
+            (g1, g2)
+        }
+        WedgePrimary::Second => {
+            // Eq. 98: D̂₁ carries τ_S+τ_M, τ_S, τ_M, R_S+R_M, R_S, R_M.
+            let g1 = WedgeGeometry {
+                tau_s: geo.tau_s,
+                tau_r: geo.tau_m,
+                tau: geo.tau_s + geo.tau_m,
+                r_s: geo.r_s,
+                r_r: geo.r_m,
+                l: geo.r_s + geo.r_m,
+                theta_s: geo.theta_1s,
+                theta_r: geo.theta_1r,
+                beta: geo.beta1,
+            };
+            // D̂₂ carries τ, τ_S+τ_M, τ_R, ℓ, R_S+R_M, R_R.
+            let g2 = WedgeGeometry {
+                tau_s: geo.tau_s + geo.tau_m,
+                tau_r: geo.tau_r,
+                tau,
+                r_s: geo.r_s + geo.r_m,
+                r_r: geo.r_r,
+                l: ell,
+                theta_s: geo.theta_2s,
+                theta_r: geo.theta_2r,
+                beta: geo.beta2,
+            };
+            (g1, g2)
+        }
+    }
+}
+
+/// Compose two diffraction coefficients: `factor·D̂₁·D̂₂·e^{+j2πfτ}/ℓ²` with the
+/// total `τ`/`ℓ` (Eqs. 97–99 for `factor = 1`; Eqs. 102–104 for `factor = 0.5`).
+fn compose(
+    f_hz: f64,
+    geo: &TwoWedgeGeometry,
+    d1: Complex<f64>,
+    d2: Complex<f64>,
+    factor: f64,
+) -> Complex<f64> {
+    let tau = geo.tau_s + geo.tau_m + geo.tau_r;
+    let ell = geo.r_s + geo.r_m + geo.r_r;
+    factor * d1 * d2 * Complex::from_polar(1.0, TAU * f_hz * tau) / (ell * ell)
 }
 
 /// Diffraction over a thick screen (two edges of one body) `p2edge`
@@ -452,8 +553,11 @@ pub fn p2edge(
     z_1s: Complex<f64>,
     z_2r: Complex<f64>,
 ) -> Result<Complex<f64>, PropagationError> {
-    let _ = (f_hz, geo, primary, z_1s, z_2r);
-    unimplemented!("Task 3 GREEN")
+    let (g1, g2) = composite_geoms(geo, primary);
+    // Top faces of the thick screen are forced hard (Ẑ_{1R} = Ẑ_{2S} = ∞).
+    let d1 = dwedge(f_hz, &g1, z_1s, HARD_FACE)?;
+    let d2 = dwedge(f_hz, &g2, HARD_FACE, z_2r)?;
+    Ok(compose(f_hz, geo, d1, d2, 0.5))
 }
 
 #[cfg(test)]
@@ -536,7 +640,10 @@ mod tests {
                 beta,
             };
             let p = pwedge(1000.0, &geo, HARD, HARD).unwrap();
-            assert!(p.re.is_finite() && p.im.is_finite(), "NaN/Inf at th1−π={th1:e}");
+            assert!(
+                p.re.is_finite() && p.im.is_finite(),
+                "NaN/Inf at th1−π={th1:e}"
+            );
         }
     }
 
@@ -638,7 +745,11 @@ mod tests {
     fn dwedge_is_normalized_to_one_half_at_the_shadow_boundary() {
         let geo = boundary_wedge(0.01);
         let d = dwedge(1000.0, &geo, HARD, HARD).unwrap();
-        assert!((d.norm() - 0.5).abs() <= 0.01, "|D̂| = {:.5}, want 0.5", d.norm());
+        assert!(
+            (d.norm() - 0.5).abs() <= 0.01,
+            "|D̂| = {:.5}, want 0.5",
+            d.norm()
+        );
     }
 
     // --- Task 2 Test 2: deep lit zone recovers the free-field direct field --
@@ -651,7 +762,11 @@ mod tests {
         let r_sr = (r.0 - s.0).hypot(r.1 - s.1);
         let p = pwedge(2000.0, &geo, HARD, HARD).unwrap();
         let rel = (p.norm() * r_sr - 1.0).abs();
-        assert!(rel < 0.01, "free-field recovery off by {:.4} (|p̂|·R_SR)", rel);
+        assert!(
+            rel < 0.01,
+            "free-field recovery off by {:.4} (|p̂|·R_SR)",
+            rel
+        );
     }
 
     // --- Task 2 Test 4: pwedge0 equals the n=1 term of pwedge ---------------
@@ -665,10 +780,22 @@ mod tests {
         // The n=1 term is independent of face impedance (Q₁ = 1); a direct
         // recomputation of just term 1:
         let n1 = super::wedge_sum(
-            1000.0, geo.theta_s, geo.theta_r, geo.beta, geo.tau, geo.tau_s, geo.tau_r,
-            geo.l, HARD, HARD, true,
+            1000.0,
+            geo.theta_s,
+            geo.theta_r,
+            geo.beta,
+            geo.tau,
+            geo.tau_s,
+            geo.tau_r,
+            geo.l,
+            HARD,
+            HARD,
+            true,
         );
-        assert!((p0 - n1).norm() < 1e-12, "pwedge0 must be exactly the n=1 term");
+        assert!(
+            (p0 - n1).norm() < 1e-12,
+            "pwedge0 must be exactly the n=1 term"
+        );
         // And it differs from the full four-term pwedge (terms 2–4 are nonzero).
         let full = pwedge(1000.0, &geo, HARD, HARD).unwrap();
         assert!((p0 - full).norm() > 1e-6, "pwedge0 must drop terms 2–4");
@@ -702,17 +829,11 @@ mod tests {
 
     /// Two-wedge geometry from S, T₁, T₂, R (edges above the S→R line); θ per
     /// wedge measured CCW from its receiver-side face (straight down).
-    fn two_wedge(
-        s: (f64, f64),
-        t1: (f64, f64),
-        t2: (f64, f64),
-        r: (f64, f64),
-    ) -> TwoWedgeGeometry {
+    fn two_wedge(s: (f64, f64), t1: (f64, f64), t2: (f64, f64), r: (f64, f64)) -> TwoWedgeGeometry {
         let c0 = sound_speed_ms(15.0);
         let face = -FRAC_PI_2;
-        let ang = |e: (f64, f64), p: (f64, f64)| {
-            ((p.1 - e.1).atan2(p.0 - e.0) - face).rem_euclid(TAU)
-        };
+        let ang =
+            |e: (f64, f64), p: (f64, f64)| ((p.1 - e.1).atan2(p.0 - e.0) - face).rem_euclid(TAU);
         let r_s = (t1.0 - s.0).hypot(t1.1 - s.1);
         let r_m = (t2.0 - t1.0).hypot(t2.1 - t1.1);
         let r_r = (r.0 - t2.0).hypot(r.1 - t2.1);
@@ -766,7 +887,11 @@ mod tests {
             assert!(p.re.is_finite() && p.im.is_finite(), "NaN/Inf at {f} Hz");
             finite += 1;
         }
-        assert_eq!(finite, crate::freq::N_BANDS, "all 105 points must be evaluated");
+        assert_eq!(
+            finite,
+            crate::freq::N_BANDS,
+            "all 105 points must be evaluated"
+        );
     }
 
     // --- Task 3 Test 2: p2edge composition — 0.5 factor + hard top faces -----
@@ -804,7 +929,10 @@ mod tests {
         let d1 = dwedge(f, &g1, z1s, HARD).unwrap();
         let d2 = dwedge(f, &g2, HARD, z2r).unwrap();
         let want = 0.5 * d1 * d2 * Complex::from_polar(1.0, TAU * f * tau) / (ell * ell);
-        assert!((p - want).norm() / want.norm() < 1e-12, "0.5·D̂₁·D̂₂ composition");
+        assert!(
+            (p - want).norm() / want.norm() < 1e-12,
+            "0.5·D̂₁·D̂₂ composition"
+        );
     }
 
     // --- Task 3 Test 3: p2wedge monotonicity — two screens ≥ one screen ------
@@ -829,7 +957,10 @@ mod tests {
             let il2 = -20.0 * (p2.norm() * r_sr).log10();
             let p1 = pwedge(f, &single, HARD, HARD).unwrap();
             let il1 = -20.0 * (p1.norm() * r_sr1).log10();
-            assert!(il2 >= il1, "two-screen IL {il2:.2} < one-screen IL {il1:.2} at {f} Hz");
+            assert!(
+                il2 >= il1,
+                "two-screen IL {il2:.2} < one-screen IL {il1:.2} at {f} Hz"
+            );
         }
     }
 }

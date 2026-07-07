@@ -98,7 +98,15 @@ fn load() -> Fixtures {
     toml::from_str(&text).expect("wedge oracle fixture TOML must parse")
 }
 
-fn wedge(row_theta_s: f64, row_theta_r: f64, beta: f64, tau_s: f64, tau_r: f64, r_s: f64, r_r: f64) -> WedgeGeometry {
+fn wedge(
+    row_theta_s: f64,
+    row_theta_r: f64,
+    beta: f64,
+    tau_s: f64,
+    tau_r: f64,
+    r_s: f64,
+    r_r: f64,
+) -> WedgeGeometry {
     WedgeGeometry {
         tau_s,
         tau_r,
@@ -132,7 +140,11 @@ fn two_wedge(r: &TwoRow) -> TwoWedgeGeometry {
 /// Rebuild the hard thin-screen anchor geometry (S=(0,1) T=(50,6) R=(100,1)).
 fn hard_anchor(f: f64) -> (WedgeGeometry, f64) {
     let c0 = sound_speed_ms(15.0);
-    let (s, t, r) = ((0.0_f64, 1.0_f64), (50.0_f64, 6.0_f64), (100.0_f64, 1.0_f64));
+    let (s, t, r) = (
+        (0.0_f64, 1.0_f64),
+        (50.0_f64, 6.0_f64),
+        (100.0_f64, 1.0_f64),
+    );
     let r_s = (t.0 - s.0).hypot(t.1 - s.1);
     let r_r = (r.0 - t.0).hypot(r.1 - t.1);
     let face = -std::f64::consts::FRAC_PI_2;
@@ -180,7 +192,15 @@ fn engine_pwedge_matches_oracle_hard_screen_il_grid() {
 fn engine_pwedge_matches_oracle_shadow_boundary_series() {
     let fx = load();
     for row in &fx.shadow {
-        let geo = wedge(row.theta_s, row.theta_r, row.beta, row.tau_s, row.tau_r, row.r_s, row.r_r);
+        let geo = wedge(
+            row.theta_s,
+            row.theta_r,
+            row.beta,
+            row.tau_s,
+            row.tau_r,
+            row.r_s,
+            row.r_r,
+        );
         let p = pwedge(1000.0, &geo, HARD, HARD).unwrap();
         let mag = p.norm() * geo.l;
         assert!(
@@ -196,7 +216,11 @@ fn engine_pwedge_matches_oracle_shadow_boundary_series() {
         .iter()
         .map(|r| (r.mag_ell - 0.5).abs())
         .fold(f64::INFINITY, f64::min);
-    assert!(near <= fx.meta.shadow_tol, "no fixture row within {} of 0.5", fx.meta.shadow_tol);
+    assert!(
+        near <= fx.meta.shadow_tol,
+        "no fixture row within {} of 0.5",
+        fx.meta.shadow_tol
+    );
 }
 
 #[test]
@@ -204,7 +228,15 @@ fn engine_pwedge_matches_oracle_finite_impedance_faces() {
     let fx = load();
     for row in &fx.soft_face {
         let z = Complex::new(row.z_re, row.z_im);
-        let geo = wedge(row.theta_s, row.theta_r, row.beta, row.tau_s, row.tau_r, row.r_s, row.r_r);
+        let geo = wedge(
+            row.theta_s,
+            row.theta_r,
+            row.beta,
+            row.tau_s,
+            row.tau_r,
+            row.r_s,
+            row.r_r,
+        );
         let p = pwedge(row.f, &geo, z, z).unwrap();
         let want = Complex::new(row.p_re, row.p_im);
         assert!(
@@ -214,7 +246,10 @@ fn engine_pwedge_matches_oracle_finite_impedance_faces() {
             p,
             want
         );
-        assert!(p.im.abs() > 1e-9, "finite-impedance wedge must stay complex");
+        assert!(
+            p.im.abs() > 1e-9,
+            "finite-impedance wedge must stay complex"
+        );
     }
 }
 
