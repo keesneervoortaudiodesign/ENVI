@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 2
 current_phase_name: Ground Effect & Diffraction
 status: in-progress
-stopped_at: Completed 02-02-PLAN.md (flat-terrain ground effect, Sub-models 1 & 2) — wave 2 of Phase 2
-last_updated: "2026-07-07T21:40:00.000Z"
-last_activity: 2026-07-07
-last_activity_desc: Completed 02-02 — Fresnel-zone machinery (Eqs.338-353), Sub-model 1 (dip anchors ±0.05 dB, two-channel GroundResult), Sub-model 2 per-surface-TYPE segmented impedance + PhaseDiffFreq; committed scipy flat-ground oracle (2×105-pt curves ≤0.1 dB); Eq.128 last coeff corrected 1.36→3.1, Eq.132 const 18.052
+stopped_at: Completed 02-03-PLAN.md (Hadden–Pierce wedge diffraction kernel family) — wave 2 of Phase 2
+last_updated: "2026-07-08T00:00:00.000Z"
+last_activity: 2026-07-08
+last_activity_desc: "Completed 02-03-PLAN.md: propagation::diffraction — pwedge/dwedge (Eqs.78-94), pwedge0 (105-107), p2wedge (95-99), p2edge (100-104); IL table ±0.005 dB, shadow-boundary |p|·ℓ→0.500 both sides, case-71 105/105 finite, complex phase live (no conj); independent scipy Hadden–Pierce oracle; all quality gates pass"
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 5
-  completed_plans: 2
-  percent: 40
+  completed_plans: 3
+  percent: 60
 ---
 
 # Project State
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 2 of 4 (Ground Effect & Diffraction) — IN PROGRESS
-Plan: 2 of 5 in current phase complete (02-01, 02-02 done; 02-03 is wave 2, 02-04/02-05 later waves)
-Status: Wave 2 (ground) landed — the flat-terrain ground effect is implemented on the 02-01 core: Fresnel-zone machinery (Eqs.338-353), Sub-model 1 reproducing the research ΔL dip table ±0.05 dB with the two-channel GroundResult (h_coh_factor: Complex phase-live + p_incoh: real), Sub-model 2 per-surface-TYPE segmented impedance + PhaseDiffFreq. Both cross-checked against a committed scipy flat-ground oracle at ≤0.1 dB. 02-03 (wedge diffraction) can proceed in parallel.
-Last activity: 2026-07-07 — Completed 02-02-PLAN.md: fresnel + terrain_effect::{submodel1, submodel2}; two-channel identity to 1e-12, F→1⇒p_incoh=0; Eq.128 last coeff corrected to 3.1, Eq.132 const 18.052; all quality gates pass (build/test/clippy/fmt, engine deps unchanged)
+Plan: 3 of 5 in current phase complete (02-01, 02-02, 02-03 done; 02-04/02-05 wave 3)
+Status: Wave 2 complete — the flat-terrain ground effect (02-02) and the Hadden–Pierce wedge diffraction kernel family (02-03) both landed on the 02-01 core. 02-03 delivers propagation::diffraction: pwedge/dwedge (Eqs.78-94) reproducing the IL anchor table ±0.005 dB, the shadow-boundary |p|·ℓ→0.500 half-field limit from both sides, pwedge0 (105-107), p2wedge (95-99) and p2edge (100-104, 0.5 factor + hard tops). All kernels return live Complex<f64> (no conj — Nord2000-native e^{−jωt} quarantine), cross-checked against an independent scipy Hadden–Pierce oracle. Wave 3 (02-04 screen⇄ground sub-models, 02-05 terrain composition) can proceed against the frozen kernel signatures.
+Last activity: 2026-07-08 — Completed 02-03-PLAN.md: propagation::diffraction (pwedge/dwedge/pwedge0/p2wedge/p2edge); case-71 105/105 finite; Assumption A6 resolved (p2wedge/p2edge argument lists image-verified); all quality gates pass (build/test/clippy/fmt, engine deps unchanged)
 
-Progress: [████░░░░░░] 40% (2/5 plans in phase 2)
+Progress: [██████░░░░] 60% (3/5 plans in phase 2)
 
 ## Performance Metrics
 
