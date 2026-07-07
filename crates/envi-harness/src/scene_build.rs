@@ -49,24 +49,33 @@ const FORCE_PLACEHOLDER_SOURCE_H_M: f64 = 0.0;
 /// synthetic case is missing source/receiver positions, or the case kind has
 /// no Phase 1 scene builder.
 pub fn build_scene(case: &CaseDefinition) -> anyhow::Result<Scene> {
-    // GREEN: replace with the real dispatch below.
-    let _ = case;
-    let _ = (build_force_straight_road, build_synthetic);
-    todo!("GREEN")
+    match case.kind {
+        CaseKind::ForceStraightRoad => build_force_straight_road(case),
+        CaseKind::FreeField | CaseKind::Geometry => build_synthetic(case),
+        other => Err(anyhow!(
+            "build_scene not implemented for {other:?} (case {})",
+            case.id
+        )),
+    }
 }
 
 /// FORCE straight-road → Scene, applying the lane / hSv / hRv conventions.
 fn build_force_straight_road(case: &CaseDefinition) -> anyhow::Result<Scene> {
     let rows = &case.terrain_profile;
     if rows.is_empty() {
-        return Err(anyhow!("FORCE case {} has an empty terrain profile", case.id));
+        return Err(anyhow!(
+            "FORCE case {} has an empty terrain profile",
+            case.id
+        ));
     }
 
     // Points are (x, z); x is distance from the road centre line — the SAME
     // frame as the source line. N rows → N−1 segments, each taking the flow
-    // resistivity / roughness of the row that STARTS it (documented choice;
-    // case 1 is all class A, so the choice is unobservable there — re-verify on
-    // a mixed-impedance case in Phase 2).
+    // resistivity / roughness of the row that STARTS it. Case 1 is actually
+    // MIXED impedance in the authoritative .xls (road strip σ=20000 at x=3.25,
+    // then grass σ=12.5 at x=5), so this row→segment rule IS observable and is
+    // verified by the case-1 test — the plan's "all class A" assumption was
+    // wrong (corrected against the real data, Pitfall 1).
     let points: Vec<[f64; 2]> = rows.iter().map(|r| [r.x_m, r.z_m]).collect();
     let segments: Vec<GroundSegment> = rows
         .windows(2)
@@ -169,13 +178,26 @@ mod tests {
         // First profile point is 3.25 m from the road centre line.
         assert_relative_eq!(terrain.points()[0][0], 3.25, epsilon = 1e-12);
 
-        // Every ground segment is class A (12.5 kNs·m⁻⁴) for case 1.
-        assert!(
-            terrain
-                .segments()
-                .iter()
-                .all(|s| (s.flow_resistivity - 12.5).abs() < 1e-12),
-            "case 1 is impedance A on every segment"
+        // Case 1 is MIXED impedance in the authoritative .xls (the plan's
+        // must_have "every segment = 12.5" was based on a wrong assumption —
+        // corrected against the real data, Pitfall 1). Profile points/segments:
+        //   x=3.25 (σ=20000, road) → x=5 (σ=12.5, grass) → x=100 (σ terminator).
+        // The row→segment rule "each segment takes the flow resistivity of the
+        // row that STARTS it" is now OBSERVABLE and verified here (resolving the
+        // plan's flagged Phase-2 re-verification early):
+        assert_eq!(terrain.points().len(), 3);
+        assert_eq!(terrain.segments().len(), 2);
+        // Road pavement strip (3.25–5 m) is class G = 20000 kNs·m⁻⁴.
+        assert_relative_eq!(
+            terrain.segments()[0].flow_resistivity,
+            20000.0,
+            epsilon = 1e-12
+        );
+        // Grass (5–100 m), the dominant ground, is class A = 12.5 kNs·m⁻⁴.
+        assert_relative_eq!(
+            terrain.segments()[1].flow_resistivity,
+            12.5,
+            epsilon = 1e-12
         );
 
         let source = scene.sources[0].sub_sources[0].position;

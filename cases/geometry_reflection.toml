@@ -1,0 +1,27 @@
+# Hand-computed flat-ground reflection anchor (01-RESEARCH Pattern 4).
+# Cut plane (x, z): S=(0,2), R=(10,2) over flat ground segment (0,0)-(10,0).
+# Image S'=(0,-2); the S'→R line crosses z=0 at x=5. Path legs r1 = r2 =
+# sqrt(5² + 2²) = sqrt(29); total r1+r2 = sqrt(116) = 10.770329614269008 m.
+# Source/receiver z is the cut-plane height; y = 0 (perpendicular section).
+
+[meta]
+name = "flat-ground reflection at x=5"
+kind = "geometry"
+reference = "analytic"
+
+[source]
+position = [0.0, 0.0, 2.0]   # metric CRS, Z-up
+spectrum = { kind = "unit" }
+
+[receiver]
+position = [10.0, 0.0, 2.0]
+
+[expected]
+tolerance_db = 1e-9
+bands = "geometry:reflection"
+
+[expected.geometry]
+reflection_segment = [[0.0, 0.0], [10.0, 0.0]]   # (x, z) cut-plane endpoints
+reflection_x = 5.0
+path_length_m = 10.7703296143
+tolerance = 1e-9

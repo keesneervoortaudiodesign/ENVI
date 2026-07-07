@@ -89,12 +89,13 @@ pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
 
 /// The capability set the engine currently implements.
 ///
-/// EMPTY in plan 01-01 — the harness exists before any propagation code.
-/// Plan 01-02 adds [`Capability::Geometry`], plan 01-03 adds
-/// [`Capability::FreeField`]; Phases 2–4 extend further.
+/// Plan 01-02 turns on [`Capability::Geometry`] (azimuth + image-source
+/// reflection through the scene model). Plan 01-03 adds
+/// [`Capability::FreeField`]; Phases 2–4 extend further — cases flip green with
+/// no harness rewrite.
 #[must_use]
 pub fn implemented_capabilities() -> BTreeSet<Capability> {
-    BTreeSet::new()
+    BTreeSet::from([Capability::Geometry])
 }
 
 #[cfg(test)]
@@ -166,7 +167,14 @@ mod tests {
     }
 
     #[test]
-    fn nothing_is_implemented_in_plan_01_01() {
-        assert!(implemented_capabilities().is_empty());
+    fn geometry_is_implemented_in_plan_01_02() {
+        let implemented = implemented_capabilities();
+        assert!(
+            implemented.contains(&Capability::Geometry),
+            "plan 01-02 turns on the Geometry capability"
+        );
+        // FreeField is still plan 01-03; the FORCE physics is Phases 2-4.
+        assert!(!implemented.contains(&Capability::FreeField));
+        assert!(!implemented.contains(&Capability::EmissionModel));
     }
 }

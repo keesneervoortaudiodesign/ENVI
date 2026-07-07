@@ -66,6 +66,7 @@ fn main() -> std::process::ExitCode {
                         "Fail",
                         format!("max |dev| = {:.3} dB", report.max_abs_dev_db),
                     ),
+                    Outcome::FailDetail(msg) => ("Fail", msg),
                 };
                 (
                     kind_label(case.kind),

@@ -10,7 +10,8 @@ use std::path::Path;
 use serde::Deserialize;
 
 use super::{
-    CaseDefinition, CaseKind, CaseLoadError, PropagationParams, ReferenceVersion, SyntheticExpected,
+    CaseDefinition, CaseKind, CaseLoadError, GeometryExpected, PropagationParams, ReferenceVersion,
+    SyntheticExpected,
 };
 
 /// Raw serde mirror of the TOML case schema.
@@ -60,6 +61,19 @@ struct TomlAtmosphere {
 struct TomlExpected {
     tolerance_db: f64,
     bands: String,
+    #[serde(default)]
+    geometry: Option<TomlGeometryExpected>,
+}
+
+/// `[expected.geometry]` — hand-computed geometry anchors. All optional so one
+/// schema serves both the azimuth and reflection cases.
+#[derive(Debug, Deserialize)]
+struct TomlGeometryExpected {
+    azimuth_deg: Option<f64>,
+    reflection_x: Option<f64>,
+    path_length_m: Option<f64>,
+    reflection_segment: Option<[[f64; 2]; 2]>,
+    tolerance: Option<f64>,
 }
 
 /// Load one synthetic case from a TOML file.
@@ -155,6 +169,53 @@ pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
         });
     }
 
+    // Optional [expected.geometry] block: validate every provided value is
+    // finite, and require a reflection segment whenever a reflection anchor is
+    // present (so run_case never reflects over a missing segment).
+    let geometry = match raw.expected.geometry {
+        None => None,
+        Some(g) => {
+            for (what, v) in [
+                ("expected.geometry.azimuth_deg", g.azimuth_deg),
+                ("expected.geometry.reflection_x", g.reflection_x),
+                ("expected.geometry.path_length_m", g.path_length_m),
+                ("expected.geometry.tolerance", g.tolerance),
+            ] {
+                if let Some(v) = v {
+                    super::xls::require_finite(v, &context, what)?;
+                }
+            }
+            if let Some(seg) = g.reflection_segment {
+                for (i, p) in seg.iter().enumerate() {
+                    for (j, &v) in p.iter().enumerate() {
+                        super::xls::require_finite(
+                            v,
+                            &context,
+                            &format!("expected.geometry.reflection_segment[{i}][{j}]"),
+                        )?;
+                    }
+                }
+            }
+            if (g.reflection_x.is_some() || g.path_length_m.is_some())
+                && g.reflection_segment.is_none()
+            {
+                return Err(CaseLoadError::Invalid {
+                    context,
+                    message: "expected.geometry sets a reflection anchor but no \
+                              reflection_segment"
+                        .to_string(),
+                });
+            }
+            Some(GeometryExpected {
+                azimuth_deg: g.azimuth_deg,
+                reflection_x: g.reflection_x,
+                path_length_m: g.path_length_m,
+                reflection_segment: g.reflection_segment,
+                tolerance: g.tolerance,
+            })
+        }
+    };
+
     let stem = path
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
@@ -174,7 +235,7 @@ pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
         expected: Some(SyntheticExpected {
             tolerance_db: raw.expected.tolerance_db,
             bands: raw.expected.bands,
-            geometry: None,
+            geometry,
         }),
     })
 }

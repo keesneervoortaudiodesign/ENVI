@@ -1,0 +1,24 @@
+# Hand-computed azimuth anchor (01-RESEARCH Pattern 4).
+# Source at the origin, receiver 100 m north-east → bearing 45° clockwise
+# from north. Azimuth = atan2(dx_east, dy_north); (0,0)→(100,100) = 45.0°.
+# Positions carry z = 2 m so PathGeometry::direct is also exercised.
+
+[meta]
+name = "azimuth 45 degrees (NE)"
+kind = "geometry"
+reference = "analytic"
+
+[source]
+position = [0.0, 0.0, 2.0]   # metric CRS, Z-up
+spectrum = { kind = "unit" }
+
+[receiver]
+position = [100.0, 100.0, 2.0]
+
+[expected]
+tolerance_db = 1e-9          # reused as the geometry tolerance
+bands = "geometry:azimuth"
+
+[expected.geometry]
+azimuth_deg = 45.0
+tolerance = 1e-9

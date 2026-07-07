@@ -58,6 +58,9 @@ fn main() -> std::process::ExitCode {
                     let table = report.render_table();
                     trials.push(Trial::test(name, move || Err(table.into())));
                 }
+                Outcome::FailDetail(msg) => {
+                    trials.push(Trial::test(name, move || Err(msg.into())));
+                }
                 Outcome::Skipped(why) => {
                     let reason = why.clone();
                     trials.push(
