@@ -25,11 +25,10 @@ use super::special::{fresnel_f, fresnel_g};
 /// Single-wedge geometry inputs (AV 1106/07 §5.7.1, Fig. 9).
 ///
 /// `θ_S`/`θ_R` are both measured from the **receiver** wedge face; validity is
-/// `β > π` and `0 ≤ θ_R ≤ θ_S ≤ β ≤ 2π` (the [angle-modification scheme] maps
-/// ground-reflected/refracted image points that land inside the wedge back into
-/// the valid domain). `τ = τ_S + τ_R` and `ℓ = R_S + R_R` in the direct case.
-///
-/// [angle-modification scheme]: modify_angles
+/// `β > π` and `0 ≤ θ_R ≤ θ_S ≤ β ≤ 2π`. The p. 43 angle-modification scheme
+/// (implemented in `modify_angles`) maps ground-reflected/refracted image points
+/// that land inside the wedge back into the valid domain. `τ = τ_S + τ_R` and
+/// `ℓ = R_S + R_R` in the direct case.
 #[derive(Debug, Clone, Copy)]
 pub struct WedgeGeometry {
     /// Travel time source → edge, s.
@@ -70,8 +69,156 @@ pub fn pwedge(
     z_s: Complex<f64>,
     z_r: Complex<f64>,
 ) -> Result<Complex<f64>, PropagationError> {
-    let _ = (f_hz, geo, z_s, z_r);
-    unimplemented!("Task 1 GREEN")
+    pwedge_inner(f_hz, geo, z_s, z_r, false)
+}
+
+/// `Sign(x)` (AV 1106/07 auxiliary function): `+1` for `x ≥ 0`, else `−1`.
+#[inline]
+fn sign(x: f64) -> f64 {
+    if x >= 0.0 { 1.0 } else { -1.0 }
+}
+
+/// `H(x)` Heaviside step (AV 1106/07 Eq. 354): `1` for `x > 0`, else `0`.
+#[inline]
+fn heaviside(x: f64) -> f64 {
+    if x > 0.0 { 1.0 } else { 0.0 }
+}
+
+/// `Â_D(B) = Sign(B)·(f(|B|) − j·g(|B|))` (AV 1106/07 Eq. 84), with `f`/`g` the
+/// Fresnel-integral fits ([`fresnel_f`]/[`fresnel_g`], Eqs. 85–86).
+#[inline]
+fn a_d(b: f64) -> Complex<f64> {
+    let ab = b.abs();
+    sign(b) * Complex::new(fresnel_f(ab), -fresnel_g(ab))
+}
+
+/// Reject a non-finite or non-physical wedge before any square-root/division.
+fn validate(geo: &WedgeGeometry) -> Result<(), PropagationError> {
+    let finite = [
+        geo.tau_s, geo.tau_r, geo.tau, geo.r_s, geo.r_r, geo.l, geo.theta_s, geo.theta_r,
+        geo.beta,
+    ]
+    .iter()
+    .all(|v| v.is_finite());
+    if !finite {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "non-finite wedge geometry input",
+        });
+    }
+    if geo.tau_s <= 0.0 || geo.tau_r <= 0.0 || geo.tau <= 0.0 {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "non-positive wedge travel time",
+        });
+    }
+    if geo.r_s <= 0.0 || geo.r_r <= 0.0 || geo.l <= 0.0 {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "non-positive wedge distance",
+        });
+    }
+    // Validity of the Hadden–Pierce solution: β > π (§5.7.1). Allow up to 2π
+    // (thin/thick screens sit at β = 2π−ε).
+    if !(geo.beta > PI && geo.beta <= TAU + 1e-9) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "wedge angle β outside (π, 2π]",
+        });
+    }
+    Ok(())
+}
+
+/// `Q̂ₙ` on the wedge faces (AV 1106/07 Eq. 80), **prescriptively** transcribed:
+/// `τ₂ = τ_S + τ_R` (the total diffracted travel time) and the grazing angles
+/// `min(β − θ_S, π/2)` / `min(θ_R, π/2)` — do not re-derive (research
+/// anti-pattern). Q₁ = 1; Q₄ = Q₂·Q₃.
+fn face_q(
+    n: usize,
+    f_hz: f64,
+    tau_s: f64,
+    tau_r: f64,
+    theta_s: f64,
+    theta_r: f64,
+    beta: f64,
+    z_s: Complex<f64>,
+    z_r: Complex<f64>,
+) -> Complex<f64> {
+    let tau2 = tau_s + tau_r;
+    let q2 = || spherical_q(f_hz, tau2, (beta - theta_s).min(FRAC_PI_2), z_s);
+    let q3 = || spherical_q(f_hz, tau2, theta_r.min(FRAC_PI_2), z_r);
+    match n {
+        1 => Complex::new(1.0, 0.0),
+        2 => q2(),
+        3 => q3(),
+        _ => q2() * q3(),
+    }
+}
+
+/// The four-term (or, for `pwedge0`, single-term) Hadden–Pierce sum
+/// (AV 1106/07 Eqs. 78–86) — **without** the lit-zone additions (Eqs. 87–90),
+/// which are applied by the caller. Returns `−(1/π)·Σ Q̂ₙ·A(θₙ)·Ê_ν · e^{jωτ}/ℓ`.
+#[allow(clippy::too_many_arguments)]
+fn wedge_sum(
+    f_hz: f64,
+    theta_s: f64,
+    theta_r: f64,
+    beta: f64,
+    tau: f64,
+    tau_s: f64,
+    tau_r: f64,
+    ell: f64,
+    z_s: Complex<f64>,
+    z_r: Complex<f64>,
+    n1_only: bool,
+) -> Complex<f64> {
+    let w = TAU * f_hz;
+    let nu = PI / beta; // wedge index ν = π/β
+    let thetas = [
+        theta_s - theta_r,            // θ₁ (Eq. 79)
+        theta_s + theta_r,            // θ₂
+        2.0 * beta - (theta_s + theta_r), // θ₃
+        2.0 * beta - (theta_s - theta_r), // θ₄
+    ];
+    // (2·τ_S·τ_R/τ² + 1/2): the diffraction-spread coefficient (Eqs. 81/83).
+    let coef = 2.0 * tau_s * tau_r / (tau * tau) + 0.5;
+    let n_terms = if n1_only { 1 } else { 4 };
+    let eps = 1.0e-8; // p. 41 singularity guard: |θₙ − π| < ε ⇒ θₙ −= ε.
+    let mut acc = Complex::new(0.0, 0.0);
+    for (i, &theta_n0) in thetas.iter().enumerate().take(n_terms) {
+        let theta_n = if (theta_n0 - PI).abs() < eps { theta_n0 - eps } else { theta_n0 };
+        // A(θₙ) = (ν/2)(−β − π + θₙ) + π·H(π − θₙ)  (Eq. 82).
+        let a = 0.5 * nu * (-beta - PI + theta_n) + PI * heaviside(PI - theta_n);
+        let abs_a = a.abs();
+        let cos_a = abs_a.cos();
+        // sinc guard: |A| < 1e-6 ⇒ sin|A|/|A| → 1 (Taylor limit, Pitfall 6).
+        let sinc = if abs_a < 1.0e-6 { 1.0 } else { abs_a.sin() / abs_a };
+        // B (Eq. 83) and Ê_ν (Eq. 81) share the spread denominator.
+        let denom_e = (1.0 + coef * cos_a * cos_a / (nu * nu)).sqrt();
+        let b = (4.0 * w * tau_s * tau_r / (PI * tau)).sqrt() * cos_a
+            / (nu * nu + coef * cos_a * cos_a).sqrt();
+        let e_nu =
+            (PI / SQRT_2) * sinc * Complex::from_polar(1.0, FRAC_PI_4) / denom_e * a_d(b);
+        let qn = if n1_only {
+            Complex::new(1.0, 0.0)
+        } else {
+            face_q(i + 1, f_hz, tau_s, tau_r, theta_s, theta_r, beta, z_s, z_r)
+        };
+        acc += qn * a * e_nu;
+    }
+    -(1.0 / PI) * acc * Complex::from_polar(1.0, w * tau) / ell
+}
+
+/// Shared entry point for [`pwedge`] and [`pwedge0`] (`n1_only`).
+fn pwedge_inner(
+    f_hz: f64,
+    geo: &WedgeGeometry,
+    z_s: Complex<f64>,
+    z_r: Complex<f64>,
+    n1_only: bool,
+) -> Result<Complex<f64>, PropagationError> {
+    validate(geo)?;
+    let p = wedge_sum(
+        f_hz, geo.theta_s, geo.theta_r, geo.beta, geo.tau, geo.tau_s, geo.tau_r, geo.l, z_s,
+        z_r, n1_only,
+    );
+    Ok(p)
 }
 
 /// The diffraction coefficient `D̂ = pwedge · ℓ · e^{−jωτ}` (AV 1106/07
@@ -86,8 +233,9 @@ pub fn dwedge(
     z_s: Complex<f64>,
     z_r: Complex<f64>,
 ) -> Result<Complex<f64>, PropagationError> {
-    let _ = (f_hz, geo, z_s, z_r);
-    unimplemented!("Task 1 GREEN")
+    let p = pwedge(f_hz, geo, z_s, z_r)?;
+    // D̂ = pwedge·ℓ·e^{−jωτ}: strip the outgoing phase and 1/ℓ spreading.
+    Ok(p * geo.l * Complex::from_polar(1.0, -TAU * f_hz * geo.tau))
 }
 
 #[cfg(test)]
