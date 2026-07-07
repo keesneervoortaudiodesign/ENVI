@@ -17,7 +17,7 @@ v2 groups (DATA, GEOX, METX, GRID, WEB, SVC, FUT) are deferred to later mileston
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: FORCE Harness, Geometry Model & Direct Path** - Test harness on FORCE cases first, semantic 2.5D scene from test-case files, complex 1/12-octave direct path with air absorption
+- [x] **Phase 1: FORCE Harness, Geometry Model & Direct Path** - Test harness on FORCE cases first, semantic 2.5D scene from test-case files, complex 1/12-octave direct path with air absorption
 - [ ] **Phase 2: Ground Effect & Diffraction** - Segmented-impedance ground reflection, single/multi-edge screens, complex-pressure combination with Δτ interference
 - [ ] **Phase 3: Meteorology & Refraction** - Log-lin A/B/C profile, equivalent-linear collapse with guarded ξ/Δτ numerics, reflection-path coefficients, weather routes, turbulence coherence
 - [ ] **Phase 4: Transfer Tensor, Directional Sources & Full Validation** - `H[s,r,f]` complex tensor store, directional multi-sub-source composition, filter/delay conditioning via MAC, full FORCE pass + NoiseModelling cross-validation
@@ -37,13 +37,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. For a free-field configuration, the engine returns a complex transfer value per 1/12-octave frequency point (25 Hz–10 kHz, f64 throughout) whose magnitude matches spherical divergence + ISO 9613-1 air absorption within the standard's tolerance
   4. A point sub-source carries a per-1/12-octave source spectrum, and receiver band levels computed from it through the transfer values reproduce the expected free-field levels
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed — Phase COMPLETE
 
 Plans:
 
 - [x] 01-01-PLAN.md — FORCE test-case loader + harness: cargo workspace, freq axis, .xls/TOML loaders, comparator, capability-gated runner (lands first; VAL-01)
 - [x] 01-02-PLAN.md — Semantic 2.5D scene model + path geometry: Scene types, FORCE lane/height conventions, azimuth + image-source reflection (GEO-01/02/03)
-- [ ] 01-03-PLAN.md — Direct path at 1/12-octave complex resolution: divergence Eq. 330, ISO 9613-1 + Eq. 287, point sub-source spectrum through the harness (ENG-01, ENG-04, SRC-01)
+- [x] 01-03-PLAN.md — Direct path at 1/12-octave complex resolution: divergence Eq. 330, ISO 9613-1 + Eq. 287, point sub-source spectrum through the harness (ENG-01, ENG-04, SRC-01)
 
 ### Phase 2: Ground Effect & Diffraction
 
@@ -126,7 +126,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. FORCE Harness, Geometry Model & Direct Path | 2/3 | In progress | - |
+| 1. FORCE Harness, Geometry Model & Direct Path | 3/3 | Complete | 2026-07-07 |
 | 2. Ground Effect & Diffraction | 0/2 | Not started | - |
 | 3. Meteorology & Refraction | 0/3 | Not started | - |
 | 4. Transfer Tensor, Directional Sources & Full Validation | 0/3 | Not started | - |

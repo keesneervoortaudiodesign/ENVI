@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 1
 current_phase_name: FORCE Harness, Geometry Model & Direct Path
-status: executing
-stopped_at: Completed 01-02-PLAN.md (scene model + path geometry)
-last_updated: "2026-07-07T17:06:08.000Z"
+status: phase-complete
+stopped_at: Completed 01-03-PLAN.md (direct path at 1/12-octave complex resolution) — Phase 1 complete
+last_updated: "2026-07-07T17:45:00.000Z"
 last_activity: 2026-07-07
-last_activity_desc: Completed 01-02 — semantic 2.5D scene + path geometry; GEO-01/02/03 done; first capability (Geometry) green
+last_activity_desc: Completed 01-03 — divergence + ISO 9613-1 air absorption + complex TransferSpectrum; ENG-01/ENG-04/SRC-01 done; FreeField capability green; walking skeleton complete
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 0
+  completed_plans: 3
+  percent: 25
 ---
 
 # Project State
@@ -28,35 +28,36 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 1 of 4 (FORCE Harness, Geometry Model & Direct Path)
-Plan: 3 of 3 in current phase (01-01, 01-02 complete)
-Status: Executing — plans 01-01 (harness spine) and 01-02 (scene + geometry) complete; next is 01-03 (direct path at 1/12-octave complex resolution)
-Last activity: 2026-07-07 — Completed 01-02-PLAN.md: semantic 2.5D scene model + azimuth/image-source reflection; FORCE 97.5 m anchor; Geometry capability green; all quality gates pass
+Phase: 1 of 4 (FORCE Harness, Geometry Model & Direct Path) — COMPLETE
+Plan: 3 of 3 in current phase (01-01, 01-02, 01-03 all complete)
+Status: Phase 1 complete — walking skeleton stands end-to-end (case file → Scene → engine complex spectrum → dB-domain comparison → report). Next: Phase 2 (ground + diffraction)
+Last activity: 2026-07-07 — Completed 01-03-PLAN.md: geometrical divergence (Eq.330) + ISO 9613-1 air absorption (Eq.286) + Nord2000 band correction (Eq.287) as complex values per 1/12-octave point; FreeField capability green; ENG-01/ENG-04/SRC-01 done; all quality gates pass
 
-Progress: [███████░░░] 67% (2/3 plans in phase 1)
+Progress: [██████████] 100% (3/3 plans in phase 1)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 2
-- Average duration: 21min
-- Total execution time: ~0.7 hours
+- Total plans completed: 3
+- Average duration: 26min
+- Total execution time: ~1.3 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 | 2 | 42min | 21min |
+| 1 | 3 | 77min | 26min |
 
 **Recent Trend:**
 
-- Last 5 plans: —
+- Last 5 plans: 25min, 17min, 35min
 - Trend: —
 
 *Updated after each plan completion*
 | Phase 01 P01 | 25min | 3 tasks | 17 files |
 | Phase 01 P02 | 17min | 3 tasks | 12 files |
+| Phase 01 P03 | 35min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,11 @@ Recent decisions affecting current work:
 - [Phase 1, 01-02]: FORCE source line at x=2.5 m and receiver at the last profile X give horizontal distance 97.5 m (NOT 100); hSv/hRv (Z above first/last profile point) encoded solely in TerrainProfile::endpoints
 - [Phase 1, 01-02]: Ground row→segment impedance rule = "row that STARTS the segment"; verified against the MIXED-impedance case 1 (road σ=20000 + grass σ=12.5) — the planned "all class A" assumption was wrong, authoritative .xls wins (Pitfall 1)
 - [Phase 1, 01-02]: FORCE cases use a single placeholder SubSource (uniform-0 spectrum, height 0.0 above first point); real road sub-source heights 0.01/0.30/0.75 m are Phase 4
+- [Phase 1, 01-03]: Complex transfer convention FROZEN — time e^{+jωt}, outgoing phase e^{−jωτ} with τ=R/c the carried primitive (not kR), |H|=1/√(4πR²) so L_p = L_W + 20·log10|H|; air absorption a real 10^(−ΔLₐ/20) factor; Phase 2+ effects multiply H by their complex pressure ratio
+- [Phase 1, 01-03]: TransferTensor = Array3<Complex<f64>> [sub_source, receiver, freq] row-major (frequency-contiguous) — the Phase 4 forward contract; never Fortran-order
+- [Phase 1, 01-03]: band_attenuation_db (Eq.287, 300 dB clamp) is the SOLE alpha·R→band converter (Pitfall 4); applied at all 105 grid points as band centres (Assumption A5, revisit Phase 4)
+- [Phase 1, 01-03]: Free-field gate = strict 1e-9 dB analytic identity (harsher than FORCE 1 dB); independent dB-domain oracle (compare::analytic_freefield_reference) validates the complex roundtrip, not just the formulas
+- [Phase 1, 01-03, Rule 1]: Eq.335 with coeff 20.05 gives c(15°C)=340.348 m/s (not the RESEARCH parenthetical 340.29 which uses ≈20.047); the mandated formula is the frozen phase-τ contract, so the test anchor was corrected to the formula's value
 
 ### Pending Todos
 
@@ -94,6 +100,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-07T17:06:08.000Z
-Stopped at: Completed 01-02-PLAN.md (scene model + path geometry)
+Last session: 2026-07-07T17:45:00.000Z
+Stopped at: Completed 01-03-PLAN.md (direct path at 1/12-octave complex resolution) — Phase 1 complete
 Resume file: None

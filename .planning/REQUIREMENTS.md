@@ -9,10 +9,10 @@
 
 ### Engine — Nord2000 propagation (ENG)
 
-- [ ] **ENG-01**: Compute direct-path attenuation (geometrical divergence) per 1/12-octave frequency point
+- [x] **ENG-01**: Compute direct-path attenuation (geometrical divergence) per 1/12-octave frequency point
 - [ ] **ENG-02**: Compute ground effect over a segmented-impedance profile (frequency-dependent, soft↔hard), preserving complex pressure
 - [ ] **ENG-03**: Compute screen/barrier diffraction for single and multiple edges
-- [ ] **ENG-04**: Compute air absorption per ISO 9613-1 from temperature, humidity, pressure
+- [x] **ENG-04**: Compute air absorption per ISO 9613-1 from temperature, humidity, pressure
 - [ ] **ENG-05**: Compute refraction via the equivalent-linear sound-speed profile (circular-ray ξ, Δτ) with guarded numerics (f64, ξ singularity clamps, Δτ cancellation-safe reformulation)
 - [ ] **ENG-06**: Compute reflection paths with separate before/after profile coefficients (A₁/B₁, A₂/B₂)
 - [ ] **ENG-07**: Combine direct + reflected + diffracted contributions as complex pressure, retaining Δτ interference phase
@@ -38,7 +38,7 @@
 
 ### Sources — directional complex sources (SRC)
 
-- [ ] **SRC-01**: Define a point sub-source with per-1/12-octave sound power / source spectrum
+- [x] **SRC-01**: Define a point sub-source with per-1/12-octave sound power / source spectrum
 - [ ] **SRC-02**: Attach a directivity function ΔL(θ, φ, f) to a sub-source
 - [ ] **SRC-03**: Compose a complex source from multiple directional sub-sources evaluated independently into the transfer tensor
 - [ ] **SRC-04**: Represent directivity internally as per-band spherical balloons (common denominator of CLF/SOFA/BEM)
@@ -130,10 +130,10 @@ Mapped during roadmap creation (2026-07-07). See `.planning/ROADMAP.md`.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENG-01 | Phase 1 | Pending |
+| ENG-01 | Phase 1 | Complete (01-03) |
 | ENG-02 | Phase 2 | Pending |
 | ENG-03 | Phase 2 | Pending |
-| ENG-04 | Phase 1 | Pending |
+| ENG-04 | Phase 1 | Complete (01-03) |
 | ENG-05 | Phase 3 | Pending |
 | ENG-06 | Phase 3 | Pending |
 | ENG-07 | Phase 2 | Pending |
@@ -150,7 +150,7 @@ Mapped during roadmap creation (2026-07-07). See `.planning/ROADMAP.md`.
 | MET-04 | Phase 3 | Pending |
 | MET-05 | Phase 3 | Pending |
 | MET-06 | Phase 3 | Pending |
-| SRC-01 | Phase 1 | Pending |
+| SRC-01 | Phase 1 | Complete (01-03) |
 | SRC-02 | Phase 4 | Pending |
 | SRC-03 | Phase 4 | Pending |
 | SRC-04 | Phase 4 | Pending |
