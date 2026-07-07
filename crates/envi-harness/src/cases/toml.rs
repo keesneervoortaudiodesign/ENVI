@@ -71,8 +71,109 @@ struct TomlExpected {
 /// unknown `kind`/`reference` strings, non-finite numbers, or out-of-domain
 /// atmosphere parameters. Never panics on file content.
 pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
-    let _ = path;
-    todo!("Task 2 GREEN: parse + validate the TOML case schema")
+    let context = path.display().to_string();
+
+    let text = std::fs::read_to_string(path).map_err(|source| CaseLoadError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let raw: TomlCaseFile = ::toml::from_str(&text).map_err(|e| CaseLoadError::TomlParse {
+        path: path.to_path_buf(),
+        message: e.to_string(),
+    })?;
+
+    let kind = match raw.meta.kind.as_str() {
+        "free-field" => CaseKind::FreeField,
+        "geometry" => CaseKind::Geometry,
+        other => {
+            return Err(CaseLoadError::UnknownKind {
+                got: other.to_string(),
+                path: path.to_path_buf(),
+            });
+        }
+    };
+    let reference_version = match raw.meta.reference.as_str() {
+        "analytic" => ReferenceVersion::Analytic,
+        "force-2009" => ReferenceVersion::Force2009,
+        "force-2010" => ReferenceVersion::Force2010,
+        other => {
+            return Err(CaseLoadError::UnknownReference {
+                got: other.to_string(),
+                path: path.to_path_buf(),
+            });
+        }
+    };
+
+    for (what, arr) in [
+        ("source.position", &raw.source.position),
+        ("receiver.position", &raw.receiver.position),
+    ] {
+        for (i, &v) in arr.iter().enumerate() {
+            super::xls::require_finite(v, &context, &format!("{what}[{i}]"))?;
+        }
+    }
+
+    let mut propagation = PropagationParams::default();
+    if let Some(t) = raw.atmosphere.t_air_c {
+        super::xls::require_finite(t, &context, "atmosphere.t_air_c")?;
+        if t <= -273.15 {
+            return Err(CaseLoadError::Invalid {
+                context,
+                message: format!("t_air_c = {t} °C is at or below absolute zero"),
+            });
+        }
+        propagation.t0_c = Some(t);
+    }
+    if let Some(rh) = raw.atmosphere.rh_percent {
+        super::xls::require_finite(rh, &context, "atmosphere.rh_percent")?;
+        if !(0.0..=100.0).contains(&rh) {
+            return Err(CaseLoadError::Invalid {
+                context,
+                message: format!("rh_percent = {rh} outside [0, 100]"),
+            });
+        }
+        propagation.rh_percent = rh;
+    }
+    if let Some(p) = raw.atmosphere.pressure_kpa {
+        super::xls::require_finite(p, &context, "atmosphere.pressure_kpa")?;
+        if p <= 0.0 {
+            return Err(CaseLoadError::Invalid {
+                context,
+                message: format!("pressure_kpa = {p} must be positive"),
+            });
+        }
+        propagation.pressure_kpa = p;
+    }
+
+    super::xls::require_finite(raw.expected.tolerance_db, &context, "expected.tolerance_db")?;
+    if raw.expected.tolerance_db <= 0.0 {
+        return Err(CaseLoadError::Invalid {
+            context,
+            message: format!("expected.tolerance_db = {} must be positive", raw.expected.tolerance_db),
+        });
+    }
+
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "unnamed".to_string());
+
+    Ok(CaseDefinition {
+        id: format!("toml::{stem}"),
+        name: raw.meta.name.clone(),
+        kind,
+        reference_version,
+        description: raw.meta.name,
+        source_position: Some(raw.source.position),
+        receiver_position: Some(raw.receiver.position),
+        propagation,
+        terrain_profile: Vec::new(),
+        reference_spectrum: None,
+        expected: Some(SyntheticExpected {
+            tolerance_db: raw.expected.tolerance_db,
+            bands: raw.expected.bands,
+        }),
+    })
 }
 
 #[cfg(test)]

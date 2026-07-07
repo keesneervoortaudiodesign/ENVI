@@ -374,9 +374,95 @@ pub(crate) fn confine(root: &Path, candidate: &Path) -> Result<PathBuf, CaseLoad
 /// - Missing `refs_dir` / workbooks degrade to a note, never an error: the
 ///   suite must stay green without the copyrighted reference files.
 /// - Only paths inside the two given roots are ever opened (T-01-02).
+/// - A malformed file becomes a per-case load failure, not an abort.
 #[must_use]
-pub fn discover(_refs_dir: &Path, _cases_dir: &Path) -> Discovery {
-    todo!("Task 2 GREEN: glob cases/*.toml + load FORCE workbooks")
+pub fn discover(refs_dir: &Path, cases_dir: &Path) -> Discovery {
+    let mut discovery = Discovery::default();
+
+    // 1. Synthetic TOML cases — sorted file list for deterministic order.
+    match std::fs::read_dir(cases_dir) {
+        Ok(entries) => {
+            let mut paths: Vec<PathBuf> = entries
+                .filter_map(Result::ok)
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
+                })
+                .collect();
+            paths.sort();
+            for path in paths {
+                let stem = path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "unnamed".to_string());
+                let case =
+                    confine(cases_dir, &path).and_then(|safe| toml::load_toml_case(&safe));
+                discovery.cases.push(DiscoveredCase {
+                    id: format!("toml::{stem}"),
+                    case,
+                });
+            }
+        }
+        Err(_) => discovery.notes.push(format!(
+            "cases directory {} not found — no synthetic cases discovered",
+            cases_dir.display()
+        )),
+    }
+
+    // 2. FORCE straight-road workbook (fully parsed).
+    let straight = refs_dir.join("TestStraightRoad.xls");
+    if straight.is_file() {
+        match confine(refs_dir, &straight).and_then(|safe| xls::load_straight_road(&safe)) {
+            Ok(mut cases) => discovery.cases.append(&mut cases),
+            Err(e) => discovery.cases.push(DiscoveredCase {
+                id: "straight_road::workbook".to_string(),
+                case: Err(e),
+            }),
+        }
+    } else {
+        discovery.notes.push(
+            "reference workbooks not fetched — run refs/fetch.sh \
+             (FORCE .xls cases skipped)"
+                .to_string(),
+        );
+    }
+
+    // 3. Remaining FORCE workbooks: counted but not parsed until Phases 3-4;
+    //    each present workbook surfaces as one Skipped placeholder case.
+    for (file, group, kind, label) in [
+        ("TestCurvedRoad.xls", "curved_road", CaseKind::ForceCurvedRoad, "Curved Road"),
+        ("TestCityStreet.xls", "city_street", CaseKind::ForceCityStreet, "City Street"),
+        (
+            "TestYearlyAverage.xls",
+            "yearly_average",
+            CaseKind::ForceYearlyAverage,
+            "Yearly Average",
+        ),
+    ] {
+        let path = refs_dir.join(file);
+        if !path.is_file() {
+            continue;
+        }
+        let id = format!("{group}::workbook");
+        discovery.cases.push(DiscoveredCase {
+            id: id.clone(),
+            case: Ok(CaseDefinition {
+                id,
+                name: format!("FORCE {label} workbook (placeholder)"),
+                kind,
+                reference_version: ReferenceVersion::Force2009,
+                description: format!("{file} present — layout parsing lands in Phases 3-4"),
+                source_position: None,
+                receiver_position: None,
+                propagation: PropagationParams::default(),
+                terrain_profile: Vec::new(),
+                reference_spectrum: None,
+                expected: None,
+            }),
+        });
+    }
+
+    discovery
 }
 
 #[cfg(test)]

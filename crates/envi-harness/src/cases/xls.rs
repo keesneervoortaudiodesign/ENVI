@@ -14,7 +14,12 @@
 
 use std::path::Path;
 
-use super::{CaseLoadError, DiscoveredCase, TerrainRow};
+use calamine::{Data, Range, Reader, Xls, open_workbook};
+
+use super::{
+    CaseDefinition, CaseKind, CaseLoadError, DiscoveredCase, PropagationParams,
+    ReferenceSpectrum, ReferenceVersion, SpectrumRow, TerrainRow,
+};
 
 /// DoS guard: maximum number of worksheets accepted per workbook.
 pub const MAX_SHEETS: usize = 200;
@@ -78,6 +83,230 @@ pub(crate) fn validate_profile(
     Ok(())
 }
 
+/// Trimmed string content of a cell, if it is a string cell.
+fn cell_str(range: &Range<Data>, row: u32, col: u32) -> Option<String> {
+    match range.get_value((row, col)) {
+        Some(Data::String(s)) => {
+            let t = s.trim();
+            if t.is_empty() { None } else { Some(t.to_string()) }
+        }
+        _ => None,
+    }
+}
+
+/// Numeric content of a cell (Float or Int), if any. NaN screening happens
+/// at the call sites via [`require_finite`].
+fn cell_num(range: &Range<Data>, row: u32, col: u32) -> Option<f64> {
+    match range.get_value((row, col)) {
+        Some(Data::Float(v)) => Some(*v),
+        Some(Data::Int(i)) => Some(*i as f64),
+        _ => None,
+    }
+}
+
+/// Last row index (absolute) of the used range.
+fn last_row(range: &Range<Data>) -> u32 {
+    range.end().map_or(0, |(r, _)| r)
+}
+
+/// Find the (absolute) row whose cell in `col` equals one of `labels`
+/// (trimmed, exact match — prefix matching would confuse "LAE"/"LAeq,24h").
+fn find_label_row(range: &Range<Data>, col: u32, labels: &[&str]) -> Option<u32> {
+    let start = range.start().map_or(0, |(r, _)| r);
+    (start..=last_row(range)).find(|&row| {
+        cell_str(range, row, col).is_some_and(|s| labels.iter().any(|l| s == *l))
+    })
+}
+
+/// Read the value adjacent to a label: label-anchored as the PRIMARY key,
+/// fixed row position as the fallback (with a warning to stderr) — this
+/// survives the 2010-revision layout drift.
+fn labelled_num(
+    range: &Range<Data>,
+    sheet: &str,
+    label_col: u32,
+    value_col: u32,
+    labels: &[&str],
+    fallback_row: u32,
+) -> Result<Option<f64>, CaseLoadError> {
+    let context = format!("sheet {sheet}");
+    if let Some(row) = find_label_row(range, label_col, labels) {
+        return match cell_num(range, row, value_col) {
+            Some(v) => Ok(Some(require_finite(v, &context, labels[0])?)),
+            None => Err(CaseLoadError::NonFinite {
+                context,
+                what: labels[0].to_string(),
+            }),
+        };
+    }
+    // Fallback: fixed row position from the verified 2009 layout.
+    eprintln!(
+        "warning: sheet {sheet}: label {:?} not found — falling back to fixed row {fallback_row}",
+        labels[0]
+    );
+    match cell_num(range, fallback_row, value_col) {
+        Some(v) => Ok(Some(require_finite(v, &context, labels[0])?)),
+        None => Ok(None),
+    }
+}
+
+/// Parse one straight-road worksheet (verified 2009 layout, label-anchored).
+fn parse_sheet(range: &Range<Data>, sheet: &str) -> Result<CaseDefinition, CaseLoadError> {
+    let context = format!("sheet {sheet}");
+
+    // Description: row 2 col A in the verified layout; fall back to the
+    // first non-title string in rows 1..=4.
+    let description = cell_str(range, 2, 0)
+        .or_else(|| (1..=4).find_map(|r| cell_str(range, r, 0)))
+        .ok_or_else(|| CaseLoadError::Invalid {
+            context: context.clone(),
+            message: "no description string found in rows 1-4".to_string(),
+        })?;
+
+    let name = cell_str(range, 0, 0).unwrap_or_else(|| format!("Straight Road Case {sheet}"));
+
+    // Propagation block: labels in col A (0), values in col B (1).
+    // RH is not on the sheet — 70 % globally per the Env. Project 1335 text
+    // (the PropagationParams default).
+    let propagation = PropagationParams {
+        hr_m: labelled_num(range, sheet, 0, 1, &["hr"], 11)?,
+        t0_c: labelled_num(range, sheet, 0, 1, &["t0"], 12)?,
+        z0_m: labelled_num(range, sheet, 0, 1, &["z0"], 13)?,
+        zu_m: labelled_num(range, sheet, 0, 1, &["zu"], 14)?,
+        u_ms: labelled_num(range, sheet, 0, 1, &["u"], 15)?,
+        phi_deg: labelled_num(range, sheet, 0, 1, &["φ", "phi", "fi"], 16)?,
+        su_ms: labelled_num(range, sheet, 0, 1, &["su"], 17)?,
+        dtdz: labelled_num(range, sheet, 0, 1, &["dt/dz"], 18)?,
+        sdtdz: labelled_num(range, sheet, 0, 1, &["sdt/dz"], 19)?,
+        cv2: labelled_num(range, sheet, 0, 1, &["Cv2"], 20)?,
+        ct2: labelled_num(range, sheet, 0, 1, &["Ct2"], 21)?,
+        ..PropagationParams::default()
+    };
+
+    // Overall results: labels in col F (5), values in col G (6).
+    // Exact label match matters: "LAeq,24h" also starts with "LAE".
+    let laeq_24h_db = labelled_num(range, sheet, 5, 6, &["LAeq,24h", "LAeq"], 6)?
+        .ok_or_else(|| CaseLoadError::MissingLabel {
+            sheet: sheet.to_string(),
+            label: "LAeq,24h".to_string(),
+        })?;
+    let lae_db = labelled_num(range, sheet, 5, 6, &["LAE"], 7)?.ok_or_else(|| {
+        CaseLoadError::MissingLabel {
+            sheet: sheet.to_string(),
+            label: "LAE".to_string(),
+        }
+    })?;
+    let lamax_db = labelled_num(range, sheet, 5, 6, &["LAmax"], 8)?.ok_or_else(|| {
+        CaseLoadError::MissingLabel {
+            sheet: sheet.to_string(),
+            label: "LAmax".to_string(),
+        }
+    })?;
+
+    // 27-band reference spectrum below the "Freq." label (col F..I), skipping
+    // the units row ("Hz" is a string cell, not a number).
+    let freq_row = find_label_row(range, 5, &["Freq.", "Freq"]).ok_or_else(|| {
+        CaseLoadError::MissingLabel {
+            sheet: sheet.to_string(),
+            label: "Freq.".to_string(),
+        }
+    })?;
+    let mut bands = Vec::with_capacity(SPECTRUM_ROWS);
+    for row in (freq_row + 1)..=last_row(range) {
+        let Some(nominal) = cell_num(range, row, 5) else {
+            continue; // units row / trailing blanks
+        };
+        if bands.len() == SPECTRUM_ROWS {
+            return Err(CaseLoadError::SpectrumRowCount {
+                sheet: sheet.to_string(),
+                got: bands.len() + 1,
+            });
+        }
+        let band_ctx = format!("spectrum row {}", bands.len());
+        let leq = cell_num(range, row, 6).ok_or_else(|| CaseLoadError::NonFinite {
+            context: context.clone(),
+            what: format!("{band_ctx}: Leq,24h"),
+        })?;
+        let le = cell_num(range, row, 7).ok_or_else(|| CaseLoadError::NonFinite {
+            context: context.clone(),
+            what: format!("{band_ctx}: LE"),
+        })?;
+        let dl = cell_num(range, row, 8).ok_or_else(|| CaseLoadError::NonFinite {
+            context: context.clone(),
+            what: format!("{band_ctx}: dL"),
+        })?;
+        bands.push(SpectrumRow {
+            nominal_hz: require_finite(nominal, &context, &format!("{band_ctx}: Freq."))?,
+            leq_24h_db: require_finite(leq, &context, &format!("{band_ctx}: Leq,24h"))?,
+            le_db: require_finite(le, &context, &format!("{band_ctx}: LE"))?,
+            dl_db: require_finite(dl, &context, &format!("{band_ctx}: dL"))?,
+        });
+    }
+    if bands.len() != SPECTRUM_ROWS {
+        return Err(CaseLoadError::SpectrumRowCount {
+            sheet: sheet.to_string(),
+            got: bands.len(),
+        });
+    }
+
+    // Terrain profile: header row "X" | "Z" in cols A/B, units row below,
+    // then data rows in cols A-D until a zero-padded (all-zero) row, a
+    // non-numeric row, or the end of the used range.
+    let header_row = (0..=last_row(range))
+        .find(|&r| {
+            cell_str(range, r, 0).is_some_and(|s| s == "X")
+                && cell_str(range, r, 1).is_some_and(|s| s == "Z")
+        })
+        .ok_or_else(|| CaseLoadError::MissingLabel {
+            sheet: sheet.to_string(),
+            label: "X/Z terrain profile header".to_string(),
+        })?;
+    let mut terrain_profile: Vec<TerrainRow> = Vec::new();
+    for row in (header_row + 1)..=last_row(range) {
+        let Some(x) = cell_num(range, row, 0) else {
+            if terrain_profile.is_empty() {
+                continue; // units row directly under the header
+            }
+            break;
+        };
+        let z = cell_num(range, row, 1).unwrap_or(0.0);
+        let sigma = cell_num(range, row, 2).unwrap_or(0.0);
+        let rough = cell_num(range, row, 3).unwrap_or(0.0);
+        if !terrain_profile.is_empty() && x == 0.0 && z == 0.0 && sigma == 0.0 && rough == 0.0 {
+            break; // zero-padded terminator
+        }
+        terrain_profile.push(TerrainRow {
+            x_m: x,
+            z_m: z,
+            flow_resistivity_kns_m4: sigma,
+            roughness_m: rough,
+        });
+        if terrain_profile.len() > MAX_PROFILE_ROWS {
+            break; // validate_profile reports the cap violation
+        }
+    }
+    validate_profile(&terrain_profile, &context)?;
+
+    Ok(CaseDefinition {
+        id: format!("straight_road::{sheet}"),
+        name,
+        kind: CaseKind::ForceStraightRoad,
+        reference_version: ReferenceVersion::Force2009,
+        description,
+        source_position: None, // derived from lane/height conventions in plan 01-02
+        receiver_position: None,
+        propagation,
+        terrain_profile,
+        reference_spectrum: Some(ReferenceSpectrum {
+            bands,
+            laeq_24h_db,
+            lae_db,
+            lamax_db,
+        }),
+        expected: None,
+    })
+}
+
 /// Load every straight-road case ("1" … "62") from `TestStraightRoad.xls`.
 ///
 /// Returns one [`DiscoveredCase`] per worksheet; a malformed sheet becomes a
@@ -89,8 +318,35 @@ pub(crate) fn validate_profile(
 /// Returns a workbook-level error only when the file cannot be opened or the
 /// sheet cap is exceeded.
 pub fn load_straight_road(path: &Path) -> Result<Vec<DiscoveredCase>, CaseLoadError> {
-    let _ = path;
-    todo!("Task 2 GREEN: calamine label-anchored parse of all 62 sheets")
+    let mut workbook = open_workbook::<Xls<std::io::BufReader<std::fs::File>>, _>(path)
+        .map_err(|e| CaseLoadError::Workbook {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+    let sheet_names = workbook.sheet_names();
+    if sheet_names.len() > MAX_SHEETS {
+        return Err(CaseLoadError::TooManySheets {
+            path: path.to_path_buf(),
+            count: sheet_names.len(),
+            cap: MAX_SHEETS,
+        });
+    }
+
+    let mut cases = Vec::with_capacity(sheet_names.len());
+    for sheet in &sheet_names {
+        let case = workbook
+            .worksheet_range(sheet)
+            .map_err(|e| CaseLoadError::Workbook {
+                path: path.to_path_buf(),
+                message: format!("sheet {sheet}: {e}"),
+            })
+            .and_then(|range| parse_sheet(&range, sheet));
+        cases.push(DiscoveredCase {
+            id: format!("straight_road::{sheet}"),
+            case,
+        });
+    }
+    Ok(cases)
 }
 
 #[cfg(test)]
