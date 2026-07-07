@@ -59,7 +59,15 @@ pub type TransferTensor = Array3<Complex<f64>>;
 /// Never on data; debug-asserts that `h` has [`N_BANDS`] entries.
 #[must_use]
 pub fn band_levels_db(h: &TransferSpectrum, spectrum: &BandSpectrum) -> Vec<f64> {
-    todo!("GREEN")
+    debug_assert_eq!(h.len(), N_BANDS, "transfer spectrum must be N_BANDS long");
+    h.iter()
+        .zip(spectrum.as_slice())
+        .map(|(&hf, &lw_db)| {
+            let g = 10f64.powf(lw_db / 20.0); // |G_s| = 10^(L_W/20), phase 0
+            let p = hf * g; // p = H·G_s
+            20.0 * p.norm().log10() // L_p = 20·log10|p|
+        })
+        .collect()
 }
 
 #[cfg(test)]

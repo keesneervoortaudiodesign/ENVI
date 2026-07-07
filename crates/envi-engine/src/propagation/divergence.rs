@@ -22,7 +22,10 @@ use super::PropagationError;
 /// [`PropagationError::DegenerateRange`] if `r_m` is not strictly positive and
 /// finite — a domain error, never a clamp (01-RESEARCH §6).
 pub(crate) fn divergence_amplitude(r_m: f64) -> Result<f64, PropagationError> {
-    todo!("GREEN")
+    if !r_m.is_finite() || r_m <= 0.0 {
+        return Err(PropagationError::DegenerateRange { r_m });
+    }
+    Ok(1.0 / (4.0 * std::f64::consts::PI * r_m * r_m).sqrt())
 }
 
 /// Geometrical divergence `ΔL_d = −10·log10(4π·R²)`, dB (AV 1106/07 Eq. 330).
@@ -32,7 +35,8 @@ pub(crate) fn divergence_amplitude(r_m: f64) -> Result<f64, PropagationError> {
 /// [`PropagationError::DegenerateRange`] if `r_m` is not strictly positive and
 /// finite.
 pub fn divergence_db(r_m: f64) -> Result<f64, PropagationError> {
-    todo!("GREEN")
+    // ΔL_d = −10·log10(4πR²) = 20·log10(1/√(4πR²)) = 20·log10(amplitude).
+    Ok(20.0 * divergence_amplitude(r_m)?.log10())
 }
 
 #[cfg(test)]

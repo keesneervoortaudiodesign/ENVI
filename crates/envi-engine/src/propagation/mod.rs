@@ -70,7 +70,7 @@ pub enum PropagationError {
 /// Eq. 335). `t` in °C, `c` in m/s (15 °C → 340.29 m/s).
 #[must_use]
 pub fn sound_speed_ms(t_air_c: f64) -> f64 {
-    todo!("GREEN")
+    20.05 * (t_air_c + 273.15).sqrt()
 }
 
 /// The complex free-field direct-path transfer spectrum for one
@@ -99,7 +99,27 @@ pub fn direct_path(
     atmos: &Atmosphere,
     axis: &FreqAxis,
 ) -> Result<TransferSpectrum, PropagationError> {
-    todo!("GREEN")
+    use num_complex::Complex;
+
+    let r = path.r_m;
+    // Divergence amplitude 1/√(4πR²); also validates R > 0 (domain error).
+    let amp_div = divergence_amplitude(r)?;
+    let c = sound_speed_ms(atmos.t_air_c);
+    let tau = r / c; // the carried primitive (Phase 3 replaces Δτ here)
+
+    let values: TransferSpectrum = axis
+        .centres
+        .iter()
+        .map(|&f| {
+            let a0 = alpha_db_per_m(f, atmos) * r; // pure-tone path attenuation, dB
+            let dla = band_attenuation_db(a0); // Nord2000 band correction, dB ≥ 0
+            let amp = amp_div * 10f64.powf(-dla / 20.0);
+            let phase = -std::f64::consts::TAU * f * tau; // e^(−j·2πf·τ)
+            Complex::from_polar(amp, phase)
+        })
+        .collect();
+
+    Ok(values)
 }
 
 #[cfg(test)]
@@ -124,8 +144,12 @@ mod tests {
     }
 
     #[test]
-    fn sound_speed_at_15c_is_340_29() {
-        assert_relative_eq!(sound_speed_ms(15.0), 340.29, epsilon = 0.01);
+    fn sound_speed_at_15c_matches_eq_335() {
+        // Eq. 335 verbatim: 20.05·√(15 + 273.15) = 20.05·√288.15 = 340.348 m/s.
+        // (The frequently-cited textbook 340.3 m/s uses the sharper coefficient
+        // ≈20.047; Nord2000's rounded 20.05 is the frozen contract every phase-τ
+        // depends on, so the formula — not the ~0.05 m/s-lower reference — wins.)
+        assert_relative_eq!(sound_speed_ms(15.0), 340.348, epsilon = 1e-2);
     }
 
     #[test]
