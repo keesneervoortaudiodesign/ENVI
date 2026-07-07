@@ -22,7 +22,7 @@ fn main() -> std::process::ExitCode {
     let args = Arguments::from_args();
     let root = workspace_root();
 
-    let cases = envi_harness::cases::discover(&root.join("refs"), &root.join("cases"));
+    let discovery = envi_harness::cases::discover(&root.join("refs"), &root.join("cases"));
 
     let mut trials = Vec::new();
 
@@ -30,7 +30,7 @@ fn main() -> std::process::ExitCode {
     // committed synthetic TOML cases guarantee this once the loaders exist).
     // Task 1 RED: discovery is a stub returning nothing, so this fails —
     // the end-to-end failing test that precedes any propagation code.
-    let discovered = cases.len();
+    let discovered = discovery.cases.len();
     trials.push(Trial::test("harness::discovery", move || {
         if discovered == 0 {
             return Err("no cases discovered under refs/ and cases/".into());

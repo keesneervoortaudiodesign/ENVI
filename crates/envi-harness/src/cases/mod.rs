@@ -6,15 +6,17 @@
 //! - [`xls`]: the FORCE/DELTA road-traffic workbooks (calamine, label-anchored)
 //! - [`toml`]: synthetic cases we author ourselves (`cases/*.toml`)
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+use thiserror::Error;
 
 pub mod toml;
 pub mod xls;
 
 /// What kind of scenario a case describes — drives capability requirements.
 ///
-/// Extensible: curved-road / city-street / yearly-average kinds arrive with
-/// Phases 3–4.
+/// Extensible: curved-road / city-street / yearly-average layouts are loaded
+/// for real in Phases 3–4; until then they surface as placeholder cases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaseKind {
     /// Synthetic free-field case with an analytic reference.
@@ -23,6 +25,138 @@ pub enum CaseKind {
     Geometry,
     /// FORCE straight-road case (TestStraightRoad.xls worksheet).
     ForceStraightRoad,
+    /// FORCE curved-road workbook placeholder (layout parsed in Phase 4).
+    ForceCurvedRoad,
+    /// FORCE city-street workbook placeholder (layout parsed in Phase 4).
+    ForceCityStreet,
+    /// FORCE yearly-average workbook placeholder (layout parsed in Phase 3/4).
+    ForceYearlyAverage,
+}
+
+/// Typed load error for untrusted case input (ASVS V5 posture, T-01-01):
+/// every malformed input yields one of these — never a panic.
+#[derive(Debug, Error)]
+pub enum CaseLoadError {
+    /// Filesystem error reading a case file.
+    #[error("I/O error reading {path}: {source}")]
+    Io {
+        /// Offending path.
+        path: PathBuf,
+        /// Underlying error.
+        #[source]
+        source: std::io::Error,
+    },
+    /// TOML syntax / schema error.
+    #[error("TOML parse error in {path}: {message}")]
+    TomlParse {
+        /// Offending file.
+        path: PathBuf,
+        /// Parser message.
+        message: String,
+    },
+    /// Unrecognised `meta.kind` string.
+    #[error("unknown case kind {got:?} in {path} (accepted kinds: \"free-field\", \"geometry\")")]
+    UnknownKind {
+        /// The rejected kind string.
+        got: String,
+        /// Offending file.
+        path: PathBuf,
+    },
+    /// Unrecognised `meta.reference` string.
+    #[error(
+        "unknown reference version {got:?} in {path} \
+         (accepted: \"analytic\", \"force-2009\", \"force-2010\")"
+    )]
+    UnknownReference {
+        /// The rejected reference string.
+        got: String,
+        /// Offending file.
+        path: PathBuf,
+    },
+    /// Workbook-level calamine failure (open / missing sheet / range).
+    #[error("workbook error in {path}: {message}")]
+    Workbook {
+        /// Offending workbook.
+        path: PathBuf,
+        /// Underlying calamine message.
+        message: String,
+    },
+    /// A label cell the parser anchors on was not found.
+    #[error("sheet {sheet:?}: required label {label:?} not found")]
+    MissingLabel {
+        /// Worksheet name.
+        sheet: String,
+        /// The missing anchor label.
+        label: String,
+    },
+    /// A required numeric value was absent, NaN or infinite.
+    #[error("{context}: value for {what} is missing or not finite")]
+    NonFinite {
+        /// Sheet or file the value came from.
+        context: String,
+        /// What the value was supposed to be.
+        what: String,
+    },
+    /// Terrain-profile X positions must be strictly ascending.
+    #[error(
+        "{context}: terrain profile X not strictly ascending at row {row} \
+         (x = {x} after {prev_x})"
+    )]
+    NonAscendingProfile {
+        /// Sheet or file.
+        context: String,
+        /// Offending row index (0-based within the profile).
+        row: usize,
+        /// Previous X value.
+        prev_x: f64,
+        /// Offending X value.
+        x: f64,
+    },
+    /// Terrain-profile row cap exceeded (DoS guard).
+    #[error("{context}: terrain profile has {count} rows (cap {cap})")]
+    TooManyProfileRows {
+        /// Sheet or file.
+        context: String,
+        /// Observed row count.
+        count: usize,
+        /// The enforced cap.
+        cap: usize,
+    },
+    /// Workbook sheet cap exceeded (DoS guard).
+    #[error("workbook {path} has {count} sheets (cap {cap})")]
+    TooManySheets {
+        /// Offending workbook.
+        path: PathBuf,
+        /// Observed sheet count.
+        count: usize,
+        /// The enforced cap.
+        cap: usize,
+    },
+    /// The reference spectrum table must have exactly 27 rows.
+    #[error("sheet {sheet:?}: reference spectrum has {got} rows (expected exactly 27)")]
+    SpectrumRowCount {
+        /// Worksheet name.
+        sheet: String,
+        /// Observed row count.
+        got: usize,
+    },
+    /// Path-traversal guard (T-01-02): refusing to read outside the
+    /// discovery roots.
+    #[error("refusing to read {path}: outside the allowed root {root}")]
+    OutsideRoot {
+        /// The allowed root.
+        root: PathBuf,
+        /// The rejected path.
+        path: PathBuf,
+    },
+    /// Domain validation failure (out-of-range parameter etc.).
+    #[error("{context}: {message}")]
+    Invalid {
+        /// Sheet or file.
+        context: String,
+        /// What was wrong.
+        message: String,
+    },
 }
 
 /// Provenance of the reference values a case is compared against.
@@ -190,12 +324,122 @@ pub struct CaseDefinition {
     pub expected: Option<SyntheticExpected>,
 }
 
-/// Discover every runnable case under `cases_dir` (synthetic TOML) and
-/// `refs_dir` (FORCE workbooks, if fetched).
+/// One discovery result: either a loaded case or a per-case load failure.
 ///
-/// STUB (Task 1): returns an empty set so the end-to-end harness test fails
-/// with "no cases discovered". Task 2 implements it.
+/// A malformed sheet/file becomes a Failed-to-load outcome for that one case
+/// instead of aborting the whole run (T-01-01).
+#[derive(Debug)]
+pub struct DiscoveredCase {
+    /// Stable id, also used as the trial name.
+    pub id: String,
+    /// The loaded case, or why loading it failed.
+    pub case: Result<CaseDefinition, CaseLoadError>,
+}
+
+/// Everything discovery found, plus human-readable notes (e.g. "reference
+/// workbooks not fetched — run refs/fetch.sh").
+#[derive(Debug, Default)]
+pub struct Discovery {
+    /// Deterministically ordered case list (TOML cases sorted by file name,
+    /// then straight-road sheets in workbook order, then placeholders).
+    pub cases: Vec<DiscoveredCase>,
+    /// Non-fatal observations for the runner / CLI to surface.
+    pub notes: Vec<String>,
+}
+
+/// Path-traversal guard (T-01-02): canonicalize `candidate` and require it
+/// to live under the canonicalized `root` before it may be opened.
+pub(crate) fn confine(root: &Path, candidate: &Path) -> Result<PathBuf, CaseLoadError> {
+    let canon_root = root.canonicalize().map_err(|source| CaseLoadError::Io {
+        path: root.to_path_buf(),
+        source,
+    })?;
+    let canon = candidate.canonicalize().map_err(|source| CaseLoadError::Io {
+        path: candidate.to_path_buf(),
+        source,
+    })?;
+    if canon.starts_with(&canon_root) {
+        Ok(canon)
+    } else {
+        Err(CaseLoadError::OutsideRoot {
+            root: canon_root,
+            path: canon,
+        })
+    }
+}
+
+/// Discover every runnable case under `cases_dir` (synthetic TOML, sorted)
+/// and `refs_dir` (FORCE workbooks, if fetched).
+///
+/// - Missing `refs_dir` / workbooks degrade to a note, never an error: the
+///   suite must stay green without the copyrighted reference files.
+/// - Only paths inside the two given roots are ever opened (T-01-02).
 #[must_use]
-pub fn discover(_refs_dir: &Path, _cases_dir: &Path) -> Vec<CaseDefinition> {
-    Vec::new()
+pub fn discover(_refs_dir: &Path, _cases_dir: &Path) -> Discovery {
+    todo!("Task 2 GREEN: glob cases/*.toml + load FORCE workbooks")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .unwrap()
+            .to_path_buf()
+    }
+
+    #[test]
+    fn discovery_finds_the_committed_toml_cases() {
+        let root = repo_root();
+        let d = discover(&root.join("refs"), &root.join("cases"));
+        let toml_ids: Vec<&str> = d
+            .cases
+            .iter()
+            .filter(|c| c.id.starts_with("toml::"))
+            .map(|c| c.id.as_str())
+            .collect();
+        assert!(
+            toml_ids.contains(&"toml::freefield_100m"),
+            "expected the committed free-field fixture, got {toml_ids:?}"
+        );
+        // deterministic order: sorted by id within the toml group
+        let mut sorted = toml_ids.clone();
+        sorted.sort_unstable();
+        assert_eq!(toml_ids, sorted, "TOML cases must be discovered in sorted order");
+    }
+
+    #[test]
+    fn discovery_without_refs_degrades_to_a_note() {
+        let root = repo_root();
+        let missing = root.join("no-such-refs-dir");
+        let d = discover(&missing, &root.join("cases"));
+        assert!(
+            d.cases.iter().all(|c| !c.id.starts_with("straight_road::")),
+            "no xls cases may be emitted without the workbooks"
+        );
+        assert!(
+            d.notes.iter().any(|n| n.contains("refs/fetch.sh")),
+            "a note must point the user at refs/fetch.sh, got {:?}",
+            d.notes
+        );
+    }
+
+    #[test]
+    fn confine_rejects_paths_outside_the_root() {
+        let root = repo_root();
+        let cases_root = root.join("cases");
+        // A real file that exists but lives OUTSIDE cases/:
+        let outside = root.join("Cargo.toml");
+        let err = confine(&cases_root, &outside).unwrap_err();
+        assert!(
+            matches!(err, CaseLoadError::OutsideRoot { .. }),
+            "expected OutsideRoot, got {err:?}"
+        );
+        // And a file inside the root passes:
+        let inside = cases_root.join("freefield_100m.toml");
+        assert!(confine(&cases_root, &inside).is_ok());
+    }
 }
