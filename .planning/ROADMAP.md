@@ -36,9 +36,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: FORCE test-case loader + harness (case files → inputs, reference comparison, tolerance reporting) — lands first
-- [ ] 01-02: Semantic 2.5D scene model + path geometry (profile, impedance segments, screen edges, azimuth, reflection geometry)
-- [ ] 01-03: Direct path at 1/12-octave complex resolution — divergence, ISO 9613-1 air absorption, point sub-source spectrum
+- [ ] 01-01-PLAN.md — FORCE test-case loader + harness: cargo workspace, freq axis, .xls/TOML loaders, comparator, capability-gated runner (lands first; VAL-01)
+- [ ] 01-02-PLAN.md — Semantic 2.5D scene model + path geometry: Scene types, FORCE lane/height conventions, azimuth + image-source reflection (GEO-01/02/03)
+- [ ] 01-03-PLAN.md — Direct path at 1/12-octave complex resolution: divergence Eq. 330, ISO 9613-1 + Eq. 287, point sub-source spectrum through the harness (ENG-01, ENG-04, SRC-01)
 
 ### Phase 2: Ground Effect & Diffraction
 **Goal**: Homogeneous-atmosphere FORCE cases with ground and screens pass — ground reflection over segmented impedance and single/multi-edge diffraction combine as complex pressure with the Δτ interference phase intact
