@@ -415,8 +415,8 @@ mod tests {
         assert_eq!(impedance_class('A'), Some(12.5));
         assert_eq!(impedance_class('D'), Some(200.0));
         assert_eq!(impedance_class('G'), Some(20000.0));
-        // Standard Nordtest table (ASSUMED, A1):
-        assert_eq!(impedance_class('B'), Some(31.6));
+        // Table 2 VERIFIED this phase (02-RESEARCH §2 — resolves A1):
+        assert_eq!(impedance_class('B'), Some(31.5));
         assert_eq!(impedance_class('C'), Some(80.0));
         assert_eq!(impedance_class('E'), Some(500.0));
         assert_eq!(impedance_class('F'), Some(2000.0));

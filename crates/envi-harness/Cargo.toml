@@ -16,6 +16,10 @@ libtest-mimic = "0.8"
 
 [dev-dependencies]
 approx = "0.5"
+# num-complex is already a workspace dep (via envi-engine); the engine's public
+# API exposes `Complex<f64>`, so the oracle cross-check test needs it here. Test
+# only — engine I/O quarantine and the zero-new-dependency posture hold.
+num-complex = "0.4"
 
 # Dynamic case-driven test runner: one libtest-mimic Trial per discovered
 # FORCE worksheet / TOML case (01-RESEARCH "Dynamic FORCE tests").
