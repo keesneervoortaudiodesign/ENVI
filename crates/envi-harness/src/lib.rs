@@ -8,6 +8,7 @@
 pub mod capability;
 pub mod cases;
 pub mod compare;
+pub mod scene_build;
 
 /// Result of running one case through the capability gate + engine + comparator.
 #[derive(Debug)]

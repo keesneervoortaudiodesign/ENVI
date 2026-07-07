@@ -174,6 +174,7 @@ pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
         expected: Some(SyntheticExpected {
             tolerance_db: raw.expected.tolerance_db,
             bands: raw.expected.bands,
+            geometry: None,
         }),
     })
 }

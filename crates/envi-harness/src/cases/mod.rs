@@ -285,6 +285,25 @@ pub struct ReferenceSpectrum {
     pub lamax_db: f64,
 }
 
+/// Hand-computed expected values for a synthetic **geometry** case
+/// (`[expected.geometry]`). All fields are optional so one schema serves both
+/// the azimuth and the reflection anchor cases.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GeometryExpected {
+    /// Expected source→receiver azimuth, degrees clockwise from north.
+    pub azimuth_deg: Option<f64>,
+    /// Expected reflection-point X-coordinate in the cut plane.
+    pub reflection_x: Option<f64>,
+    /// Expected total reflected path length `r1 + r2`, meters.
+    pub path_length_m: Option<f64>,
+    /// Ground segment `[[x, z], [x, z]]` the reflection is taken over (cut
+    /// plane). Required whenever `reflection_x` / `path_length_m` are set.
+    pub reflection_segment: Option<[[f64; 2]; 2]>,
+    /// Optional per-case comparison tolerance; falls back to
+    /// [`SyntheticExpected::tolerance_db`] when absent.
+    pub tolerance: Option<f64>,
+}
+
 /// Expected-result block for synthetic (TOML) cases.
 #[derive(Debug, Clone)]
 pub struct SyntheticExpected {
@@ -292,6 +311,9 @@ pub struct SyntheticExpected {
     pub tolerance_db: f64,
     /// What the expected values are, e.g. `"analytic:divergence+iso9613"`.
     pub bands: String,
+    /// Hand-computed geometry expectations (`None` for non-geometry cases) —
+    /// backward-compatible with the free-field schema.
+    pub geometry: Option<GeometryExpected>,
 }
 
 /// The shared internal representation every loader emits and every consumer
