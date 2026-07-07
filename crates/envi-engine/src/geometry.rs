@@ -78,7 +78,20 @@ impl PathGeometry {
     /// [`MIN_PATH_M`] (source and receiver coincident) — a domain error, not a
     /// clamp.
     pub fn direct(src: [f64; 3], rcv: [f64; 3]) -> Result<Self, GeometryError> {
-        todo!("GREEN")
+        let dx = rcv[0] - src[0];
+        let dy = rcv[1] - src[1];
+        let dz = rcv[2] - src[2];
+        let r_m = (dx * dx + dy * dy + dz * dz).sqrt();
+        if r_m < MIN_PATH_M {
+            return Err(GeometryError::DegeneratePath { r_m });
+        }
+        let horizontal_m = (dx * dx + dy * dy).sqrt();
+        let azimuth_deg = azimuth_deg([src[0], src[1]], [rcv[0], rcv[1]]);
+        Ok(Self {
+            r_m,
+            horizontal_m,
+            azimuth_deg,
+        })
     }
 }
 
@@ -124,7 +137,55 @@ pub fn reflect_over_segment(
     seg_a: [f64; 2],
     seg_b: [f64; 2],
 ) -> Option<ReflectionGeometry> {
-    todo!("GREEN")
+    // Segment direction e and its squared length; a zero-length segment has no
+    // line to reflect across.
+    let e = [seg_b[0] - seg_a[0], seg_b[1] - seg_a[1]];
+    let ee = e[0] * e[0] + e[1] * e[1];
+    if ee < MIN_PATH_M * MIN_PATH_M {
+        return None;
+    }
+
+    // Reflect S across the LINE through seg_a with direction e (general line
+    // reflection — correct for sloped segments, not a z-negation).
+    let ap = [s[0] - seg_a[0], s[1] - seg_a[1]];
+    let t = (ap[0] * e[0] + ap[1] * e[1]) / ee;
+    let foot = [seg_a[0] + t * e[0], seg_a[1] + t * e[1]];
+    let s_img = [2.0 * foot[0] - s[0], 2.0 * foot[1] - s[1]];
+
+    // Intersect the image-S→R line with the segment line. Normal n ⟂ e; the
+    // reflection point satisfies n·(P − seg_a) = 0.
+    let n = [-e[1], e[0]];
+    let dir = [r[0] - s_img[0], r[1] - s_img[1]];
+    let denom = n[0] * dir[0] + n[1] * dir[1];
+    if denom.abs() < 1e-12 {
+        return None; // image-S→R parallel to the segment line: no intersection
+    }
+    let num = n[0] * (seg_a[0] - s_img[0]) + n[1] * (seg_a[1] - s_img[1]);
+    let param = num / denom;
+    let point = [s_img[0] + param * dir[0], s_img[1] + param * dir[1]];
+
+    // Path legs and total (r1 + r2 == dist(image_S, R) by construction).
+    let r1_m = ((point[0] - s[0]).powi(2) + (point[1] - s[1]).powi(2)).sqrt();
+    let r2_m = ((r[0] - point[0]).powi(2) + (r[1] - point[1]).powi(2)).sqrt();
+
+    // Grazing angle: acute angle between the incident ray and the segment line
+    // (scale-invariant in e, so no normalization needed).
+    let d_in = [point[0] - s[0], point[1] - s[1]];
+    let cross = (d_in[0] * e[1] - d_in[1] * e[0]).abs();
+    let dot = (d_in[0] * e[0] + d_in[1] * e[1]).abs();
+    let grazing_angle_rad = cross.atan2(dot);
+
+    // Validity: reflection point lies within the segment iff 0 ≤ u ≤ 1.
+    let u = ((point[0] - seg_a[0]) * e[0] + (point[1] - seg_a[1]) * e[1]) / ee;
+    let valid = (0.0..=1.0).contains(&u);
+
+    Some(ReflectionGeometry {
+        point_x: point[0],
+        r1_m,
+        r2_m,
+        grazing_angle_rad,
+        valid,
+    })
 }
 
 #[cfg(test)]
@@ -151,7 +212,11 @@ mod tests {
     #[test]
     fn direct_path_reports_range_horizontal_and_azimuth() {
         let g = PathGeometry::direct([0.0, 0.0, 0.5], [100.0, 0.0, 1.5]).unwrap();
-        assert_relative_eq!(g.r_m, (100.0_f64 * 100.0 + 1.0).sqrt(), max_relative = 1e-12);
+        assert_relative_eq!(
+            g.r_m,
+            (100.0_f64 * 100.0 + 1.0).sqrt(),
+            max_relative = 1e-12
+        );
         assert_relative_eq!(g.horizontal_m, 100.0, max_relative = 1e-12);
         assert_relative_eq!(g.azimuth_deg, 90.0, epsilon = 1e-12);
     }
