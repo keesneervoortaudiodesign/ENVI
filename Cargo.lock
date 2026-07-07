@@ -222,6 +222,7 @@ dependencies = [
  "calamine",
  "envi-engine",
  "libtest-mimic",
+ "num-complex",
  "serde",
  "thiserror",
  "toml",

@@ -5,3 +5,7 @@ refs/*
 !refs/fetch.sh
 !refs/refs.sha256
 target/
+
+# Python oracle bytecode cache (tools/nord2000_oracle)
+__pycache__/
+*.pyc
