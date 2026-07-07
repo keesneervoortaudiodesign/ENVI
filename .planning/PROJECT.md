@@ -17,8 +17,10 @@ A **numerically faithful Nord2000 engine** — validated against the FORCE road-
 ### Active
 
 - [ ] Full Nord2000 propagation engine in Rust (direct path, ground effect, screen/diffraction, air absorption), validated against the FORCE test cases
+- [ ] **Complex transfer-function output**: engine produces a complex acoustic transfer value per (directional sub-source × receiver × 1/12-octave frequency point), preserving magnitude + phase (direct/reflected Δτ interference), not just band energy
+- [ ] **Fast complex-tensor store + recalculation**: dense multi-dimensional `Complex<f64>` array `H[sub_source, receiver, freq]` cached so source conditioning changes (filter = complex gain, delay = phase ramp) recompute via cheap complex multiply-accumulate `p[r,f] = Σ_s H[s,r,f]·G_s(f)` without re-running propagation
 - [ ] Nord2000 meteorology model: log-lin sound-speed profile (A/B/C coefficients), equivalent-linear profile, frequency-dependent ground variant, guarded ray variables (ξ, Δτ)
-- [ ] Complex sound sources built from combined directional point sub-sources (per-band L_W + directivity), energy-summed at receivers
+- [ ] Complex sound sources built from combined directional point sub-sources (per-band L_W + directivity), with per-source input conditioning (filtering, delaying) applied at recalculation time
 - [ ] GIS geometry pipeline: DEM cut-profile extraction along source→receiver lines, ground-impedance segmentation, building/barrier screening
 - [ ] Open geospatial data ingestion — terrain (Copernicus GLO-30 + national LiDAR DTM), ground (ESA WorldCover), buildings (Overture/OSM)
 - [ ] Meteorology import from open weather APIs (Open-Meteo runtime; ERA5/CDS for weather-class L_den statistics), deriving A/B/C per source→receiver azimuth
@@ -50,6 +52,9 @@ A **numerically faithful Nord2000 engine** — validated against the FORCE road-
 - **Data**: Global region → Copernicus GLO-30 + ESA WorldCover + Overture as the universal tier, national LiDAR DTM where available. Compute in a local metric CRS per site (auto-pick UTM).
 - **Deployment**: Self-hosted web service — project persistence + compute-job model; light/no auth.
 - **Validation**: The FORCE road-traffic test suite is the acceptance gate for the engine — stand up the test harness on it *before* writing propagation code.
+- **Frequency resolution**: 1/12-octave frequency points (~100+ over 25 Hz–10 kHz), finer than Nord2000's native 1/3-octave — the engine's path model must be evaluable at arbitrary 1/12-octave centres.
+- **Numerics/storage**: complex transfer function stored as dense `ndarray` of `num-complex::Complex<f64>`, dims `[sub_source, receiver, freq]`, freq-contiguous. Large grids (100k receivers) reach ~GB scale — chunk/stream and treat memory as a first-class budget item.
+- **Performance**: recalculation on input-conditioning changes must be interactive (cheap complex MAC over the cached tensor); only geometry/meteorology changes trigger a full propagation recompute.
 
 ## Key Decisions
 
@@ -62,6 +67,8 @@ A **numerically faithful Nord2000 engine** — validated against the FORCE road-
 | Add a per-path-segment `PropagationCorrection` hook + directional multi-sub-source model early | Lets future 2.5D BEM barrier corrections and directivity slot in without touching the core | — Pending |
 | Open-Meteo (runtime) + ERA5/CDS (weather classes) for meteorology | Only free/open sources exposing the multi-level winds / stability / u* needed for A & B | — Pending |
 | Global data tier: Copernicus GLO-30 + ESA WorldCover + Overture | Chosen "Global" market; national LiDAR layered where available | — Pending |
+| Engine output = complex transfer tensor `H[sub_source, receiver, 1/12-oct freq]`, separating propagation from source conditioning | Makes filter/delay adjustments an interactive complex MAC instead of a full recompute; preserves phase/interference | — Pending |
+| Open question: represent Nord2000 partial-coherence (coefficient F) alongside the coherent complex transfer | Coherent transfer is exact for deterministic paths; the turbulence-driven incoherent term needs a channel/representation decision | — Pending (engine phase) |
 
 ## Evolution
 
