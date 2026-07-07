@@ -69,23 +69,56 @@ pub struct RayPair {
 ///
 /// [`PropagationError::DegenerateRayGeometry`] for non-positive horizontal
 /// distance, negative height, or non-finite input (threat T-02-01).
-pub fn straight_rays(
-    d: f64,
-    h_s: f64,
-    h_r: f64,
-    c0: f64,
-) -> Result<RayPair, PropagationError> {
-    let _ = (d, h_s, h_r, c0);
+pub fn straight_rays(d: f64, h_s: f64, h_r: f64, c0: f64) -> Result<RayPair, PropagationError> {
+    if !(d.is_finite() && d > 0.0) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "horizontal distance d must be positive and finite",
+        });
+    }
+    let height_ok = |h: f64| h.is_finite() && h >= 0.0;
+    if !(height_ok(h_s) && height_ok(h_r)) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "source/receiver heights must be non-negative and finite",
+        });
+    }
+    if !(c0.is_finite() && c0 > 0.0) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "speed of sound c₀ must be positive and finite",
+        });
+    }
+
+    let r1 = (d * d + (h_r - h_s).powi(2)).sqrt();
+    let r2 = (d * d + (h_r + h_s).powi(2)).sqrt();
+    let psi_g = (h_s + h_r).atan2(d);
+    // Cancellation-free ΔR = (R₂²−R₁²)/(R₂+R₁) = 4·hS·hR/(R₁+R₂).
+    let dr = 4.0 * h_s * h_r / (r1 + r2);
+    let dtau = dr / c0;
+
+    // Reflection point splits R₂ in proportion to the heights (similar
+    // triangles): r1 : r2 = hS : hR. Guard the both-zero (grazing) case.
+    let hsum = h_s + h_r;
+    let (leg1, leg2) = if hsum > 0.0 {
+        (r2 * h_s / hsum, r2 * h_r / hsum)
+    } else {
+        (0.0, r2)
+    };
+
     Ok(RayPair {
         direct: RayVars {
-            tau: 0.0,
-            r: 0.0,
+            tau: r1 / c0,
+            r: r1,
             psi_g: 0.0,
-            r1: 0.0,
+            r1,
             r2: 0.0,
         },
-        reflected: None,
-        dtau: 0.0,
+        reflected: Some(RayVars {
+            tau: r2 / c0,
+            r: r2,
+            psi_g,
+            r1: leg1,
+            r2: leg2,
+        }),
+        dtau,
     })
 }
 
@@ -111,17 +144,61 @@ pub fn straight_rays_over_segment(
     seg_b: [f64; 2],
     c0: f64,
 ) -> Result<RayPair, PropagationError> {
-    let _ = (s, r, seg_a, seg_b, c0);
+    let finite2 = |p: [f64; 2]| p[0].is_finite() && p[1].is_finite();
+    if !(finite2(s) && finite2(r) && finite2(seg_a) && finite2(seg_b)) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "ray endpoints must be finite",
+        });
+    }
+    if !(c0.is_finite() && c0 > 0.0) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "speed of sound c₀ must be positive and finite",
+        });
+    }
+
+    let refl = reflect_over_segment(s, r, seg_a, seg_b).ok_or(
+        PropagationError::DegenerateRayGeometry {
+            detail: "no reflection defined (degenerate segment or parallel path)",
+        },
+    )?;
+
+    let r1 = ((r[0] - s[0]).powi(2) + (r[1] - s[1]).powi(2)).sqrt();
+    let r2 = refl.r1_m + refl.r2_m;
+    if r1 <= 0.0 {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "source and receiver are coincident",
+        });
+    }
+
+    // Image point S′ (reflection of S across the segment line), then the
+    // cancellation-free ΔR = (|S′R|² − |SR|²)/(R₂+R₁) = (S′−S)·(S′+S−2R)/(R₂+R₁).
+    let e = [seg_b[0] - seg_a[0], seg_b[1] - seg_a[1]];
+    let ee = e[0] * e[0] + e[1] * e[1];
+    let ap = [s[0] - seg_a[0], s[1] - seg_a[1]];
+    let t = (ap[0] * e[0] + ap[1] * e[1]) / ee;
+    let foot = [seg_a[0] + t * e[0], seg_a[1] + t * e[1]];
+    let s_img = [2.0 * foot[0] - s[0], 2.0 * foot[1] - s[1]];
+    let ds = [s_img[0] - s[0], s_img[1] - s[1]];
+    let sum = [s_img[0] + s[0] - 2.0 * r[0], s_img[1] + s[1] - 2.0 * r[1]];
+    let dr = (ds[0] * sum[0] + ds[1] * sum[1]) / (r2 + r1);
+    let dtau = dr / c0;
+
     Ok(RayPair {
         direct: RayVars {
-            tau: 0.0,
-            r: 0.0,
+            tau: r1 / c0,
+            r: r1,
             psi_g: 0.0,
-            r1: 0.0,
+            r1,
             r2: 0.0,
         },
-        reflected: None,
-        dtau: 0.0,
+        reflected: Some(RayVars {
+            tau: r2 / c0,
+            r: r2,
+            psi_g: refl.grazing_angle_rad,
+            r1: refl.r1_m,
+            r2: refl.r2_m,
+        }),
+        dtau,
     })
 }
 

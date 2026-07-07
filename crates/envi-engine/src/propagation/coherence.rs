@@ -79,9 +79,43 @@ pub fn coherence_ff(f_hz: f64, dtau: f64) -> f64 {
 ///   `ρ = 2·hS·hR/(hS+hR)`, Eq. 119; screen sub-models per Eqs. 178/180).
 /// - `psi_g` — grazing angle (feeds `Fr`).
 #[must_use]
-pub fn coherence_f(f_hz: f64, dtau: f64, rho_sep: f64, psi_g: f64, inputs: &CoherenceInputs) -> f64 {
-    let _ = (f_hz, dtau, rho_sep, psi_g, inputs);
-    0.0
+pub fn coherence_f(
+    f_hz: f64,
+    dtau: f64,
+    rho_sep: f64,
+    psi_g: f64,
+    inputs: &CoherenceInputs,
+) -> f64 {
+    let ff = coherence_ff(f_hz, dtau);
+
+    // Fc — turbulence decorrelation (Eq. 113): Fc = exp'(−x),
+    // x = 5.888e−3·(CT²/(273.15+t)² + (22/3)·Cv²/c²)·f²·ρ^{5/3}·d.
+    // (Constant/exponents are Assumption A3; for Cv²=CT²=0, x=0 ⇒ Fc=1.)
+    let fc = if inputs.cv2 == 0.0 && inputs.ct2 == 0.0 {
+        1.0
+    } else {
+        let t_abs = 273.15 + inputs.t_air_c;
+        let turb =
+            inputs.ct2 / (t_abs * t_abs) + (22.0 / 3.0) * inputs.cv2 / (inputs.c0 * inputs.c0);
+        let x = 5.888e-3 * turb * f_hz * f_hz * rho_sep.abs().powf(5.0 / 3.0) * inputs.d_m;
+        exp_clamped(-x)
+    };
+
+    // Fr — roughness decorrelation (Eq. 114): exp'-form in (k₀·r·sin ψ_G)².
+    // The g(X) polynomial is Assumption A4 (unavailable) and set to 1; for
+    // roughness r=0 (all Phase 2 targets) Fr=1 exactly regardless.
+    let fr = if inputs.roughness_r == 0.0 {
+        1.0
+    } else {
+        let k0 = TAU * f_hz / inputs.c0;
+        let arg = k0 * inputs.roughness_r * psi_g.sin();
+        exp_clamped(-0.5 * arg * arg)
+    };
+
+    // Fs — scattering-zone factor: documented stub = 1.0 (not active Phase 2).
+    let fs = 1.0;
+
+    ff * inputs.f_delta_nu * fc * fr * fs
 }
 
 #[cfg(test)]
@@ -152,7 +186,10 @@ mod tests {
         }
         // strict: at 1000 Hz turbulence has bitten (F < Ff)
         let hi = coherence_f(1000.0, dtau, 0.75, 0.0205, &inp);
-        assert!(hi < coherence_ff(1000.0, dtau), "Fc must reduce F at high f");
+        assert!(
+            hi < coherence_ff(1000.0, dtau),
+            "Fc must reduce F at high f"
+        );
     }
 
     // k₀ helper sanity (used by Fr): k₀ = 2πf/c₀.
