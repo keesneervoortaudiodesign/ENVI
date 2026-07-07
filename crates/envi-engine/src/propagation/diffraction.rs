@@ -356,6 +356,106 @@ pub fn dwedge0(f_hz: f64, geo: &WedgeGeometry) -> Result<Complex<f64>, Propagati
     Ok(p * geo.l * Complex::from_polar(1.0, -TAU * f_hz * geo.tau))
 }
 
+/// Two-wedge / thick-screen geometry (AV 1106/07 §5.7.3–5.7.4, Figs. 10–11).
+///
+/// `T₁` is the edge nearest the source, `T₂` nearest the receiver; the middle
+/// leg `T₁→T₂` carries `τ_M`/`R_M`. Each wedge's `θ` pair is measured from its
+/// own receiver-side face (Fig. 10/11 convention). For a thick screen (`p2edge`)
+/// the top segment `T₁T₂` belongs to both wedges.
+#[derive(Debug, Clone, Copy)]
+pub struct TwoWedgeGeometry {
+    /// First-wedge angle β₁, rad.
+    pub beta1: f64,
+    /// First-wedge source angle θ_{1S}, rad.
+    pub theta_1s: f64,
+    /// First-wedge receiver angle θ_{1R}, rad.
+    pub theta_1r: f64,
+    /// Second-wedge angle β₂, rad.
+    pub beta2: f64,
+    /// Second-wedge source angle θ_{2S}, rad.
+    pub theta_2s: f64,
+    /// Second-wedge receiver angle θ_{2R}, rad.
+    pub theta_2r: f64,
+    /// Travel time S → T₁, s.
+    pub tau_s: f64,
+    /// Travel time T₁ → T₂, s.
+    pub tau_m: f64,
+    /// Travel time T₂ → R, s.
+    pub tau_r: f64,
+    /// Distance S → T₁, m.
+    pub r_s: f64,
+    /// Distance T₁ → T₂, m.
+    pub r_m: f64,
+    /// Distance T₂ → R, m.
+    pub r_r: f64,
+}
+
+/// Which wedge is the "most important" (§5.21); selects the Eq. 97/98 (p2wedge)
+/// or Eq. 102/103 (p2edge) argument mapping. The primary wedge carries the total
+/// `τ`/`ℓ`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WedgePrimary {
+    /// The wedge nearest the source dominates (Eqs. 97 / 102).
+    First,
+    /// The wedge nearest the receiver dominates (Eqs. 98 / 103).
+    Second,
+}
+
+/// The four wedge-face impedances for `p2wedge` (source/receiver faces of each
+/// wedge, Nord2000-native `Im > 0`).
+#[derive(Debug, Clone, Copy)]
+pub struct TwoWedgeImpedances {
+    /// Source face of wedge 1, `Ẑ_{1S}`.
+    pub z_1s: Complex<f64>,
+    /// Receiver face of wedge 1, `Ẑ_{1R}`.
+    pub z_1r: Complex<f64>,
+    /// Source face of wedge 2, `Ẑ_{2S}`.
+    pub z_2s: Complex<f64>,
+    /// Receiver face of wedge 2, `Ẑ_{2R}`.
+    pub z_2r: Complex<f64>,
+}
+
+/// Diffraction over two separate wedges `p2wedge` (AV 1106/07 Eqs. 95–99).
+///
+/// `p̂ = D̂₁·D̂₂·e^{+j2πfτ}/ℓ²` with `τ = τ_S+τ_M+τ_R`, `ℓ = R_S+R_M+R_R`, and
+/// `D̂₁`/`D̂₂` the [`dwedge`] calls whose argument lists are fixed by Eq. 97
+/// (`primary = First`) or Eq. 98 (`primary = Second`) — see `composite_geoms`.
+///
+/// # Errors
+///
+/// Propagates [`dwedge`]'s domain error for a degenerate sub-wedge.
+pub fn p2wedge(
+    f_hz: f64,
+    geo: &TwoWedgeGeometry,
+    primary: WedgePrimary,
+    z: &TwoWedgeImpedances,
+) -> Result<Complex<f64>, PropagationError> {
+    let _ = (f_hz, geo, primary, z);
+    unimplemented!("Task 3 GREEN")
+}
+
+/// Diffraction over a thick screen (two edges of one body) `p2edge`
+/// (AV 1106/07 Eqs. 100–104).
+///
+/// Identical chaining to [`p2wedge`], but the shared top faces are **forced hard**
+/// (`Ẑ = ∞`) and the composed result carries the factor **0.5**:
+/// `p̂ = 0.5·D̂₁·D̂₂·e^{+j2πfτ}/ℓ²` (Eq. 102 for `First`, Eq. 103 for `Second`).
+/// Only the outer faces `Ẑ_{1S}`/`Ẑ_{2R}` are finite-impedance inputs.
+///
+/// # Errors
+///
+/// Propagates [`dwedge`]'s domain error for a degenerate sub-wedge.
+pub fn p2edge(
+    f_hz: f64,
+    geo: &TwoWedgeGeometry,
+    primary: WedgePrimary,
+    z_1s: Complex<f64>,
+    z_2r: Complex<f64>,
+) -> Result<Complex<f64>, PropagationError> {
+    let _ = (f_hz, geo, primary, z_1s, z_2r);
+    unimplemented!("Task 3 GREEN")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -598,5 +698,138 @@ mod tests {
         let below = pwedge(1000.0, &mk(-1e-7), HARD, HARD).unwrap();
         let above = pwedge(1000.0, &mk(1e-7), HARD, HARD).unwrap();
         assert!((below - above).norm() < 1e-4, "discontinuity at θ_R = 0");
+    }
+
+    /// Two-wedge geometry from S, T₁, T₂, R (edges above the S→R line); θ per
+    /// wedge measured CCW from its receiver-side face (straight down).
+    fn two_wedge(
+        s: (f64, f64),
+        t1: (f64, f64),
+        t2: (f64, f64),
+        r: (f64, f64),
+    ) -> TwoWedgeGeometry {
+        let c0 = sound_speed_ms(15.0);
+        let face = -FRAC_PI_2;
+        let ang = |e: (f64, f64), p: (f64, f64)| {
+            ((p.1 - e.1).atan2(p.0 - e.0) - face).rem_euclid(TAU)
+        };
+        let r_s = (t1.0 - s.0).hypot(t1.1 - s.1);
+        let r_m = (t2.0 - t1.0).hypot(t2.1 - t1.1);
+        let r_r = (r.0 - t2.0).hypot(r.1 - t2.1);
+        let beta = TAU * 0.9999;
+        TwoWedgeGeometry {
+            beta1: beta,
+            theta_1s: ang(t1, s),
+            theta_1r: ang(t1, t2),
+            beta2: beta,
+            theta_2s: ang(t2, t1),
+            theta_2r: ang(t2, r),
+            tau_s: r_s / c0,
+            tau_m: r_m / c0,
+            tau_r: r_r / c0,
+            r_s,
+            r_m,
+            r_r,
+        }
+    }
+
+    // --- Task 3 Test 1: case-71 literal-coordinate finiteness sweep ---------
+    // FORCE thin screen: edge at (15, 2), near-vertical 0.01 m faces ⇒ β ≈ 2π−ε.
+    // Every one of the 105 grid points must be finite (Pitfall 6 / T-02-08).
+    #[test]
+    fn case71_thin_screen_is_finite_at_all_105_grid_points() {
+        use crate::freq::FreqAxis;
+        let c0 = sound_speed_ms(15.0);
+        // Literal FORCE-like geometry: S=(0,0.5), edge T=(15,2), R=(50,1.5).
+        let (s, t, r): ((f64, f64), (f64, f64), (f64, f64)) =
+            ((0.0, 0.5), (15.0, 2.0), (50.0, 1.5));
+        let r_s = (t.0 - s.0).hypot(t.1 - s.1);
+        let r_r = (r.0 - t.0).hypot(r.1 - t.1);
+        let face = -FRAC_PI_2;
+        let ang = |p: (f64, f64)| ((p.1 - t.1).atan2(p.0 - t.0) - face).rem_euclid(TAU);
+        // β from the 0.01 m near-vertical faces: exterior 2π − (thin sliver).
+        let geo = WedgeGeometry {
+            tau_s: r_s / c0,
+            tau_r: r_r / c0,
+            tau: (r_s + r_r) / c0,
+            r_s,
+            r_r,
+            l: r_s + r_r,
+            theta_s: ang(s),
+            theta_r: ang(r),
+            beta: TAU - 0.01,
+        };
+        let axis = FreqAxis::new();
+        let mut finite = 0usize;
+        for &f in &axis.centres {
+            let p = pwedge(f, &geo, HARD, HARD).unwrap();
+            assert!(p.re.is_finite() && p.im.is_finite(), "NaN/Inf at {f} Hz");
+            finite += 1;
+        }
+        assert_eq!(finite, crate::freq::N_BANDS, "all 105 points must be evaluated");
+    }
+
+    // --- Task 3 Test 2: p2edge composition — 0.5 factor + hard top faces -----
+    #[test]
+    fn p2edge_composition_carries_the_half_factor_and_hard_top() {
+        let g = two_wedge((0.0, 1.0), (15.0, 4.0), (30.0, 4.0), (60.0, 1.0));
+        let f = 1000.0;
+        let (z1s, z2r) = (Complex::new(20.0, 15.0), Complex::new(20.0, 15.0));
+        let p = p2edge(f, &g, WedgePrimary::First, z1s, z2r).unwrap();
+        // Hand-assemble D̂₁·D̂₂ with hard top faces (Ẑ_{1R}=Ẑ_{2S}=∞) per Eq. 102.
+        let tau = g.tau_s + g.tau_m + g.tau_r;
+        let ell = g.r_s + g.r_m + g.r_r;
+        let g1 = WedgeGeometry {
+            tau_s: g.tau_s,
+            tau_r: g.tau_m + g.tau_r,
+            tau,
+            r_s: g.r_s,
+            r_r: g.r_m + g.r_r,
+            l: ell,
+            theta_s: g.theta_1s,
+            theta_r: g.theta_1r,
+            beta: g.beta1,
+        };
+        let g2 = WedgeGeometry {
+            tau_s: g.tau_m,
+            tau_r: g.tau_r,
+            tau: g.tau_m + g.tau_r,
+            r_s: g.r_m,
+            r_r: g.r_r,
+            l: g.r_m + g.r_r,
+            theta_s: g.theta_2s,
+            theta_r: g.theta_2r,
+            beta: g.beta2,
+        };
+        let d1 = dwedge(f, &g1, z1s, HARD).unwrap();
+        let d2 = dwedge(f, &g2, HARD, z2r).unwrap();
+        let want = 0.5 * d1 * d2 * Complex::from_polar(1.0, TAU * f * tau) / (ell * ell);
+        assert!((p - want).norm() / want.norm() < 1e-12, "0.5·D̂₁·D̂₂ composition");
+    }
+
+    // --- Task 3 Test 3: p2wedge monotonicity — two screens ≥ one screen ------
+    #[test]
+    fn p2wedge_attenuates_at_least_as_much_as_the_single_wedge() {
+        let s = (0.0, 1.0);
+        let t1 = (25.0, 5.0);
+        let t2 = (55.0, 5.0);
+        let r = (80.0, 1.0);
+        let g = two_wedge(s, t1, t2, r);
+        let z = TwoWedgeImpedances {
+            z_1s: HARD,
+            z_1r: HARD,
+            z_2s: HARD,
+            z_2r: HARD,
+        };
+        let r_sr = (r.0 - s.0).hypot(r.1 - s.1);
+        let single = thin_wedge(s, t1, r, 0.9999); // more-important wedge alone
+        let r_sr1 = (r.0 - s.0).hypot(r.1 - s.1);
+        for &f in &[250.0_f64, 1000.0, 4000.0] {
+            let p2 = p2wedge(f, &g, WedgePrimary::First, &z).unwrap();
+            let il2 = -20.0 * (p2.norm() * r_sr).log10();
+            let p1 = pwedge(f, &single, HARD, HARD).unwrap();
+            let il1 = -20.0 * (p1.norm() * r_sr1).log10();
+            assert!(il2 >= il1, "two-screen IL {il2:.2} < one-screen IL {il1:.2} at {f} Hz");
+        }
     }
 }
