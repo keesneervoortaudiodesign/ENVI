@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 2
 current_phase_name: Ground Effect & Diffraction
 status: in-progress
-stopped_at: Completed 02-01-PLAN.md (Nord2000-native numerics core) — wave 1 of Phase 2
-last_updated: "2026-07-07T18:40:00.000Z"
+stopped_at: Completed 02-02-PLAN.md (flat-terrain ground effect, Sub-models 1 & 2) — wave 2 of Phase 2
+last_updated: "2026-07-07T21:40:00.000Z"
 last_activity: 2026-07-07
-last_activity_desc: Completed 02-01 — Faddeeva w(ẑ) + Fresnel fits, Ẑ_G→Q̂ chain + ρᵢ, cancellation-free straight-ray ΔR, coherence F with injected FΔν seam; committed scipy oracle; module shells registered for wave 2
+last_activity_desc: Completed 02-02 — Fresnel-zone machinery (Eqs.338-353), Sub-model 1 (dip anchors ±0.05 dB, two-channel GroundResult), Sub-model 2 per-surface-TYPE segmented impedance + PhaseDiffFreq; committed scipy flat-ground oracle (2×105-pt curves ≤0.1 dB); Eq.128 last coeff corrected 1.36→3.1, Eq.132 const 18.052
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 5
-  completed_plans: 1
-  percent: 30
+  completed_plans: 2
+  percent: 40
 ---
 
 # Project State
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 2 of 4 (Ground Effect & Diffraction) — IN PROGRESS
-Plan: 1 of 5 in current phase complete (02-01 done; 02-02/02-03 are wave 2, 02-04/02-05 later waves)
-Status: Wave 1 complete — the Nord2000-native complex numerics core (Faddeeva w(ẑ), Fresnel f/g, Ẑ_G→Q̂ chain + ρᵢ, straight-ray cancellation-free ΔR, coherence F) is implemented, anchored, and cross-checked against a committed scipy oracle. Module shells registered so wave-2 plans (02-02, 02-03) run without mod.rs conflicts.
-Last activity: 2026-07-07 — Completed 02-01-PLAN.md: special/ground/rays/coherence modules; |Q̂|>1 preserved; impedance class B corrected 31.6→31.5; all quality gates pass (build/test/clippy/fmt, engine deps unchanged)
+Plan: 2 of 5 in current phase complete (02-01, 02-02 done; 02-03 is wave 2, 02-04/02-05 later waves)
+Status: Wave 2 (ground) landed — the flat-terrain ground effect is implemented on the 02-01 core: Fresnel-zone machinery (Eqs.338-353), Sub-model 1 reproducing the research ΔL dip table ±0.05 dB with the two-channel GroundResult (h_coh_factor: Complex phase-live + p_incoh: real), Sub-model 2 per-surface-TYPE segmented impedance + PhaseDiffFreq. Both cross-checked against a committed scipy flat-ground oracle at ≤0.1 dB. 02-03 (wedge diffraction) can proceed in parallel.
+Last activity: 2026-07-07 — Completed 02-02-PLAN.md: fresnel + terrain_effect::{submodel1, submodel2}; two-channel identity to 1e-12, F→1⇒p_incoh=0; Eq.128 last coeff corrected to 3.1, Eq.132 const 18.052; all quality gates pass (build/test/clippy/fmt, engine deps unchanged)
 
-Progress: [██░░░░░░░░] 20% (1/5 plans in phase 2)
+Progress: [████░░░░░░] 40% (2/5 plans in phase 2)
 
 ## Performance Metrics
 

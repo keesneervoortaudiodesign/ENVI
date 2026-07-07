@@ -64,7 +64,7 @@ Note (planned 2026-07-07): success criteria 1-2 are satisfied at propagation lev
 Plans:
 
 - [x] 02-01-PLAN.md — Nord2000-native numerics core: Faddeeva w(ẑ) + Fresnel fits, Ẑ_G→Q̂ chain + ρᵢ, straight-ray Δτ (cancellation-free), coherence F with FΔν seam; committed scipy oracle (ENG-02, ENG-07)
-- [ ] 02-02-PLAN.md — Flat-terrain ground effect: Fresnel-zone machinery, Sub-model 1 (dip anchors, two-channel GroundResult), Sub-model 2 segmented impedance per surface type + PhaseDiffFreq; oracle curves (ENG-02, ENG-07)
+- [x] 02-02-PLAN.md — Flat-terrain ground effect: Fresnel-zone machinery, Sub-model 1 (dip anchors ±0.05 dB, two-channel GroundResult), Sub-model 2 segmented impedance per surface type + PhaseDiffFreq; committed scipy flat-ground oracle 2×105-pt ≤0.1 dB (ENG-02, ENG-07)
 - [ ] 02-03-PLAN.md — Wedge diffraction kernels: Hadden–Pierce pwedge/Dwedge, lit-zone + angle-modification, p2wedge/p2edge/pwedge0; IL + shadow-boundary anchors (ENG-03)
 - [ ] 02-04-PLAN.md — Screen⇄ground sub-models 4/5/6 (generic engine, four/eight-path complex combination) + Sub-model 7 turbulence scattering; thin-screen oracle curve (ENG-03, ENG-07)
 - [ ] 02-05-PLAN.md — §5.21 terrain interpretation + Eq. 332 composition + two-channel H_coh/P_incoh transfer integration (single conj boundary), capabilities flipped, five oracle-pinned terrain cases + finiteness sweep (ENG-02, ENG-03, ENG-07)
@@ -132,7 +132,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. FORCE Harness, Geometry Model & Direct Path | 3/3 | Complete | 2026-07-07 |
-| 2. Ground Effect & Diffraction | 1/5 | In Progress | - |
+| 2. Ground Effect & Diffraction | 2/5 | In Progress | - |
 | 3. Meteorology & Refraction | 0/3 | Not started | - |
 | 4. Transfer Tensor, Directional Sources & Full Validation | 0/3 | Not started | - |
 
