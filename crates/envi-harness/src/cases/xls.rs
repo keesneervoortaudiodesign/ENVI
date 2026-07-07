@@ -292,6 +292,7 @@ fn parse_sheet(range: &Range<Data>, sheet: &str) -> Result<CaseDefinition, CaseL
         reference_version: ReferenceVersion::Force2009,
         description,
         source_position: None, // derived from lane/height conventions in plan 01-02
+        source_spectrum: super::SourceSpectrum::default(),
         receiver_position: None,
         propagation,
         terrain_profile,

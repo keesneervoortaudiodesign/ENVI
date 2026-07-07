@@ -10,7 +10,7 @@ reference = "analytic"       # vs "force-2009" / "force-2010"
 
 [source]
 position = [0.0, 0.0, 0.5]   # metric CRS, Z-up
-spectrum = { kind = "unit" } # L_W = 0 dB in every band (transfer test)
+spectrum = { kind = "unit" } # L_W = 0 dB in every band (pure transfer test)
 
 [receiver]
 position = [100.0, 0.0, 1.5]

@@ -10,7 +10,11 @@ pub mod cases;
 pub mod compare;
 pub mod scene_build;
 
+use envi_engine::freq::FREQ_AXIS;
 use envi_engine::geometry::{PathGeometry, azimuth_deg, reflect_over_segment};
+use envi_engine::propagation::air_absorption::Atmosphere;
+use envi_engine::propagation::direct_path;
+use envi_engine::transfer::band_levels_db;
 
 /// Result of running one case through the capability gate + engine + comparator.
 #[derive(Debug)]
@@ -50,9 +54,7 @@ pub fn run_case(case: &cases::CaseDefinition) -> Outcome {
     // empty, so the gate above always fires first); plans 01-02/01-03 and
     // Phases 2-4 replace these arms with real engine calls.
     match case.kind {
-        cases::CaseKind::FreeField => {
-            Outcome::Skipped("free-field dispatch lands in plan 01-03".to_string())
-        }
+        cases::CaseKind::FreeField => run_freefield_case(case),
         cases::CaseKind::Geometry => run_geometry_case(case),
         cases::CaseKind::ForceStraightRoad
         | cases::CaseKind::ForceCurvedRoad
@@ -146,4 +148,94 @@ fn run_geometry_case(case: &cases::CaseDefinition) -> Outcome {
     }
 
     Outcome::Pass
+}
+
+/// Run a synthetic free-field case end-to-end — the walking skeleton's payoff
+/// (plan 01-03 Task 3): file → Scene → engine complex transfer → dB-domain
+/// comparison → outcome.
+///
+/// Pipeline: [`scene_build::build_scene`] → the single sub-source + receiver →
+/// [`PathGeometry::direct`] → [`direct_path`] (105 complex values) →
+/// [`band_levels_db`] against the source spectrum → compared against
+/// [`compare::analytic_freefield_reference`] (an independent dB-domain oracle)
+/// at the case tolerance (1e-9 dB analytic identity, per 01-RESEARCH Open
+/// Question 2 — deliberately stricter than the FORCE 1 dB). Comparison is in the
+/// 105-point 1/12-octave space (the 27-band pick is for FORCE references).
+fn run_freefield_case(case: &cases::CaseDefinition) -> Outcome {
+    let scene = match scene_build::build_scene(case) {
+        Ok(scene) => scene,
+        Err(e) => return Outcome::FailDetail(format!("scene build failed: {e}")),
+    };
+
+    let Some(expected) = case.expected.as_ref() else {
+        return Outcome::FailDetail("free-field case is missing its [expected] block".to_string());
+    };
+    let tol = expected.tolerance_db;
+
+    // Atmosphere from the case propagation block (typed domain validation).
+    let Some(t_air_c) = case.propagation.t0_c else {
+        return Outcome::FailDetail(
+            "free-field case is missing the air temperature t0".to_string(),
+        );
+    };
+    let atmos = match Atmosphere::new(
+        t_air_c,
+        case.propagation.rh_percent,
+        case.propagation.pressure_kpa,
+    ) {
+        Ok(a) => a,
+        Err(e) => return Outcome::FailDetail(format!("invalid atmosphere: {e}")),
+    };
+
+    let Some(sub_source) = scene.sources.first().and_then(|s| s.sub_sources.first()) else {
+        return Outcome::FailDetail("scene has no source sub-source".to_string());
+    };
+    let Some(receiver) = scene.receivers.first() else {
+        return Outcome::FailDetail("scene has no receiver".to_string());
+    };
+
+    let path = match PathGeometry::direct(sub_source.position, receiver.position) {
+        Ok(p) => p,
+        Err(e) => return Outcome::FailDetail(format!("degenerate path: {e}")),
+    };
+
+    let axis = &*FREQ_AXIS;
+    let transfer = match direct_path(&path, &atmos, axis) {
+        Ok(h) => h,
+        Err(e) => return Outcome::FailDetail(format!("direct path failed: {e}")),
+    };
+
+    // Engine complex path → receiver band levels; independent dB-domain oracle.
+    let got = band_levels_db(&transfer, &sub_source.spectrum);
+    let want = compare::analytic_freefield_reference(path.r_m, &atmos, &sub_source.spectrum, axis);
+
+    let report = compare::compare_pointwise(&got, &want, tol, &axis.centres);
+    if report.pass {
+        Outcome::Pass
+    } else {
+        Outcome::Fail(report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use envi_engine::freq::{FREQ_AXIS, N_BANDS};
+    use envi_engine::geometry::PathGeometry;
+    use envi_engine::propagation::air_absorption::Atmosphere;
+    use envi_engine::propagation::direct_path;
+
+    #[test]
+    fn transfer_spectrum_is_105_complex_values_with_a_live_imaginary_part() {
+        // The engine output wired by the free-field arm is genuinely complex:
+        // 105 Complex<f64> values, at least one with a non-zero imaginary part
+        // (the phase convention is exercised, not a real scalar shortcut).
+        let atmos = Atmosphere::new(15.0, 70.0, 101.325).unwrap();
+        let path = PathGeometry::direct([0.0, 0.0, 0.5], [100.0, 0.0, 1.5]).unwrap();
+        let h = direct_path(&path, &atmos, &FREQ_AXIS).unwrap();
+        assert_eq!(h.len(), N_BANDS);
+        assert!(
+            h.iter().any(|z| z.im.abs() > 1e-12),
+            "the transfer spectrum must carry a live (non-zero) imaginary part at R = 100 m"
+        );
+    }
 }

@@ -95,7 +95,7 @@ pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
 /// no harness rewrite.
 #[must_use]
 pub fn implemented_capabilities() -> BTreeSet<Capability> {
-    BTreeSet::from([Capability::Geometry])
+    BTreeSet::from([Capability::Geometry, Capability::FreeField])
 }
 
 #[cfg(test)]
@@ -111,6 +111,7 @@ mod tests {
             reference_version: ReferenceVersion::Force2009,
             description: description.to_string(),
             source_position: None,
+            source_spectrum: crate::cases::SourceSpectrum::default(),
             receiver_position: None,
             propagation: PropagationParams::default(),
             terrain_profile: Vec::new(),
@@ -173,8 +174,8 @@ mod tests {
             implemented.contains(&Capability::Geometry),
             "plan 01-02 turns on the Geometry capability"
         );
-        // FreeField is still plan 01-03; the FORCE physics is Phases 2-4.
-        assert!(!implemented.contains(&Capability::FreeField));
+        // FreeField goes green in plan 01-03; the FORCE physics is Phases 2-4.
+        assert!(implemented.contains(&Capability::FreeField));
         assert!(!implemented.contains(&Capability::EmissionModel));
     }
 }

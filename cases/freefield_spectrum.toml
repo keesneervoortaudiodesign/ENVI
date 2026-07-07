@@ -1,0 +1,28 @@
+# Synthetic free-field case with a NON-uniform per-1/12-octave source spectrum
+# (SRC-01 end-to-end): a point sub-source carrying an L_W ramp drives receiver
+# band levels through the complex transfer. The engine's band levels must match
+# an independent dB-domain reference (L_W + ΔL_d − ΔL_a) within 1e-9 dB — the
+# strict analytic identity (01-RESEARCH Open Question 2), not the FORCE 1 dB.
+# Schema: 01-RESEARCH "Recommended harness input schema".
+
+[meta]
+name = "free-field spectrum ramp, 15C 70% RH"
+kind = "free-field"
+reference = "analytic"
+
+[source]
+position = [0.0, 0.0, 0.5]   # metric CRS, Z-up
+# Ramp L_W(i) = 80 + 0.1·i dB over the 105 grid points (non-uniform SRC-01).
+spectrum = { kind = "ramp", base_db = 80.0, slope_db_per_band = 0.1 }
+
+[receiver]
+position = [100.0, 0.0, 1.5]
+
+[atmosphere]
+t_air_c = 15.0
+rh_percent = 70.0
+pressure_kpa = 101.325
+
+[expected]
+tolerance_db = 1e-9          # analytic identity (strict), not the FORCE 1 dB
+bands = "analytic:divergence+iso9613"

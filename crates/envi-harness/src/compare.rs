@@ -12,6 +12,8 @@
 //! INDEX, never by float equality on nominal frequencies (Pitfall 3).
 
 use envi_engine::freq::{FreqAxis, N_BANDS, N_THIRD_OCT, NOMINAL_THIRD_OCT};
+use envi_engine::propagation::air_absorption::{Atmosphere, alpha_db_per_m, band_attenuation_db};
+use envi_engine::scene::BandSpectrum;
 
 /// FORCE tolerance for overall A-weighted levels (LAeq,24h / LAE / LAmax):
 /// ≤ 1 dB deviation. Source: Env. Project 1335 §6.
@@ -219,6 +221,97 @@ pub fn compare_27_band(
     }
 }
 
+/// Independent dB-domain free-field reference — the test oracle (threat
+/// T-01-09, float/precision integrity).
+///
+/// Computes the expected per-band receiver level PURELY in the dB domain:
+///
+/// ```text
+/// L_p(f) = L_W(f) + (−10·log10(4πr²)) − band_attenuation_db(α(f)·r)
+/// ```
+///
+/// It reuses the engine's α / band-correction (anchored independently by the
+/// engine unit tests) but **NOT** the engine's complex polar path — so the
+/// end-to-end comparison catches wiring, normalization and magnitude/phase
+/// roundtrip errors. Design: formula errors are caught by the engine unit
+/// anchors; this reference catches integration errors. Returns one value per
+/// 1/12-octave point ([`N_BANDS`]).
+#[must_use]
+pub fn analytic_freefield_reference(
+    r_m: f64,
+    atmos: &Atmosphere,
+    spectrum: &BandSpectrum,
+    axis: &FreqAxis,
+) -> Vec<f64> {
+    let divergence_db = -10.0 * (4.0 * std::f64::consts::PI * r_m * r_m).log10();
+    axis.centres
+        .iter()
+        .zip(spectrum.as_slice())
+        .map(|(&f, &lw_db)| {
+            let a0 = alpha_db_per_m(f, atmos) * r_m;
+            lw_db + divergence_db - band_attenuation_db(a0)
+        })
+        .collect()
+}
+
+/// Compare two equal-length pointwise spectra in the 105-point 1/12-octave
+/// space at a strict analytic tolerance, producing a [`ComparisonReport`].
+///
+/// The `nominal_hz` column carries the EXACT grid centre (there is no
+/// 1/3-octave nominal label at 1/12 resolution); no dip-shift rule applies
+/// (synthetic analytic identity, not a FORCE reference). `pass` is true iff
+/// every point is within `tol_db`.
+#[must_use]
+pub fn compare_pointwise(
+    got: &[f64],
+    want: &[f64],
+    tol_db: f64,
+    centres: &[f64],
+) -> ComparisonReport {
+    debug_assert_eq!(
+        got.len(),
+        want.len(),
+        "pointwise spectra must be equal length"
+    );
+    let deviations: Vec<BandDeviation> = got
+        .iter()
+        .zip(want)
+        .enumerate()
+        .map(|(i, (&g, &w))| BandDeviation {
+            band: i,
+            nominal_hz: centres.get(i).copied().unwrap_or(f64::NAN),
+            got_db: g,
+            want_db: w,
+            dev_db: g - w,
+        })
+        .collect();
+    let verdicts: Vec<BandVerdict> = deviations
+        .iter()
+        .map(|d| {
+            if d.dev_db.abs() <= tol_db {
+                BandVerdict::Ok
+            } else {
+                BandVerdict::Fail
+            }
+        })
+        .collect();
+    let max_abs_dev_db = deviations
+        .iter()
+        .map(|d| d.dev_db.abs())
+        .fold(0.0_f64, f64::max);
+    let pass = !verdicts.contains(&BandVerdict::Fail);
+    ComparisonReport {
+        deviations,
+        verdicts,
+        max_abs_dev_db,
+        overall_dev_db: None,
+        tol_band_db: tol_db,
+        tol_overall_db: FORCE_TOL_OVERALL_DB,
+        warnings: Vec::new(),
+        pass,
+    }
+}
+
 /// Pick the 27 exact-1/3-octave band values out of a 105-point 1/12-octave
 /// spectrum — by index (every 4th point), the same rule as
 /// [`FreqAxis::third_octave_pick`]. Under Nord2000's "band level = value at
@@ -327,6 +420,45 @@ mod tests {
         );
         assert!(!lenient.warnings.is_empty());
         assert!(lenient.verdicts.contains(&BandVerdict::DipShiftWarning));
+    }
+
+    #[test]
+    fn analytic_reference_is_lw_plus_divergence_minus_band_absorption() {
+        let axis = FreqAxis::new();
+        let atmos = Atmosphere::new(15.0, 70.0, 101.325).unwrap();
+        let r = 100.0;
+
+        // Unit spectrum: the reference at the 1000 Hz grid point is exactly
+        // divergence − band-corrected absorption (independent hand assembly).
+        let unit = BandSpectrum::uniform(0.0);
+        let ref_unit = analytic_freefield_reference(r, &atmos, &unit, &axis);
+        assert_eq!(ref_unit.len(), N_BANDS);
+        let f = axis.centres[64];
+        let want = -50.992_099 - band_attenuation_db(alpha_db_per_m(f, &atmos) * r);
+        assert_relative_eq!(ref_unit[64], want, epsilon = 1e-6);
+
+        // A per-band L_W adds linearly: ramp(i) shifts the reference by L_W(i).
+        let ramp: [f64; N_BANDS] = std::array::from_fn(|i| 80.0 + 0.1 * i as f64);
+        let ref_ramp =
+            analytic_freefield_reference(r, &atmos, &BandSpectrum::from_values(ramp), &axis);
+        for i in 0..N_BANDS {
+            assert_relative_eq!(ref_ramp[i] - ref_unit[i], ramp[i], epsilon = 1e-9);
+        }
+    }
+
+    #[test]
+    fn compare_pointwise_passes_on_identity_and_flags_a_point() {
+        let axis = FreqAxis::new();
+        let want: Vec<f64> = (0..N_BANDS).map(|i| 60.0 + i as f64).collect();
+        let report = compare_pointwise(&want, &want, 1e-9, &axis.centres);
+        assert!(report.pass);
+        assert_eq!(report.deviations.len(), N_BANDS);
+
+        let mut got = want.clone();
+        got[70] += 1e-6; // beyond the 1e-9 analytic tolerance
+        let report = compare_pointwise(&got, &want, 1e-9, &axis.centres);
+        assert!(!report.pass);
+        assert!(report.max_abs_dev_db > 1e-9);
     }
 
     #[test]

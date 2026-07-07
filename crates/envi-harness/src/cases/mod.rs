@@ -304,6 +304,29 @@ pub struct GeometryExpected {
     pub tolerance: Option<f64>,
 }
 
+/// A point sub-source's per-1/12-octave sound-power spectrum `L_W` (SRC-01).
+///
+/// Kept as a small spec here (harness data) and materialized into an engine
+/// `BandSpectrum` in `scene_build`. The `Ramp` variant is the non-uniform
+/// spectrum that proves a sub-source spectrum rides through the complex
+/// transfer end-to-end (plan 01-03 Task 3).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum SourceSpectrum {
+    /// Unit transfer test: `L_W = 0 dB` in every band.
+    #[default]
+    Unit,
+    /// Flat `L_W` in every band, dB.
+    Uniform(f64),
+    /// Linear ramp: `L_W(i) = base_db + slope_db_per_band · i` over the 105
+    /// grid points.
+    Ramp {
+        /// `L_W` at band index 0, dB.
+        base_db: f64,
+        /// Per-band slope, dB per 1/12-octave point.
+        slope_db_per_band: f64,
+    },
+}
+
 /// Expected-result block for synthetic (TOML) cases.
 #[derive(Debug, Clone)]
 pub struct SyntheticExpected {
@@ -334,6 +357,9 @@ pub struct CaseDefinition {
     /// Source position [x, y, z] in the local metric CRS, Z-up (synthetic
     /// cases; FORCE cases derive source geometry in plan 01-02).
     pub source_position: Option<[f64; 3]>,
+    /// The point sub-source's per-1/12-octave `L_W` spectrum (SRC-01).
+    /// Defaults to [`SourceSpectrum::Unit`] for FORCE / geometry cases.
+    pub source_spectrum: SourceSpectrum,
     /// Receiver position [x, y, z] in the local metric CRS, Z-up.
     pub receiver_position: Option<[f64; 3]>,
     /// Propagation / atmosphere parameters.
@@ -487,6 +513,7 @@ pub fn discover(refs_dir: &Path, cases_dir: &Path) -> Discovery {
                 reference_version: ReferenceVersion::Force2009,
                 description: format!("{file} present — layout parsing lands in Phases 3-4"),
                 source_position: None,
+                source_spectrum: SourceSpectrum::default(),
                 receiver_position: None,
                 propagation: PropagationParams::default(),
                 terrain_profile: Vec::new(),

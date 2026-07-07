@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use super::{
     CaseDefinition, CaseKind, CaseLoadError, GeometryExpected, PropagationParams, ReferenceVersion,
-    SyntheticExpected,
+    SourceSpectrum, SyntheticExpected,
 };
 
 /// Raw serde mirror of the TOML case schema.
@@ -35,14 +35,17 @@ struct TomlMeta {
 #[derive(Debug, Deserialize)]
 struct TomlSource {
     position: [f64; 3],
-    #[allow(dead_code)] // spectrum kinds beyond "unit" arrive in later phases
     spectrum: Option<TomlSpectrum>,
 }
 
+/// `[source.spectrum]` — the point sub-source's `L_W` (SRC-01). `kind` is one
+/// of `"unit"` / `"uniform"` (needs `base_db`) / `"ramp"` (needs `base_db` and
+/// `slope_db_per_band`).
 #[derive(Debug, Deserialize)]
 struct TomlSpectrum {
-    #[allow(dead_code)]
     kind: String,
+    base_db: Option<f64>,
+    slope_db_per_band: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -169,6 +172,56 @@ pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
         });
     }
 
+    // Resolve the source spectrum (SRC-01). Each provided level is checked
+    // finite; ramp/uniform require their parameters so a malformed fixture is a
+    // typed error, not a silent 0 dB.
+    let source_spectrum = match raw.source.spectrum {
+        None => SourceSpectrum::Unit,
+        Some(s) => {
+            if let Some(v) = s.base_db {
+                super::xls::require_finite(v, &context, "source.spectrum.base_db")?;
+            }
+            if let Some(v) = s.slope_db_per_band {
+                super::xls::require_finite(v, &context, "source.spectrum.slope_db_per_band")?;
+            }
+            match s.kind.as_str() {
+                "unit" => SourceSpectrum::Unit,
+                "uniform" => {
+                    let base_db = s.base_db.ok_or_else(|| CaseLoadError::Invalid {
+                        context: context.clone(),
+                        message: "source.spectrum kind \"uniform\" requires base_db".to_string(),
+                    })?;
+                    SourceSpectrum::Uniform(base_db)
+                }
+                "ramp" => {
+                    let base_db = s.base_db.ok_or_else(|| CaseLoadError::Invalid {
+                        context: context.clone(),
+                        message: "source.spectrum kind \"ramp\" requires base_db".to_string(),
+                    })?;
+                    let slope_db_per_band =
+                        s.slope_db_per_band.ok_or_else(|| CaseLoadError::Invalid {
+                            context: context.clone(),
+                            message: "source.spectrum kind \"ramp\" requires slope_db_per_band"
+                                .to_string(),
+                        })?;
+                    SourceSpectrum::Ramp {
+                        base_db,
+                        slope_db_per_band,
+                    }
+                }
+                other => {
+                    return Err(CaseLoadError::Invalid {
+                        context,
+                        message: format!(
+                            "unknown source.spectrum kind {other:?} \
+                             (accepted: \"unit\", \"uniform\", \"ramp\")"
+                        ),
+                    });
+                }
+            }
+        }
+    };
+
     // Optional [expected.geometry] block: validate every provided value is
     // finite, and require a reflection segment whenever a reflection anchor is
     // present (so run_case never reflects over a missing segment).
@@ -228,6 +281,7 @@ pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
         reference_version,
         description: raw.meta.name,
         source_position: Some(raw.source.position),
+        source_spectrum,
         receiver_position: Some(raw.receiver.position),
         propagation,
         terrain_profile: Vec::new(),
@@ -276,6 +330,60 @@ mod tests {
         assert_relative_eq!(expected.tolerance_db, 1e-9);
         assert_eq!(expected.bands, "analytic:divergence+iso9613");
         assert_eq!(case.id, "toml::freefield_100m");
+    }
+
+    #[test]
+    fn ramp_spectrum_parses_into_a_source_spectrum() {
+        let path = write_temp(
+            "envi_ramp_case.toml",
+            r#"
+[meta]
+name = "ramp"
+kind = "free-field"
+reference = "analytic"
+[source]
+position = [0.0, 0.0, 0.5]
+spectrum = { kind = "ramp", base_db = 80.0, slope_db_per_band = 0.1 }
+[receiver]
+position = [100.0, 0.0, 1.5]
+[atmosphere]
+t_air_c = 15.0
+[expected]
+tolerance_db = 1e-9
+bands = "analytic:divergence+iso9613"
+"#,
+        );
+        let case = load_toml_case(&path).expect("ramp case must load");
+        assert_eq!(
+            case.source_spectrum,
+            SourceSpectrum::Ramp {
+                base_db: 80.0,
+                slope_db_per_band: 0.1
+            }
+        );
+    }
+
+    #[test]
+    fn ramp_missing_slope_is_a_typed_error() {
+        let path = write_temp(
+            "envi_ramp_missing_slope.toml",
+            r#"
+[meta]
+name = "ramp"
+kind = "free-field"
+reference = "analytic"
+[source]
+position = [0.0, 0.0, 0.5]
+spectrum = { kind = "ramp", base_db = 80.0 }
+[receiver]
+position = [100.0, 0.0, 1.5]
+[expected]
+tolerance_db = 1e-9
+bands = "analytic:divergence"
+"#,
+        );
+        let err = load_toml_case(&path).unwrap_err();
+        assert!(matches!(err, CaseLoadError::Invalid { .. }), "got {err:?}");
     }
 
     #[test]

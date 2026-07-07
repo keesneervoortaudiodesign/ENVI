@@ -17,12 +17,30 @@
 
 use anyhow::{Context, anyhow};
 
+use envi_engine::freq::N_BANDS;
 use envi_engine::scene::{
     BandSpectrum, Building, CrsInfo, GroundSegment, Receiver, Scene, Source, SubSource,
     TerrainProfile,
 };
 
-use crate::cases::{CaseDefinition, CaseKind};
+use crate::cases::{CaseDefinition, CaseKind, SourceSpectrum};
+
+/// Materialize a [`SourceSpectrum`] spec into the engine's [`BandSpectrum`]
+/// (the point sub-source's per-1/12-octave `L_W`, SRC-01).
+fn band_spectrum(spec: SourceSpectrum) -> BandSpectrum {
+    match spec {
+        SourceSpectrum::Unit => BandSpectrum::uniform(0.0),
+        SourceSpectrum::Uniform(db) => BandSpectrum::uniform(db),
+        SourceSpectrum::Ramp {
+            base_db,
+            slope_db_per_band,
+        } => {
+            let values: [f64; N_BANDS] =
+                std::array::from_fn(|i| base_db + slope_db_per_band * i as f64);
+            BandSpectrum::from_values(values)
+        }
+    }
+}
 
 /// Source-line offset from the road centre line for FORCE straight-road cases.
 ///
@@ -105,7 +123,7 @@ fn build_force_straight_road(case: &CaseDefinition) -> anyhow::Result<Scene> {
         sources: vec![Source {
             sub_sources: vec![SubSource {
                 position: source_pos,
-                spectrum: BandSpectrum::uniform(0.0),
+                spectrum: band_spectrum(case.source_spectrum),
             }],
         }],
         receivers: vec![Receiver {
@@ -131,7 +149,7 @@ fn build_synthetic(case: &CaseDefinition) -> anyhow::Result<Scene> {
         sources: vec![Source {
             sub_sources: vec![SubSource {
                 position: source_pos,
-                spectrum: BandSpectrum::uniform(0.0),
+                spectrum: band_spectrum(case.source_spectrum),
             }],
         }],
         receivers: vec![Receiver {
@@ -223,6 +241,7 @@ mod tests {
             reference_version: ReferenceVersion::Analytic,
             description: "geometry".to_string(),
             source_position: Some([0.0, 0.0, 2.0]),
+            source_spectrum: crate::cases::SourceSpectrum::Unit,
             receiver_position: Some([100.0, 100.0, 2.0]),
             propagation: PropagationParams::default(),
             terrain_profile: Vec::new(),
