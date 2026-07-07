@@ -126,17 +126,46 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Populated during roadmap creation.
+Mapped during roadmap creation (2026-07-07). See `.planning/ROADMAP.md`.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (to be mapped by `/gsd-new-project` roadmap step) | — | Pending |
+| ENG-01 | Phase 1 | Pending |
+| ENG-02 | Phase 2 | Pending |
+| ENG-03 | Phase 2 | Pending |
+| ENG-04 | Phase 1 | Pending |
+| ENG-05 | Phase 3 | Pending |
+| ENG-06 | Phase 3 | Pending |
+| ENG-07 | Phase 2 | Pending |
+| ENG-08 | Phase 3 | Pending |
+| OUT-01 | Phase 4 | Pending |
+| OUT-02 | Phase 4 | Pending |
+| OUT-03 | Phase 4 | Pending |
+| OUT-04 | Phase 4 | Pending |
+| OUT-05 | Phase 4 | Pending |
+| OUT-06 | Phase 4 | Pending |
+| MET-01 | Phase 3 | Pending |
+| MET-02 | Phase 3 | Pending |
+| MET-03 | Phase 3 | Pending |
+| MET-04 | Phase 3 | Pending |
+| MET-05 | Phase 3 | Pending |
+| MET-06 | Phase 3 | Pending |
+| SRC-01 | Phase 1 | Pending |
+| SRC-02 | Phase 4 | Pending |
+| SRC-03 | Phase 4 | Pending |
+| SRC-04 | Phase 4 | Pending |
+| GEO-01 | Phase 1 | Pending |
+| GEO-02 | Phase 1 | Pending |
+| GEO-03 | Phase 1 | Pending |
+| VAL-01 | Phase 1 | Pending |
+| VAL-02 | Phase 4 | Pending |
+| VAL-03 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 27 total (ENG 8, OUT 6, MET 6, SRC 4, GEO 3 — VAL 3 = 30; see grouping)
-- Mapped to phases: 0 ⚠️ (pending roadmap)
-- Unmapped: 30 ⚠️
+- v1 requirements: 30 total (ENG 8, OUT 6, MET 6, SRC 4, GEO 3, VAL 3)
+- Mapped to phases: 30/30 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-07-07*
-*Last updated: 2026-07-07 after initialization*
+*Last updated: 2026-07-07 after roadmap creation (traceability mapped)*
