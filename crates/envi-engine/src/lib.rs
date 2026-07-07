@@ -17,4 +17,5 @@
 #![deny(unsafe_code)]
 
 pub mod freq;
+pub mod geometry;
 pub mod scene;
