@@ -26,7 +26,14 @@ use crate::geometry::PathGeometry;
 use crate::transfer::TransferSpectrum;
 
 pub mod air_absorption;
+pub mod coherence;
+pub mod diffraction;
 pub mod divergence;
+pub mod fresnel;
+pub mod ground;
+pub mod rays;
+pub mod special;
+pub mod terrain_effect;
 
 use air_absorption::{Atmosphere, alpha_db_per_m, band_attenuation_db};
 use divergence::divergence_amplitude;
@@ -63,6 +70,22 @@ pub enum PropagationError {
     DegenerateRange {
         /// The rejected range, m.
         r_m: f64,
+    },
+    /// Ground flow resistivity σ not strictly positive and finite. Terrain
+    /// σ crosses from untrusted case-file data into the complex numerics
+    /// (threat T-02-01) — reject rather than produce NaN/Inf impedance.
+    #[error("invalid flow resistivity: σ = {sigma_kpa} kPa·s·m⁻² must be positive and finite")]
+    InvalidFlowResistivity {
+        /// The rejected flow resistivity, kPa·s·m⁻².
+        sigma_kpa: f64,
+    },
+    /// Degenerate ray geometry (non-positive horizontal distance, negative
+    /// source/receiver height, or non-finite input) — a domain error at the
+    /// terrain → rays boundary (threat T-02-01), never a clamp.
+    #[error("degenerate ray geometry: {detail}")]
+    DegenerateRayGeometry {
+        /// Which geometric input was rejected.
+        detail: &'static str,
     },
 }
 
