@@ -17,7 +17,8 @@ A **numerically faithful Nord2000 engine** — validated against the FORCE road-
 ### Active
 
 - [ ] Full Nord2000 propagation engine in Rust (direct path, ground effect, screen/diffraction, air absorption), validated against the FORCE test cases
-- [ ] **Complex transfer-function output**: engine produces a complex acoustic transfer value per (directional sub-source × receiver × 1/12-octave frequency point), preserving magnitude + phase (direct/reflected Δτ interference), not just band energy
+- [ ] **Phase preserved through ALL environmental calculations** (user-mandated): every environmental operator — divergence (e^{−jkR}), air absorption, ground reflection (complex Q̂), screen diffraction (complex wedge), refraction — is applied as a complex, phase-preserving operation. Nothing collapses to magnitude/energy along the chain. The canonical output `H_coh[sub_source, receiver, 1/12-oct freq]` is a genuine `Complex<f64>` with live phase (this is what makes source filter/delay conditioning meaningful).
+- [ ] **Partial coherence as a separate channel**: Nord2000's turbulence-decorrelated `(1−F²)` energy is carried in a distinct real `P_incoh` channel added only at final level readout — it never overwrites phase in `H_coh`. Total level = `|coherent Σ (phase intact)|² + P_incoh`.
 - [ ] **Fast complex-tensor store + recalculation**: dense multi-dimensional `Complex<f64>` array `H[sub_source, receiver, freq]` cached so source conditioning changes (filter = complex gain, delay = phase ramp) recompute via cheap complex multiply-accumulate `p[r,f] = Σ_s H[s,r,f]·G_s(f)` without re-running propagation
 - [ ] Nord2000 meteorology model: log-lin sound-speed profile (A/B/C coefficients), equivalent-linear profile, frequency-dependent ground variant, guarded ray variables (ξ, Δτ)
 - [ ] Complex sound sources built from combined directional point sub-sources (per-band L_W + directivity), with per-source input conditioning (filtering, delaying) applied at recalculation time
@@ -68,7 +69,7 @@ A **numerically faithful Nord2000 engine** — validated against the FORCE road-
 | Open-Meteo (runtime) + ERA5/CDS (weather classes) for meteorology | Only free/open sources exposing the multi-level winds / stability / u* needed for A & B | — Pending |
 | Global data tier: Copernicus GLO-30 + ESA WorldCover + Overture | Chosen "Global" market; national LiDAR layered where available | — Pending |
 | Engine output = complex transfer tensor `H[sub_source, receiver, 1/12-oct freq]`, separating propagation from source conditioning | Makes filter/delay adjustments an interactive complex MAC instead of a full recompute; preserves phase/interference | — Pending |
-| Open question: represent Nord2000 partial-coherence (coefficient F) alongside the coherent complex transfer | Coherent transfer is exact for deterministic paths; the turbulence-driven incoherent term needs a channel/representation decision | — Pending (engine phase) |
+| **Phase preserved through every environmental operator; two-channel transfer (`H_coh` complex + `P_incoh` real)** | User-mandated: phase must survive all environmental calcs (delays/filters need it). A single complex value can't represent Nord2000 partial coherence, so the turbulence `(1−F²)` energy lives in a separate incoherent-power channel added at readout — never collapsing phase in `H_coh` | ✓ Decided 2026-07-07 |
 
 ## Evolution
 
