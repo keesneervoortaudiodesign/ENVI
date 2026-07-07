@@ -51,7 +51,7 @@
 
 ### Validation (VAL)
 
-- [ ] **VAL-01**: Stand up a test harness that loads and runs the FORCE road-traffic test cases (built *before* propagation code)
+- [x] **VAL-01**: Stand up a test harness that loads and runs the FORCE road-traffic test cases (built *before* propagation code)
 - [ ] **VAL-02**: Engine reproduces the FORCE test-case reference results within the standard's tolerance
 - [ ] **VAL-03**: Cross-validate shared sub-effects (divergence, ISO 9613-1 air absorption, screen geometry) against NoiseModelling's CNOSSOS output
 
@@ -157,11 +157,12 @@ Mapped during roadmap creation (2026-07-07). See `.planning/ROADMAP.md`.
 | GEO-01 | Phase 1 | Pending |
 | GEO-02 | Phase 1 | Pending |
 | GEO-03 | Phase 1 | Pending |
-| VAL-01 | Phase 1 | Pending |
+| VAL-01 | Phase 1 | Complete |
 | VAL-02 | Phase 4 | Pending |
 | VAL-03 | Phase 4 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 30 total (ENG 8, OUT 6, MET 6, SRC 4, GEO 3, VAL 3)
 - Mapped to phases: 30/30 ✓
 - Unmapped: 0 ✓
