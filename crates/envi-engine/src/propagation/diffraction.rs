@@ -205,6 +205,93 @@ fn wedge_sum(
     -(1.0 / PI) * acc * Complex::from_polar(1.0, w * tau) / ell
 }
 
+/// Angle-modification scheme (AV 1106/07 p. 43) for image sources/receivers that
+/// land **inside** the wedge (ground-reflected paths, plan 02-04; upward
+/// refraction, Phase 3). Applied in the printed order; returns the modified
+/// `(θ′_S, θ′_R, β′)`. For an exterior source/receiver (`0 ≤ θ_R ≤ θ_S ≤ β`) it
+/// is a no-op.
+fn modify_angles(mut theta_s: f64, mut theta_r: f64, mut beta: f64) -> (f64, f64, f64) {
+    // 0 > θ_R > β − 2π:  θ′_R = 0, θ′_S = θ_S − θ_R, β′ = β − θ_R.
+    if 0.0 > theta_r && theta_r > beta - TAU {
+        theta_s -= theta_r;
+        beta -= theta_r;
+        theta_r = 0.0;
+    } else if theta_r <= beta - TAU {
+        // θ_R ≤ β − 2π:  θ′_R = 0, θ′_S = 2π − (β − θ_S), β′ = 2π.
+        theta_s = TAU - (beta - theta_s);
+        beta = TAU;
+        theta_r = 0.0;
+    }
+    // β < θ_S < 2π (using the possibly-modified θ_S, β):  β′ = θ_S.
+    if beta < theta_s && theta_s < TAU {
+        beta = theta_s;
+    }
+    // θ_S ≥ 2π (using the possibly-modified θ_S):  θ′_S = 2π, β′ = 2π.
+    if theta_s >= TAU {
+        theta_s = TAU;
+        beta = TAU;
+    }
+    (theta_s, theta_r, beta)
+}
+
+/// Lit-zone additions (AV 1106/07 Eqs. 87–90): the direct ray (θ₁ < π, Eq. 88),
+/// the source-face reflection (θ₃ < π, Eq. 89), and the receiver-face reflection
+/// (θ₂ < π, Eq. 90). `include_faces` is false for `pwedge0` (face reflections
+/// disappear, Eq. 105).
+#[allow(clippy::too_many_arguments)]
+fn lit_additions(
+    f_hz: f64,
+    theta_s: f64,
+    theta_r: f64,
+    beta: f64,
+    tau_s: f64,
+    tau_r: f64,
+    r_s: f64,
+    r_r: f64,
+    z_s: Complex<f64>,
+    z_r: Complex<f64>,
+    include_faces: bool,
+) -> Complex<f64> {
+    let w = TAU * f_hz;
+    // Path length / travel time for a straight ray subtending angle θ at the edge
+    // (law of cosines) — Eqs. 88–90.
+    let ray = |theta: f64| {
+        let cos = theta.cos();
+        let r = (r_s * r_s + r_r * r_r - 2.0 * r_s * r_r * cos).sqrt();
+        let t = (tau_s * tau_s + tau_r * tau_r - 2.0 * tau_s * tau_r * cos).sqrt();
+        (r, t)
+    };
+    let th1 = theta_s - theta_r;
+    let th2 = theta_s + theta_r;
+    let th3 = 2.0 * beta - (theta_s + theta_r);
+    let mut add = Complex::new(0.0, 0.0);
+    if th1 < PI {
+        let (r1, t1) = ray(th1); // Eq. 88 direct ray
+        add += Complex::from_polar(1.0, w * t1) / r1;
+    }
+    if include_faces {
+        if th3 < PI {
+            // Eq. 89 source-face reflection: R₂/τ₂ use θ₂; Q̂_R on Ẑ_R.
+            let (r2, t2) = ray(th2);
+            let psi = ((r_s * theta_s.sin() + r_r * theta_r.sin()) / r2)
+                .clamp(-1.0, 1.0)
+                .asin()
+                .abs();
+            add += spherical_q(f_hz, t2, psi, z_r) * Complex::from_polar(1.0, w * t2) / r2;
+        }
+        if th2 < PI {
+            // Eq. 90 receiver-face reflection: R₃/τ₃ use θ₃; Q̂_S on Ẑ_S.
+            let (r3, t3) = ray(th3);
+            let psi = ((r_s * (beta - theta_s).sin() + r_r * (beta - theta_r).sin()) / r3)
+                .clamp(-1.0, 1.0)
+                .asin()
+                .abs();
+            add += spherical_q(f_hz, t3, psi, z_s) * Complex::from_polar(1.0, w * t3) / r3;
+        }
+    }
+    add
+}
+
 /// Shared entry point for [`pwedge`] and [`pwedge0`] (`n1_only`).
 fn pwedge_inner(
     f_hz: f64,
@@ -214,9 +301,14 @@ fn pwedge_inner(
     n1_only: bool,
 ) -> Result<Complex<f64>, PropagationError> {
     validate(geo)?;
-    let p = wedge_sum(
-        f_hz, geo.theta_s, geo.theta_r, geo.beta, geo.tau, geo.tau_s, geo.tau_r, geo.l, z_s,
-        z_r, n1_only,
+    // Map image points inside the wedge back into the valid domain (p. 43).
+    let (theta_s, theta_r, beta) = modify_angles(geo.theta_s, geo.theta_r, geo.beta);
+    let mut p = wedge_sum(
+        f_hz, theta_s, theta_r, beta, geo.tau, geo.tau_s, geo.tau_r, geo.l, z_s, z_r, n1_only,
+    );
+    p += lit_additions(
+        f_hz, theta_s, theta_r, beta, geo.tau_s, geo.tau_r, geo.r_s, geo.r_r, z_s, z_r,
+        !n1_only,
     );
     Ok(p)
 }
@@ -247,8 +339,10 @@ pub fn dwedge(
 ///
 /// [`PropagationError::DegenerateRayGeometry`] on a non-finite/non-physical wedge.
 pub fn pwedge0(f_hz: f64, geo: &WedgeGeometry) -> Result<Complex<f64>, PropagationError> {
-    let _ = (f_hz, geo);
-    unimplemented!("Task 2 GREEN")
+    // Non-reflecting faces ⇒ the impedance arguments are inert (Q₁ = 1, no face
+    // reflections); pass a hard placeholder that `n1_only` never consults.
+    let hard = Complex::new(1.0, 0.0);
+    pwedge_inner(f_hz, geo, hard, hard, true)
 }
 
 /// The non-reflecting diffraction coefficient `D̂ = pwedge0·ℓ·e^{−jωτ}`
@@ -450,8 +544,9 @@ mod tests {
     // --- Task 2 Test 2: deep lit zone recovers the free-field direct field --
     #[test]
     fn deep_lit_zone_recovers_the_free_field_within_one_percent() {
-        // Edge far below the S→R line ⇒ θ₁ ≪ π, no screening: |p̂|·R_SR → 1.
-        let (s, t, r) = ((0.0, 5.0), (50.0, 0.2), (100.0, 5.0));
+        // Edge far below the S→R line ⇒ θ₁ well under π, no screening:
+        // the direct-ray addition (Eq. 88) rebuilds the free field, |p̂|·R_SR → 1.
+        let (s, t, r) = ((0.0, 30.0), (50.0, 0.1), (100.0, 30.0));
         let geo = thin_wedge(s, t, r, 0.9999);
         let r_sr = (r.0 - s.0).hypot(r.1 - s.1);
         let p = pwedge(2000.0, &geo, HARD, HARD).unwrap();
