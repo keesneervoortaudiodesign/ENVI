@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "name": "envi_nm_thin_barrier",
+  "comment": "ENVI VAL-03 scene (b): free-field geometry of scene (a) PLUS a thin vertical barrier (screen) at x = 50 m, perpendicular to the source-receiver line, 4 m tall, flat HARD ground (G=0). Isolates barrier insertion loss (Abar / CNOSSOS Adif). REPORT-ONLY: Nord2000 Hadden-Pierce wedge vs CNOSSOS empirical Adif differ by design (0-6 dB) - equality is NOT gated. Local projected CRS EPSG:2154 (metres). See ../README.md.",
+  "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::2154" } },
+  "atmosphere": { "temperature_c": 15.0, "humidity_percent": 70.0, "pressure_kpa": 101.325 },
+  "ground_absorption_g": 0.0,
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "role": "SOURCE", "id": "S1", "height_m": 0.5 },
+      "geometry": { "type": "Point", "coordinates": [0.0, 0.0] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "role": "RECEIVER", "id": "R1", "height_m": 1.5 },
+      "geometry": { "type": "Point", "coordinates": [100.0, 0.0] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "role": "BARRIER", "id": "B1", "height_m": 4.0, "thin_screen": true },
+      "geometry": { "type": "LineString", "coordinates": [[50.0, -20.0], [50.0, 20.0]] }
+    }
+  ]
+}

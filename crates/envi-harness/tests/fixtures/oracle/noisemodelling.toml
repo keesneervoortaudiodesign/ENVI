@@ -1,0 +1,173 @@
+# NoiseModelling CNOSSOS-EU cross-validation fixture (VAL-03) — DO NOT hand-edit values.
+# Regeneration is operator-driven and one-time: see tools/noisemodelling_oracle/README.md.
+# The Rust suite reads ONLY this committed TOML — no Java / network / credentials at test time.
+#
+# ⛔ PLACEHOLDER: Java is not installed on the machine that produced this repo state, so the
+#    per-band CNOSSOS values below are ZERO placeholders and `[meta] placeholder = true`.
+#    The oracle_noisemodelling.rs tests therefore SKIP (honest fail-soft — never a false Pass),
+#    printing a pointer to the regeneration recipe. Run the recipe once (Java present) and set
+#    placeholder = false with the exported per-octave-band Adiv/Aatm/Abar/Aground.
+
+[meta]
+oracle = "NoiseModelling v6.0.0 (CNOSSOS-EU, Directive (EU) 2015/996)"
+nm_version = "v6.0.0"
+generator = "human-run recipe: tools/noisemodelling_oracle/README.md"
+provenance = "PLACEHOLDER — NoiseModelling not yet run (Java absent on generating machine)"
+generated_date = "PENDING"
+placeholder = true
+# Scene provenance: sha256[:16] of the committed scene files that these numbers must
+# be generated from. A changed scene must invalidate stale numbers (recompute + regenerate).
+scene_free_field_sha256 = "c495f8c3353eb5ac"
+scene_thin_barrier_sha256 = "2f1d399c610d49a4"
+scene_soft_ground_sha256 = "98a2afe1bc91ece4"
+# Geometry shared by all scenes (source 0.5 m, receiver 1.5 m, horizontal 100 m).
+direct_distance_m = 100.004999875
+# Atmosphere (FORCE parameters).
+atmosphere_t_c = 15.0
+atmosphere_rh_percent = 70.0
+atmosphere_pressure_kpa = 101.325
+# Equality-gate tolerances (only for genuinely-identical physics).
+divergence_tol_db = 0.1
+air_absorption_tol_db = 0.2
+# Air absorption at 8 kHz (band index 100): ENVI's Eq.287 band conversion vs CNOSSOS's
+# α·d/1000 centre value may exceed the 0.2 dB gate (band-averaging vs centre). Documented,
+# not forced — reported against this looser documented bound instead of a hard failure.
+air_absorption_8k_documented_tol_db = 1.5
+
+# ── Scene (a) free field, HARD ground (G=0): EQUALITY-GATED divergence ─────────────
+# CNOSSOS Adiv is frequency-independent; carried per octave band index so the test's
+# coverage assertion proves all 8 octave centres were checked (no truncated-fixture pass).
+[[divergence]]
+scene = "free_field"
+band_index = 16
+adiv_db = 0.0
+[[divergence]]
+scene = "free_field"
+band_index = 28
+adiv_db = 0.0
+[[divergence]]
+scene = "free_field"
+band_index = 40
+adiv_db = 0.0
+[[divergence]]
+scene = "free_field"
+band_index = 52
+adiv_db = 0.0
+[[divergence]]
+scene = "free_field"
+band_index = 64
+adiv_db = 0.0
+[[divergence]]
+scene = "free_field"
+band_index = 76
+adiv_db = 0.0
+[[divergence]]
+scene = "free_field"
+band_index = 88
+adiv_db = 0.0
+[[divergence]]
+scene = "free_field"
+band_index = 100
+adiv_db = 0.0
+
+# ── Scene (a) free field: EQUALITY-GATED ISO 9613-1 air absorption ─────────────────
+[[air_absorption]]
+scene = "free_field"
+band_index = 16
+aatm_db = 0.0
+[[air_absorption]]
+scene = "free_field"
+band_index = 28
+aatm_db = 0.0
+[[air_absorption]]
+scene = "free_field"
+band_index = 40
+aatm_db = 0.0
+[[air_absorption]]
+scene = "free_field"
+band_index = 52
+aatm_db = 0.0
+[[air_absorption]]
+scene = "free_field"
+band_index = 64
+aatm_db = 0.0
+[[air_absorption]]
+scene = "free_field"
+band_index = 76
+aatm_db = 0.0
+[[air_absorption]]
+scene = "free_field"
+band_index = 88
+aatm_db = 0.0
+[[air_absorption]]
+scene = "free_field"
+band_index = 100
+aatm_db = 0.0
+
+# ── Scene (b) thin barrier: REPORT-ONLY insertion loss (NOT equality-gated) ────────
+[[barrier]]
+scene = "thin_barrier"
+band_index = 16
+abar_db = 0.0
+[[barrier]]
+scene = "thin_barrier"
+band_index = 28
+abar_db = 0.0
+[[barrier]]
+scene = "thin_barrier"
+band_index = 40
+abar_db = 0.0
+[[barrier]]
+scene = "thin_barrier"
+band_index = 52
+abar_db = 0.0
+[[barrier]]
+scene = "thin_barrier"
+band_index = 64
+abar_db = 0.0
+[[barrier]]
+scene = "thin_barrier"
+band_index = 76
+abar_db = 0.0
+[[barrier]]
+scene = "thin_barrier"
+band_index = 88
+abar_db = 0.0
+[[barrier]]
+scene = "thin_barrier"
+band_index = 100
+abar_db = 0.0
+
+# ── Scene (c) soft ground: REPORT-ONLY excess attenuation (NOT equality-gated) ─────
+[[ground]]
+scene = "soft_ground"
+band_index = 16
+aground_db = 0.0
+[[ground]]
+scene = "soft_ground"
+band_index = 28
+aground_db = 0.0
+[[ground]]
+scene = "soft_ground"
+band_index = 40
+aground_db = 0.0
+[[ground]]
+scene = "soft_ground"
+band_index = 52
+aground_db = 0.0
+[[ground]]
+scene = "soft_ground"
+band_index = 64
+aground_db = 0.0
+[[ground]]
+scene = "soft_ground"
+band_index = 76
+aground_db = 0.0
+[[ground]]
+scene = "soft_ground"
+band_index = 88
+aground_db = 0.0
+[[ground]]
+scene = "soft_ground"
+band_index = 100
+aground_db = 0.0

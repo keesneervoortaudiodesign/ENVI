@@ -1,0 +1,20 @@
+{
+  "type": "FeatureCollection",
+  "name": "envi_nm_free_field",
+  "comment": "ENVI VAL-03 scene (a): free field, single point source, flat HARD ground (G=0), receiver at 100 m, no barrier. Isolates geometrical divergence (Adiv) + ISO 9613-1 air absorption (Aatm). Standard atmosphere 15 C / 70 % RH (FORCE parameters). Local projected CRS EPSG:2154 (metres); the origin is arbitrary. Heights are metres above the flat ground plane. See ../README.md for the run recipe.",
+  "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::2154" } },
+  "atmosphere": { "temperature_c": 15.0, "humidity_percent": 70.0, "pressure_kpa": 101.325 },
+  "ground_absorption_g": 0.0,
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "role": "SOURCE", "id": "S1", "height_m": 0.5, "lwd_note": "unit/known point-source spectrum set at run time per README" },
+      "geometry": { "type": "Point", "coordinates": [0.0, 0.0] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "role": "RECEIVER", "id": "R1", "height_m": 1.5 },
+      "geometry": { "type": "Point", "coordinates": [100.0, 0.0] }
+    }
+  ]
+}
