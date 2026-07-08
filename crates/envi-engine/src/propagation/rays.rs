@@ -55,6 +55,22 @@ pub struct RayPair {
     pub dtau: f64,
 }
 
+/// The cancellation-free flat-ground travel-distance difference
+/// `ΔR = 4·hS·hR/(R₁+R₂)` — equivalently `(R₂²−R₁²)/(R₂+R₁)` — with
+/// `R₁ = √(d²+(hR−hS)²)` (direct) and `R₂ = √(d²+(hR+hS)²)` (image-reflected).
+///
+/// This is the CLAUDE.md numerics house-rule identity for the interference
+/// travel-time difference `Δτ = ΔR/c₀`: it avoids catastrophically cancelling
+/// two near-equal lengths (§5.5.6). Single-sourced here so both the straight-ray
+/// constructor and the circular-ray Eq. 52 shadow-edge cap
+/// (`refraction::circular_ray::travel_time_diff`) share one implementation
+/// (WR-03 / 02-RESEARCH §9).
+pub(crate) fn flat_delta_r(d: f64, h_s: f64, h_r: f64) -> f64 {
+    let r1 = (d * d + (h_r - h_s).powi(2)).sqrt();
+    let r2 = (d * d + (h_r + h_s).powi(2)).sqrt();
+    4.0 * h_s * h_r / (r1 + r2)
+}
+
 /// Straight-ray variables for flat ground (AV 1106/07 §5.5.4–5.5.6 homogeneous
 /// limit).
 ///
@@ -90,8 +106,8 @@ pub fn straight_rays(d: f64, h_s: f64, h_r: f64, c0: f64) -> Result<RayPair, Pro
     let r1 = (d * d + (h_r - h_s).powi(2)).sqrt();
     let r2 = (d * d + (h_r + h_s).powi(2)).sqrt();
     let psi_g = (h_s + h_r).atan2(d);
-    // Cancellation-free ΔR = (R₂²−R₁²)/(R₂+R₁) = 4·hS·hR/(R₁+R₂).
-    let dr = 4.0 * h_s * h_r / (r1 + r2);
+    // Cancellation-free ΔR = (R₂²−R₁²)/(R₂+R₁) = 4·hS·hR/(R₁+R₂) (single-sourced).
+    let dr = flat_delta_r(d, h_s, h_r);
     let dtau = dr / c0;
 
     // Reflection point splits R₂ in proportion to the heights (similar

@@ -20,7 +20,7 @@
 use std::f64::consts::PI;
 
 use crate::propagation::PropagationError;
-use crate::propagation::rays::RayVars;
+use crate::propagation::rays::{RayVars, flat_delta_r};
 
 /// Direct-ray variables (AV 1106/07 §5.5.4 Eq. 44): travel time, arc length,
 /// the ray-angle change `Δθ`, the launch/grazing angle `ψ_L`, and the
@@ -297,13 +297,10 @@ pub fn travel_time_diff(tau_direct: f64, tau_reflected: f64, geom: &TravelTimeGe
             // Eq. 52 Δτ₀ shadow-edge cap. Form R₂ − R₁ via the cancellation-free
             // identity ΔR = 4·hS·hR/(R₁+R₂) (= (R₂²−R₁²)/(R₂+R₁)), not the naive
             // subtraction of two near-equal lengths — the CLAUDE.md Δτ house rule,
-            // as used in `rays.rs` (WR-03). Long range with low heights would lose
-            // ~4–8 significant figures otherwise.
-            let d = geom.d;
-            let r1 = (d * d + (geom.h_s - geom.h_r).powi(2)).sqrt();
-            let r2 = (d * d + (geom.h_s + geom.h_r).powi(2)).sqrt();
-            let dr = 4.0 * geom.h_s * geom.h_r / (r1 + r2);
-            let dtau0 = (1.0 - (d / geom.d_sz).powi(2)) * dr / geom.c0;
+            // single-sourced in `rays::flat_delta_r` (WR-03). Long range with low
+            // heights would lose ~4–8 significant figures otherwise.
+            let dr = flat_delta_r(geom.d, geom.h_s, geom.h_r);
+            let dtau0 = (1.0 - (geom.d / geom.d_sz).powi(2)) * dr / geom.c0;
             if dtau > dtau0 {
                 dtau = dtau0;
             }
