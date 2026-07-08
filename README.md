@@ -45,7 +45,7 @@ operation — nothing collapses to magnitude/energy along the chain:
 | Free-field direct path (divergence + ISO 9613-1 air absorption) | ✅ implemented | 1 |
 | **Ground effect** (segmented impedance, spherical-wave Q̂) | ✅ implemented | 2 |
 | **Screen / barrier diffraction** (single / thick / double) | ✅ implemented | 2 |
-| Meteorological refraction (wind + temperature gradients) | ⏳ Phase 3 | 3 |
+| **Meteorological refraction** (wind + temperature gradients, turbulence coherence) | ✅ implemented | 3 |
 | Nord2000 road emission model (Jonasson, pass-by integration) | ⏳ Phase 4 | 4 |
 
 ### Phase 2 — ground effect & diffraction
@@ -64,11 +64,46 @@ operation — nothing collapses to magnitude/energy along the chain:
   reduces the screen shape (`Convex`, Eq. 336), computes the equivalent flat
   terrain, and produces the §5.22 Eq. 332 transition parameters
   (`r_scr1`/`r_scr2`/`r_scr12`/`r_flat`) that compose the sub-models. Non-flat
-  terrain (Sub-model 3, §5.12) is a **typed hard error** scheduled with Phase 3
-  — never a silent approximation.
+  terrain (Sub-model 3, §5.12) remains a **typed hard error** — never a silent
+  approximation.
 - **Two-channel readout (ENG-07).** `terrain_effect()` returns the phase-live
   `h_coh_factor` and the real `p_incoh` per band; `band_levels_db_two_channel`
   forms `L = L_W + 10·lg(|H_coh|² + |H_ff|²·P_incoh)`.
+
+### Phase 3 — meteorology & refraction
+
+- **Equivalent-linear profile (MET-03).** The log-lin sound-speed profile
+  `c(z) = A·ln(z/z₀+1) + B·z + C` collapses to an equivalent-linear curvature
+  `ξ` via `CalcEqSSP`, averaging `∂c/∂z` between source and receiver heights,
+  with the singular `|ξ| < 1e-6` homogeneous clamp and a cancellation-safe
+  `ΔR = 4·h_S·h_R/(R₁+R₂)` travel-time difference.
+- **Circular rays & shadow zone.** Direct/reflected rays over the curved
+  profile (cubic reflection-point solve), the shadow-zone edge `d_SZ`, and the
+  upward-refraction shielding that reuses the Phase-2 wedge kernel `pwedge0`.
+  Below the ξ clamp the ray solver reproduces the straight-ray result
+  **bit-for-bit** (the D-02 anchor).
+- **Frequency-dependent ground (MET-04).** `CalcEqSSPGround` makes `ξ(f)`
+  frequency-dependent over soft ground via `f_L`/`f_H` log-interpolation,
+  evaluated by **band index** on the 105-point grid; hard ground stays
+  frequency-independent.
+- **Per-azimuth weather (MET-02) & routes (MET-05/06).** `A` is derived per
+  source→receiver bearing (isotropic temperature part once + projected wind
+  `u·cos(az−φ_u)`), an inversion (`dt/dz>0`) gives `B>0`. All three input
+  routes are built — Route 1 (weather-class table → energy-weighted `L_den`),
+  Route 2 (surface met → A/B), Route 3 (Monin–Obukhov reconstruction +
+  hand-rolled 3×3 least-squares fit, no linear-algebra crate) — plus the
+  reflection-path before/after split (`A₁/B₁`, `A₂/B₂`, ENG-06).
+- **Turbulence coherence (ENG-08).** The fluctuating-refraction factor
+  `F_τ` (Eq. 112, sinc with `x = 2π·f·|Δτ⁺−Δτ|`) enters through the existing
+  `CoherenceInputs::f_delta_nu` seam with no call-site change; when the
+  fluctuation std-devs are zero it is `1.0` **bit-exact**, so `P_incoh → 0`.
+- **Honest-green scope.** The weather-route A/B/C scaling constants are
+  `[ASSUMED]` (AV 1106/07 does not specify them) and validated by
+  structure/direction property tests and the committed scipy oracle only — no
+  false FORCE numeric pass. Wind/gradient FORCE cases stay
+  `Skipped(requires: emission-model)` until the Phase-4 road-emission model.
+  Segmented-ground and screened refraction are typed `NotImplemented` errors
+  (deferred to Phase 4), never a silent partial result.
 
 ### Validation approach
 
@@ -88,7 +123,9 @@ road case gates end-to-end before Phase 4. Phase 2 is validated at the
    geometries × 105 bands** (ROADMAP success criterion 3).
 
 FORCE road cases remain `Skipped(requires: emission-model)` — the skip-reason
-list has *shrunk* now that ground effect and diffraction are implemented.
+list has *shrunk* now that ground effect, diffraction, and (Phase 3)
+refraction are implemented; the wind/gradient cases no longer require
+`refraction`, only the Phase-4 emission model.
 
 ## Building & running
 
@@ -121,8 +158,8 @@ the frozen forward contract for that Phase-4 recalculation path.
 |-------|-------|--------|
 | 1 | FORCE harness, semantic 2.5D scene, complex 1/12-octave direct path (divergence + ISO 9613-1) | ✅ complete |
 | 2 | Ground effect (segmented impedance, Q̂) + single/multi-edge diffraction + two-channel combination | ✅ complete |
-| 3 | Meteorology & refraction: log-lin A/B/C profile, equivalent-linear collapse (guarded ξ/Δτ), weather routes, turbulence coherence | ⏳ next |
-| 4 | Dense `H[s,r,f]` transfer tensor + filter/delay recalculation, directional multi-sub-source composition, full FORCE-suite pass + NoiseModelling cross-check | ⏳ |
+| 3 | Meteorology & refraction: log-lin A/B/C profile, equivalent-linear collapse (guarded ξ/Δτ), weather routes, turbulence coherence | ✅ complete |
+| 4 | Dense `H[s,r,f]` transfer tensor + filter/delay recalculation, directional multi-sub-source composition, full FORCE-suite pass + NoiseModelling cross-check | ⏳ next |
 
 ## Milestone 2 — Interactive Calculation UI (planned)
 
