@@ -9,6 +9,7 @@ pub mod capability;
 pub mod cases;
 pub mod compare;
 pub mod scene_build;
+pub mod weather;
 
 use envi_engine::freq::FREQ_AXIS;
 use envi_engine::geometry::{PathGeometry, azimuth_deg, reflect_over_segment};

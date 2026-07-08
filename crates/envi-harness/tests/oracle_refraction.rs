@@ -133,9 +133,18 @@ fn engine_calc_eq_ssp_ground_matches_oracle_by_band_index() {
     for row in &fx.eqssp_ground {
         // Compare by BAND INDEX (D-14): evaluate at the exact 1/12-oct centre.
         let f = axis.centres[row.band_index];
-        let (xi, c0) =
-            calc_eq_ssp_ground(f, row.d, row.h_s, row.h_r, row.sigma_kpa, row.z0, row.a, row.b, row.c)
-                .unwrap();
+        let (xi, c0) = calc_eq_ssp_ground(
+            f,
+            row.d,
+            row.h_s,
+            row.h_r,
+            row.sigma_kpa,
+            row.z0,
+            row.a,
+            row.b,
+            row.c,
+        )
+        .unwrap();
         if xi == 0.0 {
             saw_zero = true;
         }

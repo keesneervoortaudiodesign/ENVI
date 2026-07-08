@@ -230,6 +230,37 @@ pub struct PropagationParams {
     pub pressure_kpa: f64,
 }
 
+/// Nord2000 default wind-turbulence strength `Cv²` when a case omits it,
+/// m^(4/3)·s⁻² (D-11). **`[ASSUMED]`** moderate-turbulence value — validated by
+/// F_τ property tests in 03-03 (F_τ < 1 under turbulence, correct blend
+/// direction), never a fixed-value oracle. The FORCE cases that carry `Cv2`
+/// override this; only cases that omit it fall back here.
+pub const NORD2000_DEFAULT_CV2: f64 = 1.0;
+
+/// Nord2000 default temperature-turbulence strength `CT²` when a case omits it,
+/// K²·s⁻² (D-11). **`[ASSUMED]`** — see [`NORD2000_DEFAULT_CV2`].
+pub const NORD2000_DEFAULT_CT2: f64 = 0.1;
+
+impl PropagationParams {
+    /// The case's `(Cv², CT²)` if present, else the Nord2000 nonzero defaults
+    /// ([`NORD2000_DEFAULT_CV2`] / [`NORD2000_DEFAULT_CT2`], D-11).
+    ///
+    /// # Deliberate separation from the terrain loader (documented)
+    ///
+    /// The Phase-2 terrain oracle references were computed with **zero**
+    /// turbulence, so [`crate::build_terrain_inputs`] keeps `unwrap_or(0.0)` and
+    /// is **not** changed here. This accessor is the nonzero-default seam the
+    /// refraction / F_τ wiring (03-03) uses — adding the default without
+    /// perturbing the frozen terrain fixtures.
+    #[must_use]
+    pub fn turbulence_or_nord2000_default(&self) -> (f64, f64) {
+        (
+            self.cv2.unwrap_or(NORD2000_DEFAULT_CV2),
+            self.ct2.unwrap_or(NORD2000_DEFAULT_CT2),
+        )
+    }
+}
+
 impl Default for PropagationParams {
     fn default() -> Self {
         Self {
@@ -550,6 +581,23 @@ mod tests {
             .nth(2)
             .unwrap()
             .to_path_buf()
+    }
+
+    #[test]
+    fn turbulence_falls_back_to_nord2000_default_when_absent() {
+        // Absent Cv²/CT² ⇒ the nonzero Nord2000 defaults (D-11).
+        let bare = PropagationParams::default();
+        assert_eq!(
+            bare.turbulence_or_nord2000_default(),
+            (NORD2000_DEFAULT_CV2, NORD2000_DEFAULT_CT2)
+        );
+        // A present value overrides the default.
+        let with = PropagationParams {
+            cv2: Some(0.42),
+            ct2: Some(0.07),
+            ..PropagationParams::default()
+        };
+        assert_eq!(with.turbulence_or_nord2000_default(), (0.42, 0.07));
     }
 
     #[test]
