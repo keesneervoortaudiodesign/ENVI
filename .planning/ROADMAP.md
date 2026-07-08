@@ -117,12 +117,12 @@ Plans:
   4. The full FORCE road-traffic test suite passes within the standard's tolerance — the Milestone 1 acceptance gate
   5. Shared sub-effects (geometrical divergence, ISO 9613-1 air absorption, screen geometry) agree with NoiseModelling's CNOSSOS output within documented expected deltas, and a large synthetic receiver set computes with the tensor chunked/streamed inside a stated memory budget
 
-**Plans**: 2/5 plans executed
+**Plans**: 3/5 plans executed
 
 Plans:
 
 - [x] 04-01-PLAN.md — Complex tensor store (TensorPair, TensorSink, InMemorySink; row-major [s,r,f]) + solver seam + conditioning MAC path (filter G_s(f) + delay e^{−j2πfτ}), bit-exact MAC≡recompute + 256 MiB budget sweep (OUT-01..06)
-- [ ] 04-02-PLAN.md — Directional sub-sources: per-band spherical directivity balloons + rotation + Nord2000 road emission model (0.01/0.30/0.75 m, 1 m offset, 80/20 rolling/propulsion, incoherent Annex-A) + pass-by integration + LE−dL free-field anchor (SRC-02/03/04; emission underpins VAL-02)
+- [x] 04-02-PLAN.md — Directional sub-sources: per-band spherical directivity balloons + rotation + Nord2000 road emission model (0.01/0.30/0.75 m, 1 m offset, 80/20 rolling/propulsion, incoherent Annex-A) + pass-by integration + LE−dL free-field anchor (SRC-02/03/04; emission underpins VAL-02)
 - [ ] 04-03-PLAN.md — Straight-road FORCE pass: Sub-model 3 (§5.12) + segmented-ground refraction wiring + screen-refraction guard + SM8 Eq.279 decision + Ch.6 comparator wiring + EmissionModel flip → in-scope straight-road cases numeric Pass (VAL-02 part 1)
 - [ ] 04-04-PLAN.md — Curved + city + yearly: Coordinates-sheet loaders + contour→profile builder + Sub-model 11 image-source façade reflections + multi-lane/multi-category emission + Danish-hours L_den + Open-Q3 forest decision → full in-scope FORCE Pass, milestone acceptance (VAL-02 part 2)
 - [x] 04-05-PLAN.md — NoiseModelling CNOSSOS cross-validation: committed offline fixtures, divergence + ISO 9613-1 air-absorption equality gates at octave band indices, barrier/ground expected-delta reports (VAL-03)
@@ -133,8 +133,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 04-02: Directional balloons + road emission model + LE−dL anchor
-- [ ] 04-05: NoiseModelling cross-validation (parallel-safe — fixtures + comparison only)
+- [x] 04-02: Directional balloons + road emission model + LE−dL anchor
+- [x] 04-05: NoiseModelling cross-validation (parallel-safe — fixtures + comparison only)
 
 **Wave 3** *(blocked on 04-02)*
 

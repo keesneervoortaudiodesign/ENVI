@@ -39,9 +39,9 @@
 ### Sources — directional complex sources (SRC)
 
 - [x] **SRC-01**: Define a point sub-source with per-1/12-octave sound power / source spectrum
-- [ ] **SRC-02**: Attach a directivity function ΔL(θ, φ, f) to a sub-source
-- [ ] **SRC-03**: Compose a complex source from multiple directional sub-sources evaluated independently into the transfer tensor
-- [ ] **SRC-04**: Represent directivity internally as per-band spherical balloons (common denominator of CLF/SOFA/BEM)
+- [x] **SRC-02**: Attach a directivity function ΔL(θ, φ, f) to a sub-source
+- [x] **SRC-03**: Compose a complex source from multiple directional sub-sources evaluated independently into the transfer tensor
+- [x] **SRC-04**: Represent directivity internally as per-band spherical balloons (common denominator of CLF/SOFA/BEM)
 
 ### Geometry model (GEO)
 
@@ -185,9 +185,9 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | MET-05 | Phase 3 | Complete (03-03) |
 | MET-06 | Phase 3 | Complete (03-03) |
 | SRC-01 | Phase 1 | Complete (01-03) |
-| SRC-02 | Phase 4 | Pending |
-| SRC-03 | Phase 4 | Pending |
-| SRC-04 | Phase 4 | Pending |
+| SRC-02 | Phase 4 | Complete |
+| SRC-03 | Phase 4 | Complete |
+| SRC-04 | Phase 4 | Complete |
 | GEO-01 | Phase 1 | Complete |
 | GEO-02 | Phase 1 | Complete |
 | GEO-03 | Phase 1 | Complete |

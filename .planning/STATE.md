@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 4
 current_phase_name: Transfer Tensor, Directional Sources & Full Validation
 status: in-progress
-stopped_at: 04-01 complete (tensor + solver + MAC bit-exact + 256 MiB budget); 04-02 next
-last_updated: "2026-07-08T20:25:57.879Z"
+stopped_at: 04-02 complete (directivity balloons + Rotation3 + Nord2000 road emission + LE−dL free-field anchor); 04-03 next
+last_updated: "2026-07-08T20:50:00.000Z"
 last_activity: 2026-07-08
-last_activity_desc: 04-01 complete (dense complex transfer tensor + chunked solver + bit-exact MAC conditioning + 256 MiB streaming budget; OUT-01..06)
+last_activity_desc: 04-02 complete (per-band DirectivityBalloon + hand-rolled 3×3 rotation + Nord2000 road emission model with LE−dL anchor green on 26 flat FORCE cases; SRC-02/03/04)
 progress:
   total_phases: 11
   completed_phases: 3
   total_plans: 16
-  completed_plans: 13
+  completed_plans: 14
   percent: 27
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 4 (Transfer Tensor, Directional Sources & Full Validation) — IN PROGRESS
-Plan: 2 of 5 complete (04-01 tensor + solver + MAC)
+Plan: 3 of 5 complete (04-01 tensor + solver + MAC)
 Status: 04-01 complete — 04-02 (directional sources + emission model) next
 Last activity: 2026-07-08 — 04-01 complete (dense complex transfer tensor + chunked solver + bit-exact MAC conditioning + 256 MiB streaming budget; OUT-01..06)
 
@@ -63,6 +63,7 @@ Progress: [██░░░░░░░░] Phase 4 — 1/5 plans complete (04-01
 | Phase 3 P02 | 34min | 3 tasks | 8 files |
 | Phase 4 P01 | 55min | 3 tasks | 6 files |
 | Phase 04 P05 | 35min | 2 tasks | 6 files |
+| Phase 04 P02 | 55min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -123,6 +124,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T20:25:33.282Z
+Last session: 2026-07-08T20:48:27.859Z
 Stopped at: 04-01 complete (tensor + solver + MAC); 04-02 next
 Resume file: None
