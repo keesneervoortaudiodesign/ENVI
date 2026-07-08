@@ -11,6 +11,7 @@
 use envi_engine::freq::FreqAxis;
 use envi_engine::propagation::rays::circular_rays;
 use envi_engine::propagation::refraction::eqssp::{calc_eq_ssp, calc_eq_ssp_ground};
+use envi_harness::weather::route3::fit_profile;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -19,6 +20,7 @@ struct Fixtures {
     eqssp: Vec<EqSspRow>,
     eqssp_ground: Vec<EqSspGroundRow>,
     dtau: Vec<DtauRow>,
+    route3_fit: Vec<Route3FitRow>,
 }
 
 #[derive(Deserialize)]
@@ -26,6 +28,17 @@ struct Meta {
     eqssp_tol_rel: f64,
     eqssp_ground_tol_rel: f64,
     dtau_tol_rel: f64,
+    route3_fit_tol_abs: f64,
+}
+
+#[derive(Deserialize)]
+struct Route3FitRow {
+    z0: f64,
+    heights: Vec<f64>,
+    c_eff: Vec<f64>,
+    a: f64,
+    b: f64,
+    c: f64,
 }
 
 #[derive(Deserialize)]
@@ -179,6 +192,44 @@ fn engine_calc_eq_ssp_ground_matches_oracle_by_band_index() {
     assert!(
         saw_zero && saw_positive && saw_flat_hard,
         "grid must cover below-fL (ξ=0), interpolated (ξ≠0), and hard-ground rows"
+    );
+}
+
+#[test]
+fn engine_route3_fit_recovers_oracle_coefficients() {
+    let fx = load();
+    assert!(
+        fx.route3_fit.len() >= 4,
+        "route3_fit grid must have ≥ 4 rows"
+    );
+    let (mut saw_up, mut saw_down) = (false, false);
+    for row in &fx.route3_fit {
+        let (a, b, c) = fit_profile(&row.heights, &row.c_eff, row.z0).unwrap();
+        if row.a > 0.0 {
+            saw_down = true; // positive log slope ⇒ downward-refraction profile
+        }
+        if row.a < 0.0 {
+            saw_up = true;
+        }
+        assert!(
+            (a - row.a).abs() <= fx.meta.route3_fit_tol_abs,
+            "A: got {a:.12} want {:.12}",
+            row.a
+        );
+        assert!(
+            (b - row.b).abs() <= fx.meta.route3_fit_tol_abs,
+            "B: got {b:.12} want {:.12}",
+            row.b
+        );
+        assert!(
+            (c - row.c).abs() <= fx.meta.route3_fit_tol_abs,
+            "C: got {c:.12} want {:.12}",
+            row.c
+        );
+    }
+    assert!(
+        saw_up && saw_down,
+        "route3_fit grid must cover up- and down-refraction profiles"
     );
 }
 

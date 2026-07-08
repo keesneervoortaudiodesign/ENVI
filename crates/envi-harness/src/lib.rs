@@ -62,10 +62,16 @@ pub fn run_case(case: &cases::CaseDefinition) -> Outcome {
         cases::CaseKind::FreeField => run_freefield_case(case),
         cases::CaseKind::Geometry => run_geometry_case(case),
         cases::CaseKind::Terrain => run_terrain_case(case),
-        // Gated to Skipped above (requires the 03-02/03-03 weather-route wiring);
-        // this arm keeps the match exhaustive.
+        // Phase 3 implements the refraction chain (CalcEqSSP + circular rays +
+        // F_τ) and the weather routes; the engine + property/oracle tests cover
+        // it in-crate. The synthetic refraction TOML cases carry no committed
+        // numeric reference (`bands = "none"`) — the [ASSUMED] weather-route
+        // constants are deliberately never pinned to a false numeric Pass
+        // (D-03/D-04), so a reference-free refraction case fail-softs to Skipped.
         cases::CaseKind::Refraction => Outcome::Skipped(
-            "requires: weather-route profile wiring (plans 03-02/03-03)".to_string(),
+            "no committed numeric reference (refraction validated in-crate by \
+             property/oracle tests; [ASSUMED] weather constants not numerically pinned)"
+                .to_string(),
         ),
         cases::CaseKind::ForceStraightRoad
         | cases::CaseKind::ForceCurvedRoad

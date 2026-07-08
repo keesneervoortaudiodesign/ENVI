@@ -25,7 +25,9 @@
 //! (`φ_u` is the downwind bearing). `B` (stability / temperature gradient) is
 //! **bearing-independent**.
 
+pub mod route1;
 pub mod route2;
+pub mod route3;
 
 use envi_engine::propagation::PropagationError;
 use envi_engine::propagation::refraction::eqssp::calc_eq_ssp;

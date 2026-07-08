@@ -108,10 +108,12 @@ pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
 /// Plan 01-02 turns on [`Capability::Geometry`] (azimuth + image-source
 /// reflection through the scene model). Plan 01-03 adds
 /// [`Capability::FreeField`]. Plan 02-05 (Phase 2 complete) adds
-/// [`Capability::GroundEffect`] and [`Capability::Diffraction`] — the FORCE road
-/// cases' `Skipped(requires: …)` list SHRINKS to `emission-model` (+ `refraction`
-/// for wind/gradient variants), with no harness rewrite. `EmissionModel` is
-/// Phase 4; `Refraction` is Phase 3.
+/// [`Capability::GroundEffect`] and [`Capability::Diffraction`]. Plan 03-03
+/// (Phase 3 complete) adds [`Capability::Refraction`] — the weather routes +
+/// CalcEqSSP + circular rays + F_τ coherence are wired, so the FORCE wind/
+/// gradient cases' `Skipped(requires: …)` list SHRINKS: `refraction` drops out,
+/// leaving **only** `emission-model` (Phase 4). No harness rewrite; no false
+/// numeric Pass (D-03).
 #[must_use]
 pub fn implemented_capabilities() -> BTreeSet<Capability> {
     BTreeSet::from([
@@ -119,6 +121,7 @@ pub fn implemented_capabilities() -> BTreeSet<Capability> {
         Capability::FreeField,
         Capability::GroundEffect,
         Capability::Diffraction,
+        Capability::Refraction,
     ])
 }
 
@@ -208,9 +211,52 @@ mod tests {
         let implemented = implemented_capabilities();
         assert!(implemented.contains(&Capability::GroundEffect));
         assert!(implemented.contains(&Capability::Diffraction));
-        // Phase 3/4 physics still missing.
+        // Only the Phase-4 emission model is still missing.
         assert!(!implemented.contains(&Capability::EmissionModel));
-        assert!(!implemented.contains(&Capability::Refraction));
+    }
+
+    #[test]
+    fn plan_03_03_implements_refraction() {
+        let implemented = implemented_capabilities();
+        // Phase 3 closes: refraction is now implemented (weather routes + F_τ).
+        assert!(implemented.contains(&Capability::Refraction));
+        // The Phase-4 emission model is still the only outstanding capability.
+        assert!(!implemented.contains(&Capability::EmissionModel));
+    }
+
+    #[test]
+    fn force_wind_gradient_skip_reason_shrinks_to_emission_model_only() {
+        // The requires-list SHRANK for wind/gradient FORCE cases: after the
+        // Phase-3 refraction flip, a downwind/inversion FORCE road case skips
+        // ONLY on the emission model — `refraction` (and ground-effect,
+        // diffraction) have disappeared from the missing set, while
+        // `emission-model` is RETAINED (stays Skipped, never a false Pass, D-03).
+        let implemented = implemented_capabilities();
+
+        let mut downwind = base_case(CaseKind::ForceStraightRoad, "Flat terrain, downwind");
+        downwind.propagation.u_ms = Some(5.0);
+
+        let mut inversion = base_case(CaseKind::ForceStraightRoad, "Flat terrain");
+        inversion.propagation.dtdz = Some(0.1);
+
+        for case in [downwind, inversion] {
+            let required = required_capabilities(&case);
+            // The case genuinely requires refraction …
+            assert!(required.contains(&Capability::Refraction));
+            let missing: BTreeSet<Capability> =
+                required.difference(&implemented).copied().collect();
+            // … but refraction is no longer missing.
+            assert!(
+                !missing.contains(&Capability::Refraction),
+                "refraction must be gone from the skip reason: {missing:?}"
+            );
+            // Emission-model is retained — the honest-green D-03 contract.
+            assert_eq!(
+                missing,
+                BTreeSet::from([Capability::EmissionModel]),
+                "wind/gradient FORCE case must skip ONLY on emission-model"
+            );
+        }
     }
 
     #[test]

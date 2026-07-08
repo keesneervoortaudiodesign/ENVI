@@ -337,6 +337,27 @@ def _band_freq(idx: int) -> float:
     return 1000.0 * G ** ((idx - 64) / 12.0)
 
 
+# Route-3 LSQ round-trip grid: a synthetic log-lin profile c(z)=A ln(z/z0+1)+B z+C
+# is sampled at HEIGHTS; the engine's hand-rolled 3x3 normal-equations fit
+# (weather::route3::fit_profile) must recover (A,B,C) exactly (to tolerance).
+# This is an implementation round-trip (D-04): it pins the LSQ solve, not the
+# [ASSUMED] surface-met -> profile reconstruction (which has no authoritative
+# reference and is property-tested only).
+ROUTE3_HEIGHTS = [0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 50.0]
+ROUTE3_FIT_GRID = [
+    (1.0, 0.05, C0_M_S, 0.02),
+    (-0.8, -0.04, C0_M_S, 0.05),
+    (0.0, 0.0, C0_M_S, 0.001),
+    (2.5, 0.10, 335.0, 0.01),
+    (0.3, -0.02, C0_M_S, 0.1),
+]
+
+
+def route3_samples(a: float, b: float, c: float, z0: float) -> list[float]:
+    """Sample the exact log-lin profile at ROUTE3_HEIGHTS (the fit's input y)."""
+    return [sound_speed_profile(z, a, b, c, z0) for z in ROUTE3_HEIGHTS]
+
+
 # Delta-tau grid: downward (xi>0) and a mild upward (xi<0) geometry, several
 # horizontal distances (interference is Delta-tau-driven).
 DTAU_GRID = [
@@ -384,6 +405,11 @@ def main() -> None:
     # atan2 across a 1/3-oct bracket); Rust vs Python last-ULP drift makes 1e-9
     # too tight. 1e-6 relative still fails any mistranscribed Eq. 23/26/27 by >0.01%.
     lines.append("eqssp_ground_tol_rel = 1e-6")
+    # Route-3 LSQ round-trip: the fit recovers the generating (A,B,C) from an
+    # exact log-lin sample set. Absolute tolerance on each coefficient (A/B in
+    # m/s and s^-1, C in m/s) — the 3x3 normal-equations solve is exact up to
+    # conditioning, so 1e-6 absolute is comfortably met.
+    lines.append("route3_fit_tol_abs = 1e-6")
     lines.append("")
 
     for a, b, c, z0, h_s, h_r, d, sigma_kpa in EQSSP_GROUND_GRID:
@@ -425,11 +451,23 @@ def main() -> None:
         lines.append(f"dtau = {_fmt(dtau)}")
         lines.append("")
 
+    for a, b, c, z0 in ROUTE3_FIT_GRID:
+        samples = route3_samples(a, b, c, z0)
+        lines.append("[[route3_fit]]")
+        lines.append(f"z0 = {_fmt(z0)}")
+        lines.append("heights = [" + ", ".join(_fmt(z) for z in ROUTE3_HEIGHTS) + "]")
+        lines.append("c_eff = [" + ", ".join(_fmt(y) for y in samples) + "]")
+        # Expected recovered coefficients = the generating (A, B, C) (exact model).
+        lines.append(f"a = {_fmt(a)}")
+        lines.append(f"b = {_fmt(b)}")
+        lines.append(f"c = {_fmt(c)}")
+        lines.append("")
+
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     n_ground = len(EQSSP_GROUND_GRID) * len(GROUND_BAND_IDX)
     print(
         f"wrote {out} ({len(EQSSP_GRID)} eqssp + {n_ground} eqssp_ground "
-        f"+ {len(DTAU_GRID)} dtau rows)"
+        f"+ {len(DTAU_GRID)} dtau + {len(ROUTE3_FIT_GRID)} route3_fit rows)"
     )
 
 
