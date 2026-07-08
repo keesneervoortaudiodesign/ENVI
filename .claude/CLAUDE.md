@@ -8,6 +8,10 @@ Web-based, self-hosted **Nord2000** environmental sound-propagation engine, impl
 1. **Pull from GitHub first** — `git pull --ff-only origin main` so you start from the latest. Do this before planning or editing.
 2. **Check GSD state** — read `.planning/STATE.md` (and `ROADMAP.md`) to see the current phase/position before doing GSD work. Run `/gsd-progress` if unsure where things stand.
 
+## Environment / process hygiene (HARD RULE)
+- **NEVER close, kill, or restart VS Code** — do not run any command that terminates the editor or its host process (`code --*` shutdowns, `Stop-Process`/`taskkill`/`kill` targeting `Code.exe`, `code-server`, or its window). This has already crashed the user's editor **twice**, most likely because VS Code's **Java language-server / extension-host services were force-closed** and took the editor down with them. Do not force-close Java processes (`java.exe`, `jdk`, `jvm`, Gradle/Maven daemons, `*LanguageServer*`) either — killing them can cascade into VS Code.
+- If a process genuinely needs stopping, **target only the specific child process you started** (by PID you own), never a broad name match, and prefer graceful termination. When in doubt, **ask the user to close it themselves** rather than issuing the kill.
+
 ## Working Language
 - **Everything Claude produces is written in English** — code, comments, UI strings, README/docs, all `.md` files, commit messages, and planning artefacts. Hard rule, session to session, overriding any default. If you find a file in another language, it predates this rule — translate rather than extend.
 - **Conversation language follows the user** — reply in whatever language they write to you in. Only the chat adapts; written/committed output stays English.
@@ -42,11 +46,15 @@ Web-based, self-hosted **Nord2000** environmental sound-propagation engine, impl
 
 ## GSD Workflow — Phase Completion gates (MANDATORY — always run, auto-fix)
 This repo is driven by GSD (`/gsd-*`). At the end of EVERY GSD phase, before it is marked complete, **ALWAYS run the gates below AND automatically fix the issues they surface** — do not skip them, do not merely record findings, do not stop to ask permission first. A phase is not "done" until these have run, every finding is **fixed** (only where a fix is genuinely wrong or infeasible may it be explicitly recorded as an accepted risk with rationale), and all quality gates are green again.
-- **ALWAYS `/gsd-code-review <phase> --fix`** — review the phase's changed files for bugs, security, and quality issues **and auto-apply the fixes** (spawns the fixer and re-tests). Run the review→fix loop (e.g. `--fix --auto`) until the review is clean or only accepted-risk findings remain; then re-run `cargo build/test/clippy/fmt` and confirm green, and commit the fixes.
-- **ALWAYS `/gsd-secure-phase <phase>`** — verify the phase's threat-model mitigations exist in the implemented code (produces SECURITY.md) **and fix any missing or insufficient mitigation it finds**, then re-verify until SECURITY.md is clean.
-- **`/gsd-verify <phase>`** — goal-backward verification that the shipped code delivers the phase's success criteria (produces VERIFICATION.md); the phase is not complete until its status is `passed` (or gaps are explicitly accepted). Run this AFTER the code-review/secure fixes so it verifies the fixed tree.
-- **Documentation consistency scan** — after the gates, grep the phase number across `.planning/` and reconcile every hit: `STATE.md` (frontmatter counts/percent/position + status table), `ROADMAP.md` (`**Plans:** N/N`, per-plan `[x]`, Progress table row), `REQUIREMENTS.md` traceability, and each phase artifact's `status:` frontmatter must all agree — no stale `In Progress`, no mismatched plan count, no verdict/status contradiction. (The GSD `phase complete` tool can mangle STATE.md frontmatter — re-verify by hand.)
-- **README** — any new feature or changed behaviour must be reflected in the repo `README.md` before the phase is "done".
+Run these five gates in order; each finding is **fixed** (or explicitly recorded as an accepted risk with rationale), and `cargo test/clippy/fmt` are re-run green after every gate that touches code:
+
+1. **`/gsd-code-review <phase>`** — finds bugs, security issues, and code-quality problems in the phase's changed files; every finding fixed or accepted as risk. (Run with `--fix`, looping `--fix --auto` until the review is clean or only accepted-risk findings remain.)
+2. **`/simplify`** — quality-only cleanup (reuse, simplification, efficiency, altitude) of the changed code, applied to the tree; every cleanup applied or explicitly declined. It does not hunt for bugs — it complements `/gsd-code-review`, never replaces it.
+3. **`/gsd-secure <phase>`** (`/gsd-secure-phase`) — retroactively verifies the phase's threat-model mitigations actually exist in the code (produces SECURITY.md); every gap closed or accepted. Fix any missing/insufficient mitigation, then re-verify until SECURITY.md is clean.
+4. **`/gsd-verify <phase>`** — goal-backward verification that the shipped code delivers the phase's success criteria (produces VERIFICATION.md); status must be `passed` or gaps explicitly accepted. Run AFTER the code-review/secure fixes so it verifies the fixed tree.
+5. **Documentation consistency scan** — full document scan confirming close-out introduced no doc inconsistencies across `.planning/STATE.md` (frontmatter counts/percent/position + status table), `ROADMAP.md` (`**Plans:** N/N`, per-plan `[x]`, Progress table row), `REQUIREMENTS.md` traceability, and each phase artifact's `status:` frontmatter — all must agree (no stale `In Progress`, no mismatched plan count, no verdict/status contradiction; the GSD `phase complete` tool can mangle STATE.md frontmatter — re-verify by hand). Also enforces the code/README documentation contract: Module I/O headers, `crates/README.md`, and root `README.md` reflect any new feature or changed behaviour.
+
+**No phase is "done" until all five have run and every finding is fixed or explicitly recorded as an accepted risk.**
 
 ## GitHub use
 - **Pull at session start** (see above); keep `main` current.
