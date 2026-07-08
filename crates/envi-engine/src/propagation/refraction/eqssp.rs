@@ -133,7 +133,9 @@ fn eq_ssp_terms(
         (hs_g, hr_g)
     };
 
-    let c_of = |z: f64| a * (z / z0 + 1.0).ln() + b * z + c;
+    // Eq. 2 profile c(z); reuse the single-source `sound_speed_profile` (z₀ is
+    // already floored to Z0_MIN_M above, so its internal clamp is a no-op here).
+    let c_of = |z: f64| sound_speed_profile(z, a, b, c, z0);
     // Eq. 18: average gradient between hS and hR.
     let dcdz = (c_of(hr_g) - c_of(hs_g)) / (hr_g - hs_g);
     // Eq. 19 / Annex F Eq. 403: average sound speed c̄ (closed form).
