@@ -55,13 +55,15 @@ pub struct CoherenceInputs {
     pub d_m: f64,
 }
 
-/// The 1/3-octave band-averaging coherence factor `Ff` (AV 1106/07 Eq. 111).
+/// The truncated sinc shared by both band-averaging coherence factors:
+/// `1` at the origin, `sin|x|/|x|` on `0 < |x| ≤ π`, and `0` beyond the first
+/// zero.
 ///
-/// `x = 0.23·π·f·Δτ`; `Ff = 1` at `x=0`, `sin(x)/x` for `0 < |x| ≤ π`, `0`
-/// beyond. The `0.23` constant is glyph-verified (02-RESEARCH §6).
-#[must_use]
-pub fn coherence_ff(f_hz: f64, dtau: f64) -> f64 {
-    let x = 0.23 * std::f64::consts::PI * f_hz * dtau;
+/// The two callers differ ONLY in the argument they pass — [`coherence_ff`]
+/// (Eq. 111) uses `0.23·π·f·Δτ`, while [`coherence_f_delta_nu`] (Eq. 112) uses
+/// the full `2π·f·(Δτ⁺−Δτ)`. That factor difference (`0.23π` vs `2π`, RESEARCH
+/// Pitfall 5) is **deliberate** and lives in each caller's argument, never here.
+fn sinc_cutoff(x: f64) -> f64 {
     let xa = x.abs();
     if xa <= 1e-15 {
         1.0
@@ -70,6 +72,17 @@ pub fn coherence_ff(f_hz: f64, dtau: f64) -> f64 {
     } else {
         0.0
     }
+}
+
+/// The 1/3-octave band-averaging coherence factor `Ff` (AV 1106/07 Eq. 111).
+///
+/// `x = 0.23·π·f·Δτ`; `Ff = 1` at `x=0`, `sin(x)/x` for `0 < |x| ≤ π`, `0`
+/// beyond. The `0.23` constant is glyph-verified (02-RESEARCH §6).
+#[must_use]
+pub fn coherence_ff(f_hz: f64, dtau: f64) -> f64 {
+    // Argument 0.23·π·f·Δτ — the 0.23 band-averaging factor is deliberate and
+    // distinct from FΔν's full 2π (see [`sinc_cutoff`], Pitfall 5).
+    sinc_cutoff(0.23 * std::f64::consts::PI * f_hz * dtau)
 }
 
 /// The fluctuating-refraction coherence factor `FΔν` (AV 1106/07 Eq. 112).
@@ -88,14 +101,10 @@ pub fn coherence_ff(f_hz: f64, dtau: f64) -> f64 {
 /// constant here would be wrong.
 #[must_use]
 pub fn coherence_f_delta_nu(f_hz: f64, dtau: f64, dtau_plus: f64) -> f64 {
-    let x = (TAU * f_hz * (dtau_plus - dtau)).abs();
-    if x <= 1e-15 {
-        1.0
-    } else if x <= std::f64::consts::PI {
-        x.sin() / x
-    } else {
-        0.0
-    }
+    // Argument 2π·f·(Δτ⁺−Δτ) — the FULL 2π, NOT the 0.23π of `coherence_ff`
+    // (Pitfall 5). `sinc_cutoff` takes |x| internally, matching the former
+    // `.abs()` here bit-for-bit.
+    sinc_cutoff(TAU * f_hz * (dtau_plus - dtau))
 }
 
 /// The coherence coefficient `F = Ff · FΔν · Fc · Fr · Fs` (AV 1106/07 Eq. 110).
