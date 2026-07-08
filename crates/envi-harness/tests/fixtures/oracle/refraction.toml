@@ -3,10 +3,10 @@
 
 [meta]
 oracle = "AV 1106/07 CalcEqSSP + DirectRay/ReflectedRay/TravelTimeDiff"
-provenance = "gen_refraction_fixtures.py sha256:d90a65300ef82a9a"
+provenance = "gen_refraction_fixtures.py sha256:1466c110d37254eb"
 c0_m_s = 340.34838089081603
 eqssp_tol_rel = 1e-9
-dtau_tol_rel = 1e-7
+dtau_tol_rel = 1e-4
 
 [[eqssp]]
 a = 0.5

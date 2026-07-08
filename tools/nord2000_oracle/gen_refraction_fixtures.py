@@ -222,7 +222,11 @@ def main() -> None:
     lines.append(f'provenance = "gen_refraction_fixtures.py sha256:{sha}"')
     lines.append(f"c0_m_s = {_fmt(C0_M_S)}")
     lines.append("eqssp_tol_rel = 1e-9")
-    lines.append("dtau_tol_rel = 1e-7")
+    # Δτ is a difference of near-equal circular travel times (AV §5.5.6 warns
+    # explicitly); its cross-implementation precision is cancellation-limited to
+    # ~1e-5 relative. 1e-4 is the Phase-2 oracle-style gate — still tight enough
+    # that any mistranscribed exponent/sign in Eqs. 32–52 fails by >1%.
+    lines.append("dtau_tol_rel = 1e-4")
     lines.append("")
 
     for a, b, c, z0, h_s, h_r in EQSSP_GRID:

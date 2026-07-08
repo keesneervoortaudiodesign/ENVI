@@ -8,10 +8,10 @@
 //! - [`profile`] — the log-lin effective sound speed `c(z)` (Eqs. 2–3).
 //! - [`eqssp`] — CalcEqSSP: collapse `c(z)` to an equivalent-linear profile
 //!   `(ξ, c₀)` (Eqs. 15–21 + Annex F Eq. 403).
-//! - `circular_ray` — DirectRay / ReflectedRay / reflection-point cubic /
-//!   travel-time difference / HeightOfCircularRay (Eqs. 29–56, 355–368; task 2).
-//! - `shadow_zone` — upward-refraction shadow-zone shielding via the
-//!   equivalent-wedge diffraction kernel (Eqs. 384–388; task 2).
+//! - [`circular_ray`] — DirectRay / ReflectedRay / reflection-point cubic /
+//!   travel-time difference / HeightOfCircularRay (Eqs. 29–56, 355–368).
+//! - [`shadow_zone`] — upward-refraction shadow-zone shielding via the
+//!   equivalent-wedge diffraction kernel (Eqs. 384–388).
 //!
 //! # Convention (load-bearing, D-13)
 //!
@@ -29,9 +29,10 @@
 //! - `|ξ'| < 1e-10` ⇒ the *inner* DirectRay division guard (the circular
 //!   formulas are undefined at exactly ξ=0). Distinct threshold, distinct role.
 
+pub mod circular_ray;
 pub mod eqssp;
 pub mod profile;
-// `circular_ray` and `shadow_zone` land in task 2 of this plan.
+pub mod shadow_zone;
 
 /// A log-lin sound-speed profile `c(z) = A·ln(z/z₀+1) + B·z + C` (Eq. 2).
 ///

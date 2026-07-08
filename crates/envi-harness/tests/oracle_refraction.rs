@@ -8,6 +8,7 @@
 //! every fixture row. Python is NOT needed at test time; the TOML is committed.
 //! A transcription error in ξ / c₀ / Δτ shows up here as a fixture mismatch.
 
+use envi_engine::propagation::rays::circular_rays;
 use envi_engine::propagation::refraction::eqssp::calc_eq_ssp;
 use serde::Deserialize;
 
@@ -15,11 +16,13 @@ use serde::Deserialize;
 struct Fixtures {
     meta: Meta,
     eqssp: Vec<EqSspRow>,
+    dtau: Vec<DtauRow>,
 }
 
 #[derive(Deserialize)]
 struct Meta {
     eqssp_tol_rel: f64,
+    dtau_tol_rel: f64,
 }
 
 #[derive(Deserialize)]
@@ -32,6 +35,16 @@ struct EqSspRow {
     h_r: f64,
     xi: f64,
     c0: f64,
+}
+
+#[derive(Deserialize)]
+struct DtauRow {
+    h_s: f64,
+    h_r: f64,
+    d: f64,
+    xi: f64,
+    c0: f64,
+    dtau: f64,
 }
 
 fn load() -> Fixtures {
@@ -84,5 +97,33 @@ fn engine_calc_eq_ssp_matches_oracle_grid() {
             row.c0
         );
     }
-    assert!(saw_up && saw_down, "grid must cover up- and down-refraction");
+    assert!(
+        saw_up && saw_down,
+        "grid must cover up- and down-refraction"
+    );
+}
+
+#[test]
+fn engine_circular_rays_dtau_matches_oracle_grid() {
+    let fx = load();
+    assert!(fx.dtau.len() >= 6, "Δτ grid must have ≥ 6 rows");
+    for row in &fx.dtau {
+        let pair = circular_rays(row.d, row.h_s, row.h_r, row.xi, row.c0).unwrap();
+        // Δτ = 0 in a shadow zone — compare absolutely there.
+        let err = if row.dtau.abs() < 1e-12 {
+            (pair.dtau - row.dtau).abs()
+        } else {
+            rel_err(pair.dtau, row.dtau)
+        };
+        assert!(
+            err <= fx.meta.dtau_tol_rel,
+            "Δτ(ξ={},d={},hS={},hR={}): got {:.12e} want {:.12e} err {err:.2e}",
+            row.xi,
+            row.d,
+            row.h_s,
+            row.h_r,
+            pair.dtau,
+            row.dtau
+        );
+    }
 }

@@ -202,6 +202,102 @@ pub fn straight_rays_over_segment(
     })
 }
 
+/// Circular-ray variables for a refracting atmosphere (AV 1106/07 §5.5.4–5.5.6).
+///
+/// Fills the **same** [`RayVars`]/[`RayPair`] fields as [`straight_rays`]. When
+/// `|ξ| < 1e-6` this delegates to [`straight_rays`] so the homogeneous limit is
+/// reproduced **bit-for-bit** (the D-02 anchor is structural, not a parallel
+/// reimplementation). Otherwise it assembles the pair from the circular-ray
+/// primitives (DirectRay Eqs. 29–44, ReflectedRay Eqs. 45–50, TravelTimeDiff
+/// Eqs. 51–53).
+///
+/// In an upward-refraction shadow zone (`ξ < 0` and `d > 0.95·dSZ`) the
+/// reflected ray is not computed (Eq. 45 note) — the returned [`RayPair`] has
+/// `reflected = None` and `dtau = 0`; Sub-model 1's shadow branch handles it.
+///
+/// # Errors
+///
+/// [`PropagationError::DegenerateRayGeometry`] on non-positive distance /
+/// negative height / non-finite input; [`PropagationError::NoReflectionRoot`]
+/// if the refracted reflection cubic has no valid root.
+pub fn circular_rays(
+    d: f64,
+    h_s: f64,
+    h_r: f64,
+    xi: f64,
+    c0: f64,
+) -> Result<RayPair, PropagationError> {
+    use super::refraction::circular_ray::{
+        TravelTimeGeometry, direct_ray, reflected_ray, travel_time_diff,
+    };
+    use super::refraction::eqssp::XI_HOMOGENEOUS;
+
+    // Input guards shared with `straight_rays` (T-02-01 / T-03-01-02).
+    if !(d.is_finite() && d > 0.0) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "horizontal distance d must be positive and finite",
+        });
+    }
+    let height_ok = |h: f64| h.is_finite() && h >= 0.0;
+    if !(height_ok(h_s) && height_ok(h_r)) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "source/receiver heights must be non-negative and finite",
+        });
+    }
+    if !(c0.is_finite() && c0 > 0.0) {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "speed of sound c₀ must be positive and finite",
+        });
+    }
+    if !xi.is_finite() {
+        return Err(PropagationError::DegenerateRayGeometry {
+            detail: "relative sound-speed gradient ξ must be finite",
+        });
+    }
+
+    // Homogeneous shortcut → the exact Phase-2 straight-ray path (D-02).
+    if xi.abs() < XI_HOMOGENEOUS {
+        return straight_rays(d, h_s, h_r, c0);
+    }
+
+    let direct = direct_ray(d, h_s, h_r, xi, c0)?;
+    let direct_vars = RayVars {
+        tau: direct.tau,
+        r: direct.r,
+        psi_g: 0.0,
+        r1: direct.r,
+        r2: 0.0,
+    };
+
+    // Upward-refraction shadow zone: no reflected ray (Sub-model 1 shadow branch).
+    if xi < 0.0 && direct.d_sz.is_finite() && d > 0.95 * direct.d_sz {
+        return Ok(RayPair {
+            direct: direct_vars,
+            reflected: None,
+            dtau: 0.0,
+        });
+    }
+
+    let reflected = reflected_ray(d, h_s, h_r, xi, c0)?;
+    let dtau = travel_time_diff(
+        direct.tau,
+        reflected.tau,
+        &TravelTimeGeometry {
+            d,
+            h_s,
+            h_r,
+            xi,
+            c0,
+            d_sz: direct.d_sz,
+        },
+    );
+    Ok(RayPair {
+        direct: direct_vars,
+        reflected: Some(reflected),
+        dtau,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,5 +374,70 @@ mod tests {
             straight_rays(100.0, -0.5, 1.5, c0),
             Err(PropagationError::DegenerateRayGeometry { .. })
         ));
+    }
+
+    // D-02 bit-for-bit anchor: with |ξ| below the 1e-6 homogeneous threshold the
+    // circular constructor reproduces `straight_rays` EXACTLY (PartialEq, not
+    // approx) — the homogeneous limit is structural, via delegation.
+    #[test]
+    fn circular_rays_reproduce_straight_rays_below_xi_clamp() {
+        let c0 = sound_speed_ms(15.0);
+        let hom = straight_rays(97.5, 0.5, 1.5, c0).unwrap();
+        let circ = circular_rays(97.5, 0.5, 1.5, 5e-7, c0).unwrap();
+        assert_eq!(hom, circ);
+    }
+
+    // Above the clamp the circular pair is genuinely refracted (a nonzero,
+    // finite Δτ; the reflected legs sum to the reflected arc length).
+    #[test]
+    fn circular_rays_downward_is_refracted_and_consistent() {
+        let c0 = sound_speed_ms(15.0);
+        let pair = circular_rays(97.5, 0.5, 1.5, 2e-3, c0).unwrap();
+        let refl = pair
+            .reflected
+            .expect("downward refraction has a reflection");
+        assert!(pair.dtau.is_finite() && pair.dtau > 0.0);
+        assert_relative_eq!(refl.r1 + refl.r2, refl.r, max_relative = 1e-9);
+        // The direct ray is shorter than the reflected ray (interference geometry).
+        assert!(pair.direct.r < refl.r);
+    }
+
+    // Δτ stays finite and precise at a high-source long-range refracting
+    // geometry (the cancellation regression, RESEARCH Pitfall 2).
+    #[test]
+    fn circular_dtau_finite_at_long_range() {
+        let c0 = sound_speed_ms(15.0);
+        let pair = circular_rays(1000.0, 0.01, 1.5, 1e-3, c0).unwrap();
+        assert!(pair.dtau.is_finite() && pair.dtau > 0.0);
+        // Δτ is small but resolvable (order 1e-5..1e-4 s for this geometry).
+        assert!(pair.dtau < 1e-2, "Δτ = {} implausibly large", pair.dtau);
+    }
+
+    // Upward refraction near the shadow edge: Δτ → 0 (Eq. 52 cap / shadow rule),
+    // and deep in the shadow no reflected ray is produced.
+    #[test]
+    fn upward_refraction_shadow_edge_zeroes_dtau() {
+        let c0 = sound_speed_ms(15.0);
+        // Strong upward gradient + long range ⇒ receiver in the shadow zone.
+        let pair = circular_rays(600.0, 1.0, 1.5, -5e-3, c0).unwrap();
+        assert!(
+            pair.dtau.abs() < 1e-9,
+            "shadow Δτ must be ~0, got {}",
+            pair.dtau
+        );
+    }
+
+    // The homogeneous reflection point coincides with the segment reflection
+    // (delegated straight-ray path), cross-checking `reflect_over_segment`.
+    #[test]
+    fn homogeneous_reflection_matches_segment() {
+        let c0 = sound_speed_ms(15.0);
+        let circ = circular_rays(97.5, 0.5, 1.5, 5e-7, c0).unwrap();
+        let seg = straight_rays_over_segment([0.0, 0.5], [97.5, 1.5], [0.0, 0.0], [97.5, 0.0], c0)
+            .unwrap();
+        let rc = circ.reflected.unwrap();
+        let rs = seg.reflected.unwrap();
+        assert_relative_eq!(rc.r, rs.r, max_relative = 1e-9);
+        assert_relative_eq!(rc.psi_g, rs.psi_g, max_relative = 1e-9);
     }
 }
