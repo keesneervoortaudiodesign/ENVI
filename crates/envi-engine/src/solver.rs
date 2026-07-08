@@ -95,7 +95,100 @@ pub fn solve<'a, I>(
 where
     I: IntoIterator<Item = SolveJob<'a>>,
 {
-    todo!()
+    if chunk_receivers == 0 {
+        return Err(PropagationError::DegenerateChunkSize);
+    }
+
+    // One reusable working buffer bounds the resident set to a single chunk
+    // (OUT-06) — the full tensor is never allocated by the solver.
+    let mut h = Array3::<Complex<f64>>::zeros((n_sub, chunk_receivers, N_BANDS));
+    let mut p = Array3::<f64>::zeros((n_sub, chunk_receivers, N_BANDS));
+
+    let mut iter = jobs.into_iter().peekable();
+    while let Some(first) = iter.peek() {
+        let chunk_index = first.receiver / chunk_receivers;
+        let r_offset = chunk_index * chunk_receivers;
+
+        h.fill(Complex::new(0.0, 0.0));
+        p.fill(0.0);
+        let mut used_len = 0usize;
+
+        // Consume every consecutive job in this chunk (receiver-major order).
+        while let Some(job) = iter.peek() {
+            if job.receiver / chunk_receivers != chunk_index {
+                break;
+            }
+            let job = iter.next().expect("peeked job exists");
+            if job.sub_source >= n_sub {
+                return Err(PropagationError::SubSourceOutOfRange {
+                    sub_source: job.sub_source,
+                    n_sub,
+                });
+            }
+            let r_local = job.receiver - r_offset;
+            let (h_pair, p_pair) = solve_pair(&job)?;
+
+            let mut h_dst = h.slice_mut(s![job.sub_source, r_local, ..]);
+            for (dst, src) in h_dst.iter_mut().zip(h_pair.iter()) {
+                *dst = *src;
+            }
+            let mut p_dst = p.slice_mut(s![job.sub_source, r_local, ..]);
+            for (dst, src) in p_dst.iter_mut().zip(p_pair.iter()) {
+                *dst = *src;
+            }
+            used_len = used_len.max(r_local + 1);
+        }
+
+        let h_view = h.slice(s![.., 0..used_len, ..]);
+        let p_view = p.slice(s![.., 0..used_len, ..]);
+        sink.put_chunk(r_offset, h_view, p_view)?;
+    }
+
+    Ok(())
+}
+
+/// Run the frozen forward chain for one job, returning the coherent transfer
+/// `H_coh(f)` and the absolute incoherent energy `P_incoh_abs(f)` per band.
+fn solve_pair(job: &SolveJob<'_>) -> Result<(Vec<Complex<f64>>, Vec<f64>), PropagationError> {
+    let path = PathGeometry::direct(job.src, job.rcv).map_err(|e| {
+        PropagationError::DegenerateJobGeometry {
+            detail: e.to_string(),
+        }
+    })?;
+    let h_ff = direct_path(&path, job.atmosphere, job.axis)?;
+    // terrain_effect consumes coh.c0 as its sound speed (see build_terrain_inputs).
+    let te = terrain_effect(
+        job.profile,
+        job.src,
+        job.rcv,
+        job.coh.c0,
+        job.coh,
+        job.axis,
+        job.weather,
+    )?;
+
+    let mut h_coh = Vec::with_capacity(N_BANDS);
+    let mut p_abs = Vec::with_capacity(N_BANDS);
+    for (i, ((&hf, &factor), &pi)) in h_ff
+        .iter()
+        .zip(&te.h_coh_factor)
+        .zip(&te.p_incoh)
+        .enumerate()
+    {
+        // Coherent transfer: H_ff · (Nord2000→ENVI conjugated ground factor).
+        // No conditioning here — that is a readout-time multiply.
+        let mut hc = hf * nord_ratio_to_transfer(factor);
+        // Absolute incoherent energy rides at the free-field magnitude.
+        let mut pa = hf.norm_sqr() * pi;
+        // Optional directivity: a REAL magnitude factor only (phase untouched).
+        if let Some(dir) = job.directivity_gain_db.as_ref() {
+            hc *= 10f64.powf(dir[i] / 20.0);
+            pa *= 10f64.powf(dir[i] / 10.0);
+        }
+        h_coh.push(hc);
+        p_abs.push(pa);
+    }
+    Ok((h_coh, p_abs))
 }
 
 #[cfg(test)]
@@ -163,9 +256,14 @@ mod tests {
         let h_ff = direct_path(&path, &a, &axis).unwrap();
         let te = terrain_effect(&profile, src, rcv, c.c0, &c, &axis, None).unwrap();
         let pair = sink.tensor();
-        for f in 0..N_BANDS {
-            let want_h = h_ff[f] * nord_ratio_to_transfer(te.h_coh_factor[f]);
-            let want_p = h_ff[f].norm_sqr() * te.p_incoh[f];
+        for (f, ((&hf, &factor), &pi)) in h_ff
+            .iter()
+            .zip(&te.h_coh_factor)
+            .zip(&te.p_incoh)
+            .enumerate()
+        {
+            let want_h = hf * nord_ratio_to_transfer(factor);
+            let want_p = hf.norm_sqr() * pi;
             assert_eq!(pair.h_coh[[0, 0, f]], want_h, "H_coh mismatch at band {f}");
             assert_eq!(
                 pair.p_incoh_abs[[0, 0, f]].to_bits(),
