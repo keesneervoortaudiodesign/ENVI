@@ -34,6 +34,7 @@ pub mod ground;
 pub mod rays;
 pub mod special;
 pub mod terrain_effect;
+pub mod terrain_interpretation;
 
 use air_absorption::{Atmosphere, alpha_db_per_m, band_attenuation_db};
 use divergence::divergence_amplitude;
@@ -86,6 +87,22 @@ pub enum PropagationError {
     DegenerateRayGeometry {
         /// Which geometric input was rejected.
         detail: &'static str,
+    },
+    /// Sub-model 3 (non-flat terrain, AV 1106/07 §5.12) was reached with a
+    /// non-zero weight `1 − r_flat`. It is scheduled with Phase 3 (it interacts
+    /// with the refraction-corrected Fresnel machinery, Eqs. 134–156); flat
+    /// Phase 2 target profiles give `r_flat = 1`, making this path unreachable.
+    /// Reaching it is a hard error **by design** — never a silent approximation
+    /// (02-RESEARCH Open Question 4).
+    #[error(
+        "non-flat terrain (Sub-model 3, §5.12) is not implemented (scheduled with \
+         Phase 3): r_flat = {r_flat} < 1 at {f_hz} Hz"
+    )]
+    NonFlatTerrainNotImplemented {
+        /// The flatness transition parameter that triggered the branch.
+        r_flat: f64,
+        /// The frequency at which the non-flat branch was demanded, Hz.
+        f_hz: f64,
     },
 }
 
