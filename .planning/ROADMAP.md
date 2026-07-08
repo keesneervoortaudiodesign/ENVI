@@ -18,7 +18,7 @@ v2 groups (DATA, GEOX, METX, GRID, WEB, SVC, FUT) are deferred to later mileston
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: FORCE Harness, Geometry Model & Direct Path** - Test harness on FORCE cases first, semantic 2.5D scene from test-case files, complex 1/12-octave direct path with air absorption
-- [ ] **Phase 2: Ground Effect & Diffraction** - Segmented-impedance ground reflection, single/multi-edge screens, complex-pressure combination with Δτ interference
+- [x] **Phase 2: Ground Effect & Diffraction** - Segmented-impedance ground reflection, single/multi-edge screens, complex-pressure combination with Δτ interference
 - [ ] **Phase 3: Meteorology & Refraction** - Log-lin A/B/C profile, equivalent-linear collapse with guarded ξ/Δτ numerics, reflection-path coefficients, weather routes, turbulence coherence
 - [ ] **Phase 4: Transfer Tensor, Directional Sources & Full Validation** - `H[s,r,f]` complex tensor store, directional multi-sub-source composition, filter/delay conditioning via MAC, full FORCE pass + NoiseModelling cross-validation
 

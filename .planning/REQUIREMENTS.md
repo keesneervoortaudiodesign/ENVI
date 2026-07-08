@@ -10,7 +10,7 @@
 ### Engine — Nord2000 propagation (ENG)
 
 - [x] **ENG-01**: Compute direct-path attenuation (geometrical divergence) per 1/12-octave frequency point
-- [ ] **ENG-02**: Compute ground effect over a segmented-impedance profile (frequency-dependent, soft↔hard), preserving complex pressure
+- [x] **ENG-02**: Compute ground effect over a segmented-impedance profile (frequency-dependent, soft↔hard), preserving complex pressure
 - [x] **ENG-03**: Compute screen/barrier diffraction for single and multiple edges
 - [x] **ENG-04**: Compute air absorption per ISO 9613-1 from temperature, humidity, pressure
 - [ ] **ENG-05**: Compute refraction via the equivalent-linear sound-speed profile (circular-ray ξ, Δτ) with guarded numerics (f64, ξ singularity clamps, Δτ cancellation-safe reformulation)
@@ -131,7 +131,7 @@ Mapped during roadmap creation (2026-07-07). See `.planning/ROADMAP.md`.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | ENG-01 | Phase 1 | Complete (01-03) |
-| ENG-02 | Phase 2 | Pending |
+| ENG-02 | Phase 2 | Complete |
 | ENG-03 | Phase 2 | Complete |
 | ENG-04 | Phase 1 | Complete (01-03) |
 | ENG-05 | Phase 3 | Pending |

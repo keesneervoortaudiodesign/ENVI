@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 2
 current_phase_name: Ground Effect & Diffraction
-status: in-progress
-stopped_at: Completed 02-04-PLAN.md (screen⇄ground sub-models 4/5/6 + turbulence scattering 7) — wave 3 of Phase 2
-last_updated: "2026-07-08T09:23:35.912Z"
+status: phase-complete
+stopped_at: Completed 02-05-PLAN.md (§5.21 terrain interpretation + Eq. 332 + two-channel transfer) — wave 4, Phase 2 COMPLETE
+last_updated: "2026-07-08T11:05:00.000Z"
 last_activity: 2026-07-08
-last_activity_desc: "Completed 02-04-PLAN.md: terrain_effect::{screen, submodel7} + §5.23 geometry helpers. Generic DiffractionKernel engine realizes Sub-models 4/5/6 (four/eight-path complex image model, Eqs. 157-270) with the phase-preserving two-channel GroundResult; Sub-model 7 turbulence scattering (Tables 6/7, ×10 strengths, Eqs. 271-274) returns f64-only (phase-safe). Eq. 187-188 geometric-mean reading transcribed (Open Q5); committed scipy SM4+SM7 oracle matches case-71 ΔL₄+ΔL₇ at 105/105 ≤ 0.1 dB. ENG-07 complete. All quality gates pass."
+last_activity_desc: "Completed 02-05-PLAN.md: terrain_interpretation (§5.21 dispatch, r_scr1/r_scr2/r_scr12/r_flat, Sub-model 3 typed stub), terrain_effect Eq. 332 two-channel composition, the SINGLE conj() at transfer::nord_ratio_to_transfer (grep gate 0 in propagation/), band_levels_db_two_channel readout, Capability::{GroundEffect,Diffraction} flipped (FORCE cases skip ONLY on emission-model), five oracle-pinned terrain cases green at 0.1 dB (9 total Pass), finiteness sweep across all FORCE geometries × 105 bands. ENG-02/03/07 complete. Phase 2 done; all quality gates pass."
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
-  percent: 80
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 2 of 4 (Ground Effect & Diffraction) — IN PROGRESS
-Plan: 4 of 5 in current phase complete (02-01, 02-02, 02-03, 02-04 done; 02-05 remains)
-Status: Wave 3 (screen⇄ground) complete — 02-04 delivers terrain_effect::{screen, submodel7} plus the §5.23 image-method geometry helpers. One generic DiffractionKernel engine realizes Sub-model 4 (single edge, pwedge), Sub-model 5 (thick screen, p2edge) and Sub-model 6 (two screens, eight-ray bitmask, p2wedge), all producing the phase-preserving two-channel GroundResult (complex screen factor p̂₁/p̂₀ × coherent Δp̂_G; (1−F²) residuals only in p_incoh). Sub-model 7 turbulence scattering (Tables 6/7, deliberate ×10 strengths, Eqs. 271-274) returns f64-only — structurally phase-safe. Eq. 187-188 geometric-mean reading transcribed from page images (Open Q5); a committed scipy SM4+SM7 oracle matches the case-71 ΔL₄+ΔL₇ curve at 105/105 within 0.1 dB. ENG-07 complete. Only 02-05 (§5.21 terrain interpretation + Eq. 332 composition + transfer integration) remains in Phase 2.
-Last activity: 2026-07-08 — Completed 02-04-PLAN.md: terrain_effect::{screen, submodel7} + §5.23 helpers; Sub-models 4/5/6 four/eight-path complex combination; SM7 turbulence floor (f64-only, phase-safe); Eqs. 162/174-188 + Tables 6/7 transcribed; screen oracle 105/105 ≤ 0.1 dB; all quality gates pass (build/test/clippy/fmt, engine deps unchanged)
+Phase: 2 of 4 (Ground Effect & Diffraction) — COMPLETE
+Plan: 5 of 5 in current phase complete (02-01, 02-02, 02-03, 02-04, 02-05 done)
+Status: Wave 4 (terrain composition) complete — Phase 2 CLOSED. 02-05 wires everything end to end: terrain_interpretation (§5.21 primary/secondary edge finding, screen-shape reduction, equivalent-flat LSQ, r_scr1/r_scr2/r_scr12/r_flat transition params, Sub-model 3 typed hard-error stub); terrain_effect() Eq. 332 two-channel composition; the ONE documented conj() at transfer::nord_ratio_to_transfer (grep gate `\.conj()` over propagation/ = 0); band_levels_db_two_channel readout law L = L_W + 10·lg(|H_coh|² + |H_ff|²·P_incoh). Harness: Capability::{GroundEffect,Diffraction} implemented (FORCE road cases skip ONLY on emission-model — shrink asserted); CaseKind::Terrain + five oracle-pinned cases (flat SM1, mixed SM2, thin SM4, thick SM5, double SM6 + SM7) green at 0.1 dB (9 total Pass rows); gen_case_fixtures.py independent scipy oracle; finiteness sweep across all FORCE straight-road geometries × 105 bands (finite or typed NonFlatTerrain error, never NaN). ENG-02, ENG-03, ENG-07 complete. Phase 3 (refraction) is next.
+Last activity: 2026-07-08 — Completed 02-05-PLAN.md: §5.21 dispatch + Eq. 332 + single conj boundary + two-channel transfer; capabilities flipped; five terrain cases oracle-pinned; finiteness sweep; README. All quality gates pass (build/test/clippy/fmt, engine deps unchanged, conj gate 0 in propagation/)
 
-Progress: [████████░░] 80% (4/5 plans in phase 2)
+Progress: [██████████] 100% (5/5 plans in phase 2 — PHASE COMPLETE)
 
 ## Performance Metrics
 
