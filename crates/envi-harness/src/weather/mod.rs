@@ -38,8 +38,12 @@ use envi_engine::propagation::refraction::profile::Z0_MIN_M;
 /// (Eq. 10 upper-refraction profile `A⁺ = A + 1.7·sA`).
 ///
 /// This is the harness-side mirror of the engine's
-/// [`envi_engine::propagation::refraction::SoundSpeedProfile`] (which carries no
-/// `sA`/`sB`); the extra fields feed the Phase-3 F_τ turbulence coherence.
+/// [`envi_engine::propagation::refraction::SoundSpeedProfile`]: the two structs
+/// carry the same `(A, B, C, sA, sB, z₀)` fields (the engine struct *does* have
+/// `s_a`/`s_b`) and differ only in crate location — I/O-side (harness) vs
+/// pure-math (engine). They are intentionally NOT unified here; a future
+/// (Phase-4) refactor may collapse them into one type. Until then the harness
+/// owns weather-route derivation and the engine consumes the plain profile.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WeatherProfile {
     /// Logarithmic coefficient `A`, m/s (wind-projected per bearing).
