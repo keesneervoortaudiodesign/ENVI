@@ -26,6 +26,7 @@ fn kind_label(kind: CaseKind) -> &'static str {
     match kind {
         CaseKind::FreeField => "free-field",
         CaseKind::Geometry => "geometry",
+        CaseKind::Terrain => "terrain",
         CaseKind::ForceStraightRoad => "straight-road",
         CaseKind::ForceCurvedRoad => "curved-road",
         CaseKind::ForceCityStreet => "city-street",

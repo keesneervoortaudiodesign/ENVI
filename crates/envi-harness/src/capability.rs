@@ -62,6 +62,14 @@ pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
         CaseKind::Geometry => {
             required.insert(Capability::Geometry);
         }
+        CaseKind::Terrain => {
+            // Synthetic terrain-effect case: ground effect always; screen
+            // diffraction when the profile encodes a screen (name/description).
+            required.insert(Capability::GroundEffect);
+            if case.description.to_lowercase().contains("screen") {
+                required.insert(Capability::Diffraction);
+            }
+        }
         CaseKind::ForceStraightRoad
         | CaseKind::ForceCurvedRoad
         | CaseKind::ForceCityStreet
@@ -91,11 +99,19 @@ pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
 ///
 /// Plan 01-02 turns on [`Capability::Geometry`] (azimuth + image-source
 /// reflection through the scene model). Plan 01-03 adds
-/// [`Capability::FreeField`]; Phases 2–4 extend further — cases flip green with
-/// no harness rewrite.
+/// [`Capability::FreeField`]. Plan 02-05 (Phase 2 complete) adds
+/// [`Capability::GroundEffect`] and [`Capability::Diffraction`] — the FORCE road
+/// cases' `Skipped(requires: …)` list SHRINKS to `emission-model` (+ `refraction`
+/// for wind/gradient variants), with no harness rewrite. `EmissionModel` is
+/// Phase 4; `Refraction` is Phase 3.
 #[must_use]
 pub fn implemented_capabilities() -> BTreeSet<Capability> {
-    BTreeSet::from([Capability::Geometry, Capability::FreeField])
+    BTreeSet::from([
+        Capability::Geometry,
+        Capability::FreeField,
+        Capability::GroundEffect,
+        Capability::Diffraction,
+    ])
 }
 
 #[cfg(test)]
@@ -177,5 +193,56 @@ mod tests {
         // FreeField goes green in plan 01-03; the FORCE physics is Phases 2-4.
         assert!(implemented.contains(&Capability::FreeField));
         assert!(!implemented.contains(&Capability::EmissionModel));
+    }
+
+    #[test]
+    fn plan_02_05_implements_ground_effect_and_diffraction() {
+        let implemented = implemented_capabilities();
+        assert!(implemented.contains(&Capability::GroundEffect));
+        assert!(implemented.contains(&Capability::Diffraction));
+        // Phase 3/4 physics still missing.
+        assert!(!implemented.contains(&Capability::EmissionModel));
+        assert!(!implemented.contains(&Capability::Refraction));
+    }
+
+    #[test]
+    fn force_skip_reason_no_longer_mentions_ground_effect_or_diffraction() {
+        // The requires-list SHRANK: a FORCE homogeneous screen case now skips ONLY
+        // on the emission model — ground-effect and diffraction have disappeared
+        // from the missing set (plan 02-05 flipped them on).
+        let implemented = implemented_capabilities();
+        for desc in [
+            "Flat terrain, d=100 m, impedance A, homogeneous atm.",
+            "Flat terrain with thin screen, d=100 m, homogeneous atm.",
+        ] {
+            let case = base_case(CaseKind::ForceStraightRoad, desc);
+            let missing: BTreeSet<Capability> = required_capabilities(&case)
+                .difference(&implemented)
+                .copied()
+                .collect();
+            assert!(
+                !missing.contains(&Capability::GroundEffect),
+                "ground-effect must be gone from the skip reason ({desc}): {missing:?}"
+            );
+            assert!(
+                !missing.contains(&Capability::Diffraction),
+                "diffraction must be gone from the skip reason ({desc}): {missing:?}"
+            );
+            // The homogeneous screen case now skips ONLY on the emission model.
+            assert_eq!(missing, BTreeSet::from([Capability::EmissionModel]));
+        }
+    }
+
+    #[test]
+    fn terrain_case_requires_ground_effect_and_screen_adds_diffraction() {
+        let flat = base_case(CaseKind::Terrain, "flat ground sigma=200 (Sub-model 1)");
+        let req = required_capabilities(&flat);
+        assert!(req.contains(&Capability::GroundEffect));
+        assert!(!req.contains(&Capability::Diffraction));
+        // A terrain case is now fully implemented (no skip).
+        assert!(req.difference(&implemented_capabilities()).next().is_none());
+
+        let screen = base_case(CaseKind::Terrain, "thin screen (Sub-model 4)");
+        assert!(required_capabilities(&screen).contains(&Capability::Diffraction));
     }
 }

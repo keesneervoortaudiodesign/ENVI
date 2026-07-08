@@ -13,7 +13,11 @@ pub mod scene_build;
 use envi_engine::freq::FREQ_AXIS;
 use envi_engine::geometry::{PathGeometry, azimuth_deg, reflect_over_segment};
 use envi_engine::propagation::air_absorption::Atmosphere;
-use envi_engine::propagation::direct_path;
+use envi_engine::propagation::coherence::CoherenceInputs;
+use envi_engine::propagation::sound_speed_ms;
+use envi_engine::propagation::terrain_effect::terrain_effect;
+use envi_engine::propagation::{PropagationError, direct_path};
+use envi_engine::scene::{GroundSegment, TerrainProfile};
 use envi_engine::transfer::band_levels_db;
 
 /// Result of running one case through the capability gate + engine + comparator.
@@ -56,6 +60,7 @@ pub fn run_case(case: &cases::CaseDefinition) -> Outcome {
     match case.kind {
         cases::CaseKind::FreeField => run_freefield_case(case),
         cases::CaseKind::Geometry => run_geometry_case(case),
+        cases::CaseKind::Terrain => run_terrain_case(case),
         cases::CaseKind::ForceStraightRoad
         | cases::CaseKind::ForceCurvedRoad
         | cases::CaseKind::ForceCityStreet
@@ -210,6 +215,95 @@ fn run_freefield_case(case: &cases::CaseDefinition) -> Outcome {
     let want = compare::analytic_freefield_reference(path.r_m, &atmos, &sub_source.spectrum, axis);
 
     let report = compare::compare_pointwise(&got, &want, tol, &axis.centres);
+    if report.pass {
+        Outcome::Pass
+    } else {
+        Outcome::Fail(report)
+    }
+}
+
+/// Build an engine [`TerrainProfile`] and matching [`CoherenceInputs`] from a
+/// terrain case's rows and atmosphere. Shared by [`run_terrain_case`] and the
+/// finiteness-sweep test so both drive the exact same construction.
+///
+/// # Errors
+///
+/// Propagates [`PropagationError`]-style failures as a message string on a
+/// malformed profile.
+pub fn build_terrain_inputs(
+    case: &cases::CaseDefinition,
+) -> Result<(TerrainProfile, [f64; 3], [f64; 3], CoherenceInputs), String> {
+    let rows = &case.terrain_profile;
+    if rows.len() < 2 {
+        return Err("terrain case needs at least two profile rows".to_string());
+    }
+    let points: Vec<[f64; 2]> = rows.iter().map(|r| [r.x_m, r.z_m]).collect();
+    let segments: Vec<GroundSegment> = rows
+        .windows(2)
+        .map(|w| GroundSegment {
+            flow_resistivity: w[0].flow_resistivity_kns_m4,
+            roughness: w[0].roughness_m,
+        })
+        .collect();
+    let profile = TerrainProfile::new(points, segments).map_err(|e| e.to_string())?;
+
+    let src = case
+        .source_position
+        .ok_or_else(|| "terrain case missing source position".to_string())?;
+    let rcv = case
+        .receiver_position
+        .ok_or_else(|| "terrain case missing receiver position".to_string())?;
+
+    let t_air_c = case.propagation.t0_c.unwrap_or(15.0);
+    let c0 = sound_speed_ms(t_air_c);
+    let coh = CoherenceInputs {
+        cv2: case.propagation.cv2.unwrap_or(0.0),
+        ct2: case.propagation.ct2.unwrap_or(0.0),
+        t_air_c,
+        c0,
+        roughness_r: 0.0,
+        f_delta_nu: 1.0,
+        d_m: (rcv[0] - src[0]).abs().max(1e-6),
+    };
+    Ok((profile, src, rcv, coh))
+}
+
+/// Run a synthetic terrain-effect case: rows → `TerrainProfile` → engine
+/// [`terrain_effect`] two-channel `ΔL_t` → comparison against the oracle-pinned
+/// 105-point reference at the case tolerance (0.1 dB, the cross-implementation
+/// gate of the 02-RESEARCH acceptance ladder).
+fn run_terrain_case(case: &cases::CaseDefinition) -> Outcome {
+    let Some(expected) = case.expected.as_ref() else {
+        return Outcome::FailDetail("terrain case is missing its [expected] block".to_string());
+    };
+    let Some(reference) = expected.reference_bands.as_ref() else {
+        return Outcome::FailDetail(
+            "terrain case is missing its [expected] 105-point reference values".to_string(),
+        );
+    };
+
+    let (profile, src, rcv, coh) = match build_terrain_inputs(case) {
+        Ok(v) => v,
+        Err(e) => return Outcome::FailDetail(format!("terrain inputs: {e}")),
+    };
+
+    let axis = &*FREQ_AXIS;
+    let te = match terrain_effect(&profile, src, rcv, coh.c0, &coh, axis) {
+        Ok(te) => te,
+        Err(PropagationError::NonFlatTerrainNotImplemented { .. }) => {
+            return Outcome::Skipped(
+                "requires: non-flat-terrain (Sub-model 3, Phase 3)".to_string(),
+            );
+        }
+        Err(e) => return Outcome::FailDetail(format!("terrain_effect failed: {e}")),
+    };
+
+    let report = compare::compare_pointwise(
+        &te.delta_l_db,
+        reference,
+        expected.tolerance_db,
+        &axis.centres,
+    );
     if report.pass {
         Outcome::Pass
     } else {

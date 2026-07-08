@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use super::{
     CaseDefinition, CaseKind, CaseLoadError, GeometryExpected, PropagationParams, ReferenceVersion,
-    SourceSpectrum, SyntheticExpected,
+    SourceSpectrum, SyntheticExpected, TerrainRow,
 };
 
 /// Raw serde mirror of the TOML case schema.
@@ -22,7 +22,20 @@ struct TomlCaseFile {
     receiver: TomlReceiver,
     #[serde(default)]
     atmosphere: TomlAtmosphere,
+    /// Terrain-profile rows (terrain cases only).
+    #[serde(default)]
+    terrain: Vec<TomlTerrainRow>,
     expected: TomlExpected,
+}
+
+/// One terrain-profile row `(x, z, σ, r)` for a terrain-effect case.
+#[derive(Debug, Deserialize)]
+struct TomlTerrainRow {
+    x: f64,
+    z: f64,
+    sigma_kpa: f64,
+    #[serde(default)]
+    roughness: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +71,10 @@ struct TomlAtmosphere {
     t_air_c: Option<f64>,
     rh_percent: Option<f64>,
     pressure_kpa: Option<f64>,
+    /// Wind-velocity turbulence structure parameter `Cv²` (terrain cases).
+    cv2: Option<f64>,
+    /// Temperature turbulence structure parameter `CT²` (terrain cases).
+    ct2: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +83,9 @@ struct TomlExpected {
     bands: String,
     #[serde(default)]
     geometry: Option<TomlGeometryExpected>,
+    /// Oracle-pinned 105-point `ΔL_t` reference curve (terrain cases).
+    #[serde(default)]
+    values: Option<Vec<f64>>,
 }
 
 /// `[expected.geometry]` — hand-computed geometry anchors. All optional so one
@@ -101,6 +121,7 @@ pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
     let kind = match raw.meta.kind.as_str() {
         "free-field" => CaseKind::FreeField,
         "geometry" => CaseKind::Geometry,
+        "terrain" => CaseKind::Terrain,
         other => {
             return Err(CaseLoadError::UnknownKind {
                 got: other.to_string(),
@@ -159,6 +180,57 @@ pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
             });
         }
         propagation.pressure_kpa = p;
+    }
+    if let Some(cv2) = raw.atmosphere.cv2 {
+        super::xls::require_finite(cv2, &context, "atmosphere.cv2")?;
+        if cv2 < 0.0 {
+            return Err(CaseLoadError::Invalid {
+                context,
+                message: format!("cv2 = {cv2} must be non-negative"),
+            });
+        }
+        propagation.cv2 = Some(cv2);
+    }
+    if let Some(ct2) = raw.atmosphere.ct2 {
+        super::xls::require_finite(ct2, &context, "atmosphere.ct2")?;
+        if ct2 < 0.0 {
+            return Err(CaseLoadError::Invalid {
+                context,
+                message: format!("ct2 = {ct2} must be non-negative"),
+            });
+        }
+        propagation.ct2 = Some(ct2);
+    }
+
+    // Terrain-profile rows (terrain cases). X must be strictly ascending — the
+    // TerrainProfile constructor re-validates, but reject early with context.
+    let mut terrain_profile: Vec<TerrainRow> = Vec::new();
+    for (i, row) in raw.terrain.iter().enumerate() {
+        super::xls::require_finite(row.x, &context, &format!("terrain[{i}].x"))?;
+        super::xls::require_finite(row.z, &context, &format!("terrain[{i}].z"))?;
+        super::xls::require_finite(row.sigma_kpa, &context, &format!("terrain[{i}].sigma_kpa"))?;
+        super::xls::require_finite(row.roughness, &context, &format!("terrain[{i}].roughness"))?;
+        if row.sigma_kpa <= 0.0 {
+            return Err(CaseLoadError::Invalid {
+                context,
+                message: format!(
+                    "terrain[{i}].sigma_kpa = {} must be positive",
+                    row.sigma_kpa
+                ),
+            });
+        }
+        terrain_profile.push(TerrainRow {
+            x_m: row.x,
+            z_m: row.z,
+            flow_resistivity_kns_m4: row.sigma_kpa,
+            roughness_m: row.roughness,
+        });
+    }
+    if kind == CaseKind::Terrain && terrain_profile.len() < 2 {
+        return Err(CaseLoadError::Invalid {
+            context,
+            message: "terrain case requires at least 2 [[terrain]] rows".to_string(),
+        });
     }
 
     super::xls::require_finite(raw.expected.tolerance_db, &context, "expected.tolerance_db")?;
@@ -274,6 +346,26 @@ pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "unnamed".to_string());
 
+    // Oracle-pinned 105-point ΔL_t reference (terrain cases).
+    let reference_bands = match raw.expected.values {
+        None => None,
+        Some(vals) => {
+            for (i, &v) in vals.iter().enumerate() {
+                super::xls::require_finite(v, &context, &format!("expected.values[{i}]"))?;
+            }
+            if kind == CaseKind::Terrain && vals.len() != 105 {
+                return Err(CaseLoadError::Invalid {
+                    context,
+                    message: format!(
+                        "terrain reference has {} values (expected exactly 105)",
+                        vals.len()
+                    ),
+                });
+            }
+            Some(vals)
+        }
+    };
+
     Ok(CaseDefinition {
         id: format!("toml::{stem}"),
         name: raw.meta.name.clone(),
@@ -284,12 +376,13 @@ pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
         source_spectrum,
         receiver_position: Some(raw.receiver.position),
         propagation,
-        terrain_profile: Vec::new(),
+        terrain_profile,
         reference_spectrum: None,
         expected: Some(SyntheticExpected {
             tolerance_db: raw.expected.tolerance_db,
             bands: raw.expected.bands,
             geometry,
+            reference_bands,
         }),
     })
 }

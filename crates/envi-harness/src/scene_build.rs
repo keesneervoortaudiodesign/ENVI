@@ -250,6 +250,7 @@ mod tests {
                 tolerance_db: 1e-9,
                 bands: "geometry".to_string(),
                 geometry: None,
+                reference_bands: None,
             }),
         };
         let scene = build_scene(&case).expect("synthetic scene builds");

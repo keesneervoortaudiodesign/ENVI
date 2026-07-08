@@ -23,6 +23,9 @@ pub enum CaseKind {
     FreeField,
     /// Synthetic hand-computed geometry check.
     Geometry,
+    /// Synthetic terrain-effect case: ground + screen `ΔL_t` cross-checked
+    /// against an oracle-pinned 105-point reference (Phase 2).
+    Terrain,
     /// FORCE straight-road case (TestStraightRoad.xls worksheet).
     ForceStraightRoad,
     /// FORCE curved-road workbook placeholder (layout parsed in Phase 4).
@@ -337,6 +340,10 @@ pub struct SyntheticExpected {
     /// Hand-computed geometry expectations (`None` for non-geometry cases) —
     /// backward-compatible with the free-field schema.
     pub geometry: Option<GeometryExpected>,
+    /// An oracle-pinned 105-point reference `ΔL_t` curve (terrain cases). The
+    /// engine's [`terrain_effect`] band values are compared against it at
+    /// [`Self::tolerance_db`].
+    pub reference_bands: Option<Vec<f64>>,
 }
 
 /// The shared internal representation every loader emits and every consumer
