@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: FORCE Harness, Geometry Model & Direct Path** - Test harness on FORCE cases first, semantic 2.5D scene from test-case files, complex 1/12-octave direct path with air absorption
 - [x] **Phase 2: Ground Effect & Diffraction** - Segmented-impedance ground reflection, single/multi-edge screens, complex-pressure combination with Δτ interference
-- [ ] **Phase 3: Meteorology & Refraction** - Log-lin A/B/C profile, equivalent-linear collapse with guarded ξ/Δτ numerics, reflection-path coefficients, weather routes, turbulence coherence
+- [x] **Phase 3: Meteorology & Refraction** - Log-lin A/B/C profile, equivalent-linear collapse with guarded ξ/Δτ numerics, reflection-path coefficients, weather routes, turbulence coherence
 - [ ] **Phase 4: Transfer Tensor, Directional Sources & Full Validation** - `H[s,r,f]` complex tensor store, directional multi-sub-source composition, filter/delay conditioning via MAC, full FORCE pass + NoiseModelling cross-validation
 
 ## Phase Details
@@ -83,13 +83,13 @@ Plans:
   4. Reflection paths compute with separate before/after profile coefficients (A₁/B₁, A₂/B₂), and a Route 1 weather-class table (A,B pairs with probabilities) produces an energy-weighted L_den-style combination; Route 3 reconstructs u(z), T(z) from surface met via Monin–Obukhov and least-squares fits A, B, C
   5. The fluctuating-refraction coherence coefficient F_τ (from C_v², C_T²) blends coherent and partially coherent contributions, changing results in the expected direction on turbulent cases
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 Plans:
 
 - [x] 03-01-PLAN.md
 - [x] 03-02-PLAN.md
-- [ ] 03-03-PLAN.md
+- [x] 03-03-PLAN.md
 
 **Wave 1**
 
@@ -101,7 +101,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 03-03: Weather input routes (Route 1 classes, Route 3 Monin–Obukhov fit) + F_τ turbulence coherence; refraction FORCE cases green
+- [x] 03-03: Weather input routes (Route 1 classes → energy-weighted L_den, Route 3 Monin–Obukhov + 3×3 LSQ fit) + F_τ turbulence coherence (Eq. 112); Capability::Refraction flipped, FORCE wind/gradient requires-list shrinks to emission-model only (honest-green, no false Pass)
 
 ### Phase 4: Transfer Tensor, Directional Sources & Full Validation
 
@@ -279,7 +279,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 |-------|----------------|--------|-----------|
 | 1. FORCE Harness, Geometry Model & Direct Path | 3/3 | Complete | 2026-07-07 |
 | 2. Ground Effect & Diffraction | 5/5 | Complete | 2026-07-08 |
-| 3. Meteorology & Refraction | 0/3 | Not started | - |
+| 3. Meteorology & Refraction | 3/3 | Complete | 2026-07-08 |
 | 4. Transfer Tensor, Directional Sources & Full Validation | 0/3 | Not started | - |
 | 5. Engine Extensions — Forest & Semi-Transparent Partitions | 0/? | Not started | - |
 | 6. Service Foundation & Persistence | 0/? | Not started | - |

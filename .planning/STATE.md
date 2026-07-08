@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 3
 current_phase_name: Meteorology & Refraction
-status: executing
-stopped_at: 03-02 complete; 03-03 next
-last_updated: "2026-07-08T16:34:06.472Z"
+status: phase-complete
+stopped_at: 03-03 complete; Phase 3 done (run phase-completion gates, then Phase 4)
+last_updated: "2026-07-08T17:12:21Z"
 last_activity: 2026-07-08
-last_activity_desc: 03-02 complete (CalcEqSSPGround soft-ground fL/fH + weather Route 2 per-azimuth A + reflection before/after split)
+last_activity_desc: 03-03 complete (F_τ fluctuating-refraction coherence Eq. 112 + weather Route 1 energy-weighted L_den + Route 3 Monin–Obukhov/3×3 LSQ + Capability::Refraction flip — FORCE wind/gradient requires shrinks to emission-model only)
 progress:
   total_phases: 11
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 11
-  completed_plans: 10
-  percent: 18
+  completed_plans: 11
+  percent: 27
 ---
 
 # Project State
@@ -28,20 +28,20 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 3 (Meteorology & Refraction) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-07-08 — 03-02 complete (CalcEqSSPGround soft-ground fL/fH + weather Route 2 per-azimuth A + reflection before/after split)
+Phase: 3 (Meteorology & Refraction) — COMPLETE
+Plan: 3 of 3 (all complete)
+Status: Phase complete — run the CLAUDE.md phase-completion gates (code-review, secure-phase, verify, doc-consistency), then Phase 4
+Last activity: 2026-07-08 — 03-03 complete (F_τ Eq. 112 + weather Routes 1/3 + Capability::Refraction flip; honest-green FORCE wind/gradient = emission-model only)
 
-Progress: [███████░░░] Phase 3 — 2/3 plans complete (03-01 refraction core, 03-02 soft-ground + weather routes)
+Progress: [██████████] Phase 3 — 3/3 plans complete (03-01 refraction core, 03-02 soft-ground + weather routes, 03-03 F_τ + Routes 1/3 + capability flip)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 3
-- Average duration: 26min
-- Total execution time: ~1.3 hours
+- Total plans completed: 11
+- Average duration: ~28min
+- Total execution time: ~5 hours
 
 **By Phase:**
 
@@ -51,7 +51,7 @@ Progress: [███████░░░] Phase 3 — 2/3 plans complete (03-01
 
 **Recent Trend:**
 
-- Last 5 plans: 25min, 17min, 35min, 55min
+- Last 5 plans: 25min, 35min, 55min, 34min, 17min
 - Trend: —
 
 *Updated after each plan completion*
@@ -94,6 +94,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 3, 03-02] calc_eq_ssp_ground takes σ (sigma_kpa) not a precomputed Ẑ_G — phase_diff_freq owns the Delany–Bazley impedance and needs σ to sweep the 1/3-oct bracket
 - [Phase ?]: [Phase 3, 03-02] Route-2 A/B scaling constants are [ASSUMED] (validated by direction property tests only, no false FORCE numeric pass); B factor C/(2·(T₀+273.15)) is the exact Coft derivative; locked pending 03-03 Open-Q1
 - [Phase ?]: [Phase 3, 03-02] Nord2000 nonzero-turbulence default added as a turbulence_or_nord2000_default accessor seam, NOT wired into build_terrain_inputs, so the frozen zero-turbulence terrain oracle fixtures stay untouched
+- [Phase 3, 03-03] Open-Q1 checkpoint resolved as option (c): proceed with the [ASSUMED] weather-route A/B/C constants clearly quarantined — validated by structural + direction property tests and the same-transcription committed oracle ONLY; NO false FORCE numeric Pass; wind/gradient FORCE cases stay Skipped(requires: emission-model) until Phase 4
+- [Phase 3, 03-03] F_τ (Eq. 112) uses the full 2π·f·|Δτ⁺−Δτ| argument (NOT 0.23π — Pitfall 5), injected through the pre-built CoherenceInputs::f_delta_nu seam with zero call-site change; sA=sB=0 ⇒ Δτ⁺=Δτ ⇒ F_τ=1 bit-exact; multiplies H_coh without overwriting the +j phase (D-12); property-tested only (no fixed oracle, D-11)
+- [Phase 3, 03-03] Route 3 LSQ = hand-rolled 3×3 normal equations (Cramer + singular guard), NO nalgebra/ndarray-linalg (D-08); SoundSpeedProfile gained s_a/s_b so the engine can form the Eq. 10 A⁺/B⁺ profile; Capability::Refraction flipped ⇒ FORCE wind/gradient skip-reason shrinks to emission-model only
 
 ### Pending Todos
 
@@ -102,7 +105,7 @@ None yet.
 ### Blockers/Concerns
 
 - ~~Must obtain AV 1106/07 and the FORCE road-traffic test-case suite before Phase 1 execution~~ RESOLVED (01-01): all 4 FORCE workbooks + AV PDFs fetched into git-ignored refs/, SHA-256 pinned in refs/refs.sha256; case "1" full-precision anchor (LAeq,24h=39.39836757521) verified. Suite stays green whether or not refs are present.
-- Open question (Phase 3/4): how to represent Nord2000 partial-coherence (coefficient F_τ) alongside the coherent complex transfer — channel/representation decision pending
+- ~~Open question (Phase 3/4): how to represent Nord2000 partial-coherence (coefficient F_τ) alongside the coherent complex transfer~~ RESOLVED (03-03): F_τ (Eq. 112) multiplies the coherent H_coh_factor via the CoherenceInputs::f_delta_nu seam (phase preserved, D-12); the turbulence-decorrelated energy remains the separate real P_incoh channel; F→1 ⇒ P_incoh→0 bit-exact
 
 ## Deferred Items
 
