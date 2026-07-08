@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 2
 current_phase_name: Ground Effect & Diffraction
 status: phase-complete
-stopped_at: Completed 02-05-PLAN.md (§5.21 terrain interpretation + Eq. 332 + two-channel transfer) — wave 4, Phase 2 COMPLETE
-last_updated: "2026-07-08T11:05:00.000Z"
+stopped_at: Phase 3 context gathered
+last_updated: "2026-07-08T11:13:13.631Z"
 last_activity: 2026-07-08
-last_activity_desc: "Completed 02-05-PLAN.md: terrain_interpretation (§5.21 dispatch, r_scr1/r_scr2/r_scr12/r_flat, Sub-model 3 typed stub), terrain_effect Eq. 332 two-channel composition, the SINGLE conj() at transfer::nord_ratio_to_transfer (grep gate 0 in propagation/), band_levels_db_two_channel readout, Capability::{GroundEffect,Diffraction} flipped (FORCE cases skip ONLY on emission-model), five oracle-pinned terrain cases green at 0.1 dB (9 total Pass), finiteness sweep across all FORCE geometries × 105 bands. ENG-02/03/07 complete. Phase 2 done; all quality gates pass."
+last_activity_desc: "Completed 02-05-PLAN.md: §5.21 dispatch + Eq. 332 + single conj boundary + two-channel transfer; capabilities flipped; five terrain cases oracle-pinned; finiteness sweep; README. All quality gates pass (build/test/clippy/fmt, engine deps unchanged, conj gate 0 in propagation/)"
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 8
+  completed_plans: 8
   percent: 50
 ---
 
@@ -108,6 +108,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T09:23:35.897Z
-Stopped at: Completed 02-01-PLAN.md (Nord2000-native numerics core) — wave 1 of Phase 2; wave 2 (02-02, 02-03) ready to run
-Resume file: None
+Last session: 2026-07-08T11:13:13.622Z
+Stopped at: Phase 3 context gathered
+Resume file: .planning/phases/03-meteorology-refraction/03-CONTEXT.md
