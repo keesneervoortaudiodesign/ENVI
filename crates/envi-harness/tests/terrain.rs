@@ -143,10 +143,14 @@ fn finiteness_sweep_across_all_force_geometries_and_bands() {
                 }
                 evaluated += 1;
             }
-            // Non-flat terrain is a typed hard error — never NaN (Sub-model 3,
-            // Phase 3). This is the documented, expected outcome for valley /
-            // elevated-road / forest profiles.
-            Err(PropagationError::NonFlatTerrainNotImplemented { .. }) => {
+            // Non-flat terrain: the Sub-model 3 concave path (valley profiles) now
+            // evaluates to a finite result above; a CONVEX/transition segment
+            // (elevated-road / hill) remains a typed hard error (§5.12 wedge path
+            // not wired) — never NaN. The legacy NonFlatTerrainNotImplemented
+            // variant is retained for compatibility though the seam now dispatches
+            // to Sub-model 3.
+            Err(PropagationError::NonFlatTerrainNotImplemented { .. })
+            | Err(PropagationError::ConvexSegmentNotImplemented { .. }) => {
                 nonflat += 1;
             }
             // A near-ground emission source (04-02 places the low sub-source at

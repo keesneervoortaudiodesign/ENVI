@@ -57,6 +57,7 @@ use crate::scene::TerrainProfile;
 pub mod screen;
 pub mod submodel1;
 pub mod submodel2;
+pub mod submodel3;
 pub mod submodel7;
 
 /// Two-channel result of any terrain-effect sub-model, normalized relative to
@@ -144,8 +145,9 @@ pub struct TerrainEffect {
 ///
 /// # Errors
 ///
-/// [`PropagationError::NonFlatTerrainNotImplemented`] if the no-screen branch
-/// demands Sub-model 3 (`r_flat < 1` with weight);
+/// [`PropagationError::ConvexSegmentNotImplemented`] if the no-screen branch
+/// demands Sub-model 3 (`r_flat < 1` with weight) over a **convex**/transition
+/// ground segment (the §5.12 concave path IS wired);
 /// [`PropagationError::SegmentedRefractionNotImplemented`] if a weather profile
 /// is supplied over segmented ground; other [`PropagationError`]s propagate from
 /// the sub-models on degenerate geometry.
@@ -163,6 +165,26 @@ pub fn terrain_effect(
     let interp = interpret_terrain(profile, source, receiver, atmos_c0)?;
     let flat = FlatChannel::from_profile(profile, source, receiver, atmos_c0, refraction)?;
 
+    // Sub-model 3 (§5.12 non-flat terrain without screens): built once from the
+    // actual sloped ground segments. Evaluated per band ONLY when the no-screen
+    // flatness blend carries a non-zero `(1 − r_flat)` weight (below); flat Phase
+    // 2/3 targets give `r_flat = 1`, so this is never touched there.
+    let sm3 = {
+        let points = profile.points();
+        let segments = profile.segments();
+        let seg3: Vec<submodel3::Segment3> = segments
+            .iter()
+            .enumerate()
+            .map(|(i, seg)| submodel3::Segment3 {
+                seg_a: points[i],
+                seg_b: points[i + 1],
+                sigma_kpa: seg.flow_resistivity,
+                roughness_r: seg.roughness,
+            })
+            .collect();
+        submodel3::SubModel3::new(source, receiver, atmos_c0, seg3, refraction.copied())?
+    };
+
     let n = axis.centres.len();
     let mut h_coh_factor = Vec::with_capacity(n);
     let mut p_incoh = Vec::with_capacity(n);
@@ -171,19 +193,29 @@ pub fn terrain_effect(
     for &f in axis.centres.iter() {
         let tp = interp.transition_params(f);
 
-        // No-screen branch: r_flat·ΔL_flat + (1−r_flat)·ΔL₃. Sub-model 3 is a
-        // typed hard error whenever it would carry non-zero weight (never on the
-        // flat Phase 2 targets, where r_flat = 1).
-        if tp.r_flat < 1.0 - 1e-9 && (1.0 - tp.r_scr1) > 1e-12 {
-            return Err(PropagationError::NonFlatTerrainNotImplemented {
-                r_flat: tp.r_flat,
-                f_hz: f,
-            });
-        }
         let flat_res = flat.eval(f, coh)?;
 
-        let scr_res = if interp.class == ScreenClass::Flat {
+        // No-screen branch: r_flat·ΔL_flat + (1−r_flat)·ΔL₃ (Eq. 332 flatness
+        // blend). Sub-model 3 (§5.12) supplies ΔL₃ when the terrain is non-flat
+        // without screening (`r_flat < 1` carrying weight). Flat Phase 2/3 targets
+        // give r_flat = 1, so `no_screen_res == flat_res` bit-for-bit there.
+        let no_screen_res = if tp.r_flat < 1.0 - 1e-9 && (1.0 - tp.r_scr1) > 1e-12 {
+            let sm3_res = sm3.eval(f, coh)?;
+            let rf = tp.r_flat;
+            let hc = flat_res.h_coh_factor * rf + sm3_res.h_coh_factor * (1.0 - rf);
+            let pi = flat_res.p_incoh * rf + sm3_res.p_incoh * (1.0 - rf);
+            let dl = rf * flat_res.delta_l_db + (1.0 - rf) * sm3_res.delta_l_db;
+            GroundResult {
+                delta_l_db: dl,
+                h_coh_factor: hc,
+                p_incoh: pi,
+            }
+        } else {
             flat_res
+        };
+
+        let scr_res = if interp.class == ScreenClass::Flat {
+            no_screen_res
         } else {
             screen_channel(f, &interp, coh)?
         };
@@ -192,10 +224,10 @@ pub fn terrain_effect(
         // r_scr1 ∈ {0,1} except the low-f transition of a real screen, where the
         // linear-channel blend is the phase-preserving reading.
         let r = tp.r_scr1;
-        let hc = scr_res.h_coh_factor * r + flat_res.h_coh_factor * (1.0 - r);
-        let pi = scr_res.p_incoh * r + flat_res.p_incoh * (1.0 - r);
+        let hc = scr_res.h_coh_factor * r + no_screen_res.h_coh_factor * (1.0 - r);
+        let pi = scr_res.p_incoh * r + no_screen_res.p_incoh * (1.0 - r);
         // delta_l_db: the document-exact dB interpolation (validation channel).
-        let dl = r * scr_res.delta_l_db + (1.0 - r) * flat_res.delta_l_db;
+        let dl = r * scr_res.delta_l_db + (1.0 - r) * no_screen_res.delta_l_db;
 
         h_coh_factor.push(hc);
         p_incoh.push(pi);

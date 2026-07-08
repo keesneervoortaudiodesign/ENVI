@@ -105,6 +105,25 @@ pub enum PropagationError {
         /// The frequency at which the non-flat branch was demanded, Hz.
         f_hz: f64,
     },
+    /// A Sub-model 3 (§5.12 non-flat terrain) ground segment classified as
+    /// **convex** (source or receiver below the extended segment line) or a
+    /// **transition** carrying a non-zero convex weight. The convex branch is the
+    /// wedge-diffraction path (Eqs. 141–151): an equivalent-wedge construction on
+    /// the terrain segments, not yet wired. The concave/transition path
+    /// (Eqs. 134–140, 156) IS implemented; a convex segment surfaces here as a
+    /// hard error by design — never a silent approximation that could flip a
+    /// FORCE case to a false pass (honest-green contract, threat T-04-03-04,
+    /// mirrors [`Self::NonFlatTerrainNotImplemented`]).
+    #[error(
+        "convex Sub-model 3 segment (§5.12 wedge path) is not implemented at \
+         {f_hz} Hz: {detail}"
+    )]
+    ConvexSegmentNotImplemented {
+        /// The frequency at which a convex/transition segment was demanded, Hz.
+        f_hz: f64,
+        /// Which segment classification triggered the branch.
+        detail: &'static str,
+    },
     /// The refracted reflection-point cubic (AV 1106/07 §5.5.5 Eq. 49) produced
     /// no real root in the valid interval `(0, d)` — a degenerate refracted
     /// reflection geometry (threat T-03-01-02). Never a silent fallback.
