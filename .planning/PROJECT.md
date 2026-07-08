@@ -8,6 +8,21 @@ ENVI is a web-based environmental noise-propagation tool that implements the **f
 
 A **numerically faithful Nord2000 engine** — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain. If the map, the imports, and the UI all failed, a trustworthy propagation calculation must still stand.
 
+## Current Milestone: v2.0 Interactive Calculation UI (NoizCalc-style)
+
+**Goal:** A self-hosted web application wrapped around the Nord2000 engine — draw a scene on an OSM/terrain map, pull GIS + weather data, run a calculation, and read back spectral results at points and a dB(A)/dB(C) noise map. Workflow modeled on d&b NoizCalc (TI 386 ch. 3–4) as a **single integrated app** (no ArrayCalc/second-tool split; sources defined natively in ENVI). Nord2000-only.
+
+**Target features:**
+- CRUD an ENVI model (project persistence: create / open / edit / save / delete)
+- Get GIS data — terrain (Copernicus GLO-30 + national LiDAR DTM), ground cover (ESA WorldCover), buildings (Overture/OSM), imported onto a triangulated ground model and editable
+- Get weather data — Open-Meteo import feeding the A/B/C meteorology inputs
+- Manual weather what-if — override wind (Beaufort), downwind worst-case toggle, temperature gradient, edit A/B/C; fast recompute
+- Draw scene objects — directional sources, walls, buildings, forests, ground-effect (damping/impedance) zones, elevation points/lines, receivers, calculation area
+- Spectral results at receiver points (per-band readout via the transfer tensor)
+- Noise map in dB(A) and dB(C) — server-side filled isophone contour polygons with an editable color scale
+
+**Sequencing:** This milestone is being planned ahead while Milestone 1 (core engine) finishes. UI phases append from **Phase 5**; engine Phases 3 (meteorology/refraction) & 4 (transfer tensor + FORCE pass) remain the immediate execution priority and are prerequisites for the calculation/what-if/results features (goals 4/6/7). CRUD, GIS import, and drawing (goals 1/2/5) can proceed in parallel with the engine finish.
+
 ## Requirements
 
 ### Validated
@@ -70,6 +85,8 @@ A **numerically faithful Nord2000 engine** — validated against the FORCE road-
 | Global data tier: Copernicus GLO-30 + ESA WorldCover + Overture | Chosen "Global" market; national LiDAR layered where available | — Pending |
 | Engine output = complex transfer tensor `H[sub_source, receiver, 1/12-oct freq]`, separating propagation from source conditioning | Makes filter/delay adjustments an interactive complex MAC instead of a full recompute; preserves phase/interference | — Pending |
 | **Phase preserved through every environmental operator; two-channel transfer (`H_coh` complex + `P_incoh` real)** | User-mandated: phase must survive all environmental calcs (delays/filters need it). A single complex value can't represent Nord2000 partial coherence, so the turbulence `(1−F²)` energy lives in a separate incoherent-power channel added at readout — never collapsing phase in `H_coh` | ✓ Decided 2026-07-07 |
+| Milestone 2 UI workflow modeled on d&b NoizCalc (TI 386 ch. 3–4), single integrated app | Proven environmental-noise UX (import→model→calculate→plot); ENVI folds the ArrayCalc "stage" source-definition into one package and stays Nord2000-only | ✓ Decided 2026-07-08 |
+| Milestone 2 planned ahead non-destructively (UI phases append from Phase 5; engine Phases 3–4 untouched) | Lets the UI be scoped/roadmapped now without resetting STATE or clearing the in-progress engine phase directories; engine finish stays the execution priority | ✓ Decided 2026-07-08 |
 
 ## Evolution
 
@@ -89,4 +106,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-07 after initialization*
+*Last updated: 2026-07-08 — Milestone v2.0 (Interactive Calculation UI) defined*
