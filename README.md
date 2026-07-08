@@ -101,6 +101,31 @@ generated TOML is committed, so this is operator-driven, not a build step):
 cd tools/nord2000_oracle && python gen_case_fixtures.py
 ```
 
+## Why phase-preserving? (the fast-recalc tensor)
+
+Keeping `H_coh` complex through the whole chain is what makes interactive input
+conditioning cheap. Propagation (geometry + meteorology) is expensive, but a
+source *filter* is a per-frequency complex gain and a *delay* is a phase ramp
+`e^{−j2πfτ}`. With the transfer cached, adjusting conditioning is a complex
+multiply-accumulate `p[r,f] = Σ_s H[s,r,f]·G_s(f)` — no re-propagation. The
+`TransferTensor = Array3<Complex<f64>>` indexed `[sub_source, receiver, freq]` is
+the frozen forward contract for that Phase-4 recalculation path.
+
+## Roadmap — Milestone 1 (validated core engine)
+
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 1 | FORCE harness, semantic 2.5D scene, complex 1/12-octave direct path (divergence + ISO 9613-1) | ✅ complete |
+| 2 | Ground effect (segmented impedance, Q̂) + single/multi-edge diffraction + two-channel combination | ✅ complete |
+| 3 | Meteorology & refraction: log-lin A/B/C profile, equivalent-linear collapse (guarded ξ/Δτ), weather routes, turbulence coherence | ⏳ next |
+| 4 | Dense `H[s,r,f]` transfer tensor + filter/delay recalculation, directional multi-sub-source composition, full FORCE-suite pass + NoiseModelling cross-check | ⏳ |
+
+Beyond Milestone 1 (later milestones): live GIS ingestion (Copernicus DEM, ESA
+WorldCover, Overture buildings), open weather APIs (Open-Meteo / ERA5), the
+receiver-grid + isophone map output, the MapLibre/OpenStreetMap web frontend, and
+future DXF/SketchUp import and 2.5D BEM barrier corrections. See `.planning/` for
+the full project context and requirements.
+
 ## Licensing note
 
 The Nord2000 method is implemented **from the published equations**, cited by
