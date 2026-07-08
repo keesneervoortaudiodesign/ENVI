@@ -60,14 +60,15 @@ pub struct MetClass {
     pub probability: f64,
 }
 
-/// The three `L_den` sub-periods (07–19 day, 19–22 evening, 22–07 night).
+/// The three `L_den` sub-periods (07–19 day, 19–23 evening, 23–07 night — the
+/// EU END / Directive 2002/49/EC boundaries).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Period {
     /// Day, 07:00–19:00 (12 h, no penalty).
     Day,
-    /// Evening, 19:00–22:00 (4 h, +5 dB).
+    /// Evening, 19:00–23:00 (4 h, +5 dB).
     Evening,
-    /// Night, 22:00–07:00 (8 h, +10 dB).
+    /// Night, 23:00–07:00 (8 h, +10 dB).
     Night,
 }
 
