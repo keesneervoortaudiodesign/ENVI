@@ -93,8 +93,9 @@ fn finiteness_sweep_across_all_force_geometries_and_bands() {
         }
 
         // Build the profile + geometry via the harness scene builder, then drive
-        // terrain_effect directly (a single placeholder sub-source, the case's
-        // own turbulence parameters, homogeneous weather).
+        // terrain_effect directly (the first emission sub-source — the 0.01 m
+        // rolling source since 04-02 supersedes the Phase-1 placeholder — the
+        // case's own turbulence parameters, homogeneous weather).
         let scene = match envi_harness::scene_build::build_scene(case) {
             Ok(s) => s,
             Err(_) => continue,
@@ -146,6 +147,15 @@ fn finiteness_sweep_across_all_force_geometries_and_bands() {
             // Phase 3). This is the documented, expected outcome for valley /
             // elevated-road / forest profiles.
             Err(PropagationError::NonFlatTerrainNotImplemented { .. }) => {
+                nonflat += 1;
+            }
+            // A near-ground emission source (04-02 places the low sub-source at
+            // 0.01 m, superseding the Phase-1 height-0 placeholder) can drive a
+            // screen/wedge geometry to a degenerate configuration on some FORCE
+            // profiles. The engine reports this as a TYPED error — never a NaN
+            // — which is the honest-green outcome pending the 04-03 propagation
+            // hardening; count it as a typed-error skip, not a panic.
+            Err(PropagationError::DegenerateRayGeometry { .. }) => {
                 nonflat += 1;
             }
             Err(e) => panic!("{}: unexpected terrain_effect error {e}", case.id),

@@ -8,6 +8,7 @@
 pub mod capability;
 pub mod cases;
 pub mod compare;
+pub mod emission;
 pub mod scene_build;
 pub mod weather;
 

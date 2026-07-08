@@ -34,7 +34,14 @@ TestYearlyAverage.xls|$MST_BASE/TestYearlyAverage/TestYearlyAverage.xls
 AV1106-07-rev4.pdf|http://web.archive.org/web/20240221070539/https://forcetechnology.com/-/media/force-technology-media/pdf-files/projects/nord2000/nord2000-nordtestproposal-rev4.pdf
 AV1849-00-part1.pdf|http://www.magasbakony.hu/Val/Nord2000_homogeneous_atmosphere_Part_1.pdf
 EnvProject1335-2010.pdf|https://mst.dk/media/ecyi5sso/revised_test_cases_for_updated_version_of_nord2000.pdf
+Users_Guide_Nord2000_Road.pdf|https://egra.cedex.es/EGRA-ingles/I-Documentacion/National_Methods/Users_Guide_Nord2000_Road.pdf
 "
+
+# Manual-drop-only artifacts (no stable public URL): drop the file into refs/
+# by hand and its sha256 will be recorded/verified on the next run.
+#   SP Rapport 2006:12 (Jonasson) — the road-emission coefficient tables. NOT
+#   freely downloadable (04-RESEARCH Open Q1); the emission coefficients stay
+#   [ASSUMED] until this is dropped in. No URL row on purpose.
 
 sha256_of() {
     # portable-ish sha256 (Git Bash / Linux: sha256sum; macOS: shasum)

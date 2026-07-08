@@ -24,6 +24,7 @@ use envi_engine::scene::{
 };
 
 use crate::cases::{CaseDefinition, CaseKind, SourceSpectrum};
+use crate::emission::{RoadCategory, RoadSource, RoadSurface};
 
 /// Materialize a [`SourceSpectrum`] spec into the engine's [`BandSpectrum`]
 /// (the point sub-source's per-1/12-octave `L_W`, SRC-01).
@@ -42,21 +43,26 @@ fn band_spectrum(spec: SourceSpectrum) -> BandSpectrum {
     }
 }
 
-/// Source-line offset from the road centre line for FORCE straight-road cases.
+/// Vehicle **centre-line** offset from the road centre line for FORCE
+/// straight-road cases: vehicles drive in the middle of the nearest 5 m lane →
+/// `x = 2.5 m`.
 ///
-/// Vehicles drive in the middle of the nearest 5 m lane → `x = 2.5 m`. The
-/// terrain profile starts at `x = 3.25 m`, so the source sits 0.75 m BEFORE the
-/// profile. This is exactly why case 1 (d = 100 m) has a horizontal
-/// source→receiver distance of 97.5 m, not 100 m (01-RESEARCH Pitfall 5).
-const FORCE_LANE_X_M: f64 = 2.5;
+/// # Supersedes the Phase-1 placeholder (04-02, Pitfall 1)
+///
+/// Phase 1 froze `FORCE_LANE_X_M = 2.5` as the **source line** and a single
+/// height-0 placeholder sub-source (`FORCE_PLACEHOLDER_SOURCE_H_M = 0.0`),
+/// giving a 97.5 m horizontal distance. That is now **superseded**: the
+/// Nord2000 sub-sources sit [`emission::SOURCE_OFFSET_M`] = 1 m from the vehicle
+/// centre line **toward the receiver** (AV 1171/06 §3.1.1) at heights 0.01 /
+/// 0.30 / 0.75 m — so the FORCE source line is `2.5 + 1.0 = 3.5 m` and the
+/// case-1 horizontal distance is **96.5 m**, not 97.5 m. The single placeholder
+/// sub-source is replaced by the [`emission::RoadSource`] expansion.
+const FORCE_LANE_CENTRE_X_M: f64 = 2.5;
 
-/// Placeholder source height for FORCE cases, meters.
-///
-/// The real Nord2000 road sub-source heights (0.01 / 0.30 / 0.75 m) belong to
-/// the emission model (Phase 4). Phase 1 uses a single placeholder sub-source
-/// at the first profile point's ground level, measured via the hSv convention
-/// ([`TerrainProfile::endpoints`]). Documented so Phase 4 knows to replace it.
-const FORCE_PLACEHOLDER_SOURCE_H_M: f64 = 0.0;
+/// Default FORCE straight-road traffic for scene building: Category-1 light
+/// vehicles at 80 km/h on DAC-12 (cases 17/18 are cat-2/3 — category detection
+/// from case metadata is a 04-03 concern). Air temperature comes from the case.
+const FORCE_DEFAULT_SPEED_KMH: f64 = 80.0;
 
 /// Build the canonical semantic [`Scene`] for a case.
 ///
@@ -110,22 +116,32 @@ fn build_force_straight_road(case: &CaseDefinition) -> anyhow::Result<Scene> {
         .hr_m
         .ok_or_else(|| anyhow!("FORCE case {} is missing the receiver height hr", case.id))?;
 
-    // hSv/hRv: source Z above the FIRST profile point, receiver Z above the
-    // LAST. endpoints() returns the profile-frame X for both; the receiver
-    // keeps its profile X (= last profile point), but the SOURCE X is the lane
-    // line at 2.5 m — the 97.5 m (not 100 m) trap.
-    let (src_xz, rcv_xz) = terrain.endpoints(FORCE_PLACEHOLDER_SOURCE_H_M, h_r);
-    let source_pos = [FORCE_LANE_X_M, 0.0, src_xz[1]];
+    // hSv/hRv: receiver Z above the LAST profile point (endpoints encodes the
+    // convention in one place). The ground elevation the source heights sit
+    // above is the FIRST profile point's Z (source-side ground).
+    let (src_xz, rcv_xz) = terrain.endpoints(0.0, h_r);
+    let ground_z = src_xz[1];
     let receiver_pos = [rcv_xz[0], 0.0, rcv_xz[1]];
+
+    // Road emission expansion (04-02): the single Phase-1 placeholder sub-source
+    // is superseded by the Nord2000 height sub-sources at x = 3.5 m (lane centre
+    // 2.5 m + 1 m toward the receiver, Pitfall 1). The receiver is at large +x,
+    // so "toward the receiver" is +x.
+    let road = RoadSource {
+        category: RoadCategory::Light,
+        speed_kmh: FORCE_DEFAULT_SPEED_KMH,
+        surface: RoadSurface::Dac12,
+        temperature_c: case.propagation.t0_c.unwrap_or(15.0),
+    };
+    let sub_sources: Vec<SubSource> = road
+        .expand([FORCE_LANE_CENTRE_X_M, 0.0], [1.0, 0.0], ground_z)
+        .into_iter()
+        .map(|rs| rs.sub_source)
+        .collect();
 
     Ok(Scene {
         crs: CrsInfo::local_metric(),
-        sources: vec![Source {
-            sub_sources: vec![SubSource {
-                position: source_pos,
-                spectrum: band_spectrum(case.source_spectrum),
-            }],
-        }],
+        sources: vec![Source { sub_sources }],
         receivers: vec![Receiver {
             position: receiver_pos,
         }],
@@ -218,18 +234,27 @@ mod tests {
             epsilon = 1e-12
         );
 
-        let source = scene.sources[0].sub_sources[0].position;
+        // Emission expansion (04-02): TWO sub-sources at the Nord2000 heights,
+        // both on the source line x = 3.5 m (lane centre 2.5 m + 1 m toward the
+        // receiver, Pitfall 1 — superseding the Phase-1 x=2.5/height-0 placeholder).
+        assert_eq!(scene.sources[0].sub_sources.len(), 2);
+        let low = scene.sources[0].sub_sources[0].position;
+        let high = scene.sources[0].sub_sources[1].position;
         let receiver = scene.receivers[0].position;
 
-        // Source line at x = 2.5 m (lane), receiver at last profile X = 100 m.
-        assert_relative_eq!(source[0], 2.5, epsilon = 1e-12);
+        assert_relative_eq!(low[0], 3.5, epsilon = 1e-12);
+        assert_relative_eq!(high[0], 3.5, epsilon = 1e-12);
+        // Heights 0.01 m (rolling-low) and 0.30 m (propulsion-high) for cat-1.
+        assert_relative_eq!(low[2], 0.01, epsilon = 1e-12);
+        assert_relative_eq!(high[2], 0.30, epsilon = 1e-12);
         assert_relative_eq!(receiver[0], 100.0, epsilon = 1e-12);
         // Receiver height 1.5 m above the LAST (flat, z = 0) profile point.
         assert_relative_eq!(receiver[2], 1.5, epsilon = 1e-12);
 
-        // THE anchor: horizontal source→receiver distance is 97.5 m, NOT 100.
-        let geom = PathGeometry::direct(source, receiver).unwrap();
-        assert_relative_eq!(geom.horizontal_m, 97.5, max_relative = 1e-12);
+        // THE superseded anchor: horizontal source→receiver distance is now
+        // 96.5 m (100 − 3.5), NOT the Phase-1 97.5 m (Pitfall 1).
+        let geom = PathGeometry::direct(low, receiver).unwrap();
+        assert_relative_eq!(geom.horizontal_m, 96.5, max_relative = 1e-12);
     }
 
     #[test]
