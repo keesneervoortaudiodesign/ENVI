@@ -466,8 +466,10 @@ mod tests {
     }
 
     #[test]
-    fn provenance_is_assumed() {
-        assert_eq!(cat1().provenance(), Provenance::Assumed);
+    fn provenance_is_cited() {
+        // The rolling/propulsion tables are transcribed from the committed
+        // source-modelling report (Table A.1), verified against the page image.
+        assert_eq!(cat1().provenance(), Provenance::Cited);
     }
 
     #[test]
