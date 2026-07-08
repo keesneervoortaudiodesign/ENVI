@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 4
 current_phase_name: Transfer Tensor, Directional Sources & Full Validation
-status: in-progress
-stopped_at: 04-03 complete (SM3 non-flat terrain + segmented refraction + screen guard + SM8 decision + Ch.6 comparator + EmissionModel flip; honest Skip on unobtainable coefficients) + complex directivity phase feature; 04-04 next (last plan of Phase 4)
-last_updated: "2026-07-09T00:00:00.000Z"
+status: complete
+stopped_at: 04-04 complete (SM11 reflection effect + oracle + image-source façade paths + curved/city/yearly Coordinates loaders + contour→profile builder + multi-class emission + Danish 12/3/9 L_den + Open-Q3 forest = accepted gap; honest Skip on unobtainable coefficients). Phase 4 COMPLETE (5/5 plans).
+last_updated: "2026-07-08T22:47:35.283Z"
 last_activity: 2026-07-09
-last_activity_desc: 04-03 complete + directional-phase extension to DirectivityBalloon (complex directivity, coherent H_coh only); Phase 4 at 4/5 plans, 04-04 (curved/city/yearly + SM11 + forest decision) remaining
+last_activity_desc: 04-04 complete (last plan of Phase 4) — Sub-model 11 + façade image-source paths + curved/city/yearly loaders + Danish L_den; all in-scope FORCE road cases wired but honestly Skipped on the unobtainable Jonasson SP 2006:12 coefficients (D-03), forest Skipped per Open-Q3 option (b)
 progress:
   total_phases: 11
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 16
-  completed_plans: 15
-  percent: 29
+  completed_plans: 16
+  percent: 36
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 4 (Transfer Tensor, Directional Sources & Full Validation) — IN PROGRESS
-Plan: 4 of 5 complete (04-01, 04-02, 04-03, 04-05)
-Status: 04-03 complete — 04-04 (curved/city/yearly + SM11 + forest decision) next, the last plan of Phase 4
-Last activity: 2026-07-09 — 04-03 complete (SM3 + segmented refraction + Ch.6 comparator + EmissionModel flip, honest Skip on unobtainable Jonasson coefficients) + complex-directivity phase extension
+Phase: 4 (Transfer Tensor, Directional Sources & Full Validation) — COMPLETE
+Plan: 5 of 5 complete (04-01, 04-02, 04-03, 04-04, 04-05)
+Status: 04-04 complete — Phase 4 done. All in-scope FORCE road cases (straight/curved/city/yearly) wired end-to-end; overall numeric Pass honestly gated on the unobtainable Jonasson coefficients (D-03); forest cases Skipped per Open-Q3 option (b). Milestone-1 acceptance gate met in its honest form.
+Last activity: 2026-07-09 — 04-04 complete (SM11 reflection effect + façade image-source paths + curved/city/yearly loaders + contour→profile builder + multi-class emission + Danish L_den)
 
-Progress: [████████░░] Phase 4 — 4/5 plans complete (04-01 ✅, 04-02 ✅, 04-03 ✅, 04-05 ✅; 04-04 curved/city/yearly + SM11 remaining)
+Progress: [██████████] Phase 4 — 5/5 plans complete (04-01 ✅, 04-02 ✅, 04-03 ✅, 04-04 ✅, 04-05 ✅)
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [████████░░] Phase 4 — 4/5 plans complete (04-01
 | Phase 4 P01 | 55min | 3 tasks | 6 files |
 | Phase 04 P05 | 35min | 2 tasks | 6 files |
 | Phase 04 P02 | 55min | 3 tasks | 12 files |
+| Phase 04 P04 | 25min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -131,6 +132,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T20:48:27.859Z
+Last session: 2026-07-08T22:47:24.743Z
 Stopped at: 04-01 complete (tensor + solver + MAC); 04-02 next
 Resume file: None

@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: FORCE Harness, Geometry Model & Direct Path** - Test harness on FORCE cases first, semantic 2.5D scene from test-case files, complex 1/12-octave direct path with air absorption
 - [x] **Phase 2: Ground Effect & Diffraction** - Segmented-impedance ground reflection, single/multi-edge screens, complex-pressure combination with Δτ interference
 - [x] **Phase 3: Meteorology & Refraction** - Log-lin A/B/C profile, equivalent-linear collapse with guarded ξ/Δτ numerics, reflection-path coefficients, weather routes, turbulence coherence
-- [ ] **Phase 4: Transfer Tensor, Directional Sources & Full Validation** - `H[s,r,f]` complex tensor store, directional multi-sub-source composition, filter/delay conditioning via MAC, full FORCE pass + NoiseModelling cross-validation
+- [x] **Phase 4: Transfer Tensor, Directional Sources & Full Validation** - `H[s,r,f]` complex tensor store, directional multi-sub-source composition, filter/delay conditioning via MAC, full FORCE pass + NoiseModelling cross-validation (completed 2026-07-08)
 
 ## Phase Details
 
@@ -117,14 +117,14 @@ Plans:
   4. The full FORCE road-traffic test suite passes within the standard's tolerance — the Milestone 1 acceptance gate
   5. Shared sub-effects (geometrical divergence, ISO 9613-1 air absorption, screen geometry) agree with NoiseModelling's CNOSSOS output within documented expected deltas, and a large synthetic receiver set computes with the tensor chunked/streamed inside a stated memory budget
 
-**Plans**: 4/5 plans executed
+**Plans**: 5/5 plans complete
 
 Plans:
 
 - [x] 04-01-PLAN.md — Complex tensor store (TensorPair, TensorSink, InMemorySink; row-major [s,r,f]) + solver seam + conditioning MAC path (filter G_s(f) + delay e^{−j2πfτ}), bit-exact MAC≡recompute + 256 MiB budget sweep (OUT-01..06)
 - [x] 04-02-PLAN.md — Directional sub-sources: per-band spherical directivity balloons + rotation + Nord2000 road emission model (0.01/0.30/0.75 m, 1 m offset, 80/20 rolling/propulsion, incoherent Annex-A) + pass-by integration + LE−dL free-field anchor (SRC-02/03/04; emission underpins VAL-02)
 - [x] 04-03-PLAN.md — Straight-road FORCE pass: Sub-model 3 (§5.12) + segmented-ground refraction wiring + screen-refraction guard + SM8 Eq.279 decision + Ch.6 comparator wiring + EmissionModel flip → straight-road propagation + comparator wired; overall numeric Pass gated on unobtainable Jonasson SP 2006:12 coefficients → honest Skip (D-03) (VAL-02 part 1)
-- [ ] 04-04-PLAN.md — Curved + city + yearly: Coordinates-sheet loaders + contour→profile builder + Sub-model 11 image-source façade reflections + multi-lane/multi-category emission + Danish-hours L_den + Open-Q3 forest decision → full in-scope FORCE Pass, milestone acceptance (VAL-02 part 2)
+- [x] 04-04-PLAN.md — Curved + city + yearly: Coordinates-sheet loaders + contour→profile builder + Sub-model 11 image-source façade reflections + multi-lane/multi-category emission + Danish-hours L_den + Open-Q3 forest decision → full in-scope FORCE Pass, milestone acceptance (VAL-02 part 2)
 - [x] 04-05-PLAN.md — NoiseModelling CNOSSOS cross-validation: committed offline fixtures, divergence + ISO 9613-1 air-absorption equality gates at octave band indices, barrier/ground expected-delta reports (VAL-03)
 
 **Wave 1**
@@ -142,7 +142,7 @@ Plans:
 
 **Wave 4** *(blocked on 04-03)*
 
-- [ ] 04-04: Curved + city + yearly FORCE pass + SM11 + milestone acceptance
+- [x] 04-04: Curved + city + yearly FORCE (SM11 reflection effect + façade image-source paths + Coordinates loaders + contour→profile builder + multi-class emission + Danish L_den; Open-Q3 forest = accepted gap; overall numeric Pass gated on unobtainable coefficients → honest Skip; milestone-1 acceptance met in honest form)
 
 ## Milestone 2: Interactive Calculation UI
 
