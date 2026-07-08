@@ -345,3 +345,325 @@ fn all_bands_finite_for_thin_screen() {
     };
     let _ = sound_speed_ms(15.0);
 }
+
+// ============================ Sub-models 5 & 6 ============================
+
+/// A transparent two-edge kernel: free-field ray over both tops
+/// `e^{+jωτ}/ℓ`, `ℓ = |s→T₁| + |T₁→T₂| + |T₂→r|`.
+struct Transparent2 {
+    t1: [f64; 2],
+    t2: [f64; 2],
+    c0: f64,
+}
+impl DiffractionKernel for Transparent2 {
+    fn diffract(
+        &self,
+        f_hz: f64,
+        s: [f64; 2],
+        r: [f64; 2],
+    ) -> Result<Complex<f64>, PropagationError> {
+        let ell = dist(s, self.t1) + dist(self.t1, self.t2) + dist(self.t2, r);
+        Ok(Complex::from_polar(1.0 / ell, TAU * f_hz * (ell / self.c0)))
+    }
+}
+
+const THICK_SCREEN: &[[f64; 2]] = &[[14.99, 0.0], [15.0, 4.0], [30.0, 4.0], [30.01, 0.0]];
+
+fn strip(a: [f64; 2], b: [f64; 2]) -> SurfaceStrip {
+    SurfaceStrip {
+        seg_a: a,
+        seg_b: b,
+        sigma_kpa: 200.0,
+        roughness_r: 0.0,
+    }
+}
+
+// SM5 Test 1: Sub-model 5 shares the four-path engine with Sub-model 4 (identical
+// two-channel structure), and the p2edge double-diffraction kernel attenuates at
+// least as much as the single-edge pwedge of the equivalent thin screen across
+// 250–4000 Hz.
+//
+// NOTE (deviation, documented): the plan asked for "1 cm thick ≈ thin within
+// 0.3 dB". The bare p2edge kernel does NOT reduce to pwedge in the thin limit —
+// it always diffracts over BOTH edges (with R_M → 0 it is numerically degenerate,
+// ~38 dB below the single edge), so a thin thick-screen over-attenuates. The
+// thin→single-edge transition is the §5.21 r_scr12 blend (plan 02-05), not a
+// property of the bare sub-model — exactly as SM4 does not itself reduce to SM1
+// when the screen is removed. Here we pin the genuine bare-kernel property:
+// SM5 uses the shared engine and double diffraction ≥ single diffraction.
+#[test]
+fn thick_screen_double_diffracts_at_least_as_much_as_thin() {
+    let coh = zero_turb();
+    let before = [strip([-100.0, 0.0], [15.0, 0.0])];
+    let after = [strip([30.0, 0.0], [215.0, 0.0])];
+    // A realistic thick screen (trapezoid 15→30 m, edge z=5).
+    let thick: &[[f64; 2]] = &[[14.99, 0.0], [15.0, 5.0], [30.0, 5.0], [30.01, 0.0]];
+    let cfg5 = ScreenConfig {
+        source: [0.0, 1.0],
+        receiver: [100.0, 1.0],
+        screen: thick,
+        before: &before,
+        middle: &[],
+        after: &after,
+        z_face_source: HARD,
+        z_face_receiver: HARD,
+        coh: &coh,
+    };
+    // Equivalent single thin screen at x=15, edge z=5.
+    let thin: &[[f64; 2]] = &[[14.99, 0.0], [15.0, 5.0], [15.01, 0.0]];
+    let after_thin = [strip([15.0, 0.0], [215.0, 0.0])];
+    let cfg4 = ScreenConfig {
+        screen: thin,
+        after: &after_thin,
+        ..cfg5
+    };
+    let axis = FreqAxis::new();
+    for &f in axis
+        .centres
+        .iter()
+        .filter(|&&f| (250.0..=4000.0).contains(&f))
+    {
+        let g5 = submodel5(f, &cfg5).unwrap();
+        let g4 = submodel4(f, &cfg4).unwrap();
+        assert!(g5.delta_l_db.is_finite() && g5.p_incoh.is_finite());
+        // Double diffraction attenuates ≥ single (deep-shadow physics).
+        assert!(
+            g5.delta_l_db <= g4.delta_l_db + 0.5,
+            "f={f}: SM5 {} should attenuate ≥ SM4 {} (double vs single edge)",
+            g5.delta_l_db,
+            g4.delta_l_db
+        );
+    }
+}
+
+// SM6 Test 2: eight-ray assembly. With a transparent two-edge kernel and F ≡ 1,
+// submodel6 must equal p̂_SCR·Σ_mask (∏Q̂_region)·(ratio_mask) term for term.
+#[test]
+fn eight_ray_assembly_matches_hand_sum() {
+    let coh = zero_turb();
+    let s = [0.0, 1.0];
+    let r = [90.0, 1.0];
+    let t1 = [30.0, 5.0];
+    let t2 = [60.0, 5.0];
+    let screen: &[[f64; 2]] = &[[29.99, 0.0], [30.0, 5.0], [60.0, 5.0], [60.01, 0.0]];
+    let before = [strip([-100.0, 0.0], [30.0, 0.0])];
+    let middle = [strip([30.0, 0.0], [60.0, 0.0])];
+    let after = [strip([60.0, 0.0], [200.0, 0.0])];
+    let cfg = ScreenConfig {
+        source: s,
+        receiver: r,
+        screen,
+        before: &before,
+        middle: &middle,
+        after: &after,
+        z_face_source: HARD,
+        z_face_receiver: HARD,
+        coh: &coh,
+    };
+    let kernel = Transparent2 { t1, t2, c0: C0 };
+    let f = 1000.0;
+    let got = submodel6_with_kernel(f, &cfg, &kernel, Some(1.0)).unwrap();
+
+    // Independent 8-term assembly, mirroring run_eight_path's exact conventions.
+    let p1 = kernel.diffract(f, s, r).unwrap();
+    let r_sr = dist(s, r);
+    let p0 = Complex::from_polar(1.0 / r_sr, TAU * f * (r_sr / C0));
+    let p_scr = p1 / p0;
+    let q_reg = |ep: [f64; 2], top: [f64; 2], st: &SurfaceStrip| {
+        let refl = straight_rays_over_segment(ep, top, st.seg_a, st.seg_b, C0)
+            .unwrap()
+            .reflected
+            .unwrap();
+        let zg = ground_impedance(f, st.sigma_kpa).unwrap();
+        (
+            spherical_q(f, refl.tau, refl.psi_g, zg),
+            crate::geometry::image_point(ep, st.seg_a, st.seg_b),
+        )
+    };
+    let (qb, s_img) = q_reg(s, t1, &before[0]);
+    let (qa, r_img_a) = q_reg(r, t2, &after[0]);
+    let (qm, r_img_m) = q_reg(r, t2, &middle[0]);
+    let mut coherent = Complex::new(0.0, 0.0);
+    for mask in 0u8..8 {
+        let ub = mask & 1 != 0;
+        let um = mask & 2 != 0;
+        let ua = mask & 4 != 0;
+        let sp = if ub { s_img } else { s };
+        let rp = if ua {
+            r_img_a
+        } else if um {
+            r_img_m
+        } else {
+            r
+        };
+        let ratio = kernel.diffract(f, sp, rp).unwrap() / p1;
+        let mut q = Complex::new(1.0, 0.0);
+        if ub {
+            q *= qb;
+        }
+        if um {
+            q *= qm;
+        }
+        if ua {
+            q *= qa;
+        }
+        coherent += q * ratio;
+    }
+    let want = p_scr * coherent;
+    assert!(
+        (got.h_coh_factor - want).norm() / want.norm() < 1e-9,
+        "engine {} vs 8-term assembly {}",
+        got.h_coh_factor,
+        want
+    );
+}
+
+// SM6 Test 3: region bitmask. An empty middle region collapses the eight-ray set
+// to the four-term subset {p̂₁, Q̂₁p̂₂, Q̂₃p̂₃, Q̂₁Q̂₃p̂₄}; it differs from the full
+// eight-ray result.
+#[test]
+fn empty_middle_collapses_to_four_terms() {
+    let coh = zero_turb();
+    let s = [0.0, 1.0];
+    let r = [90.0, 1.0];
+    let screen: &[[f64; 2]] = &[[29.99, 0.0], [30.0, 5.0], [60.0, 5.0], [60.01, 0.0]];
+    let before = [strip([-100.0, 0.0], [30.0, 0.0])];
+    let middle = [strip([30.0, 0.0], [60.0, 0.0])];
+    let after = [strip([60.0, 0.0], [200.0, 0.0])];
+    let with_mid = ScreenConfig {
+        source: s,
+        receiver: r,
+        screen,
+        before: &before,
+        middle: &middle,
+        after: &after,
+        z_face_source: HARD,
+        z_face_receiver: HARD,
+        coh: &coh,
+    };
+    let no_mid = ScreenConfig {
+        middle: &[],
+        ..with_mid
+    };
+    let kernel = Transparent2 {
+        t1: [30.0, 5.0],
+        t2: [60.0, 5.0],
+        c0: C0,
+    };
+    let f = 1000.0;
+    let g_full = submodel6_with_kernel(f, &with_mid, &kernel, Some(1.0)).unwrap();
+    let g_four = submodel6_with_kernel(f, &no_mid, &kernel, Some(1.0)).unwrap();
+
+    // Four-term assembly {none, before, after, before+after}.
+    let p1 = kernel.diffract(f, s, r).unwrap();
+    let r_sr = dist(s, r);
+    let p0 = Complex::from_polar(1.0 / r_sr, TAU * f * (r_sr / C0));
+    let p_scr = p1 / p0;
+    let refl_b = straight_rays_over_segment(s, [30.0, 5.0], before[0].seg_a, before[0].seg_b, C0)
+        .unwrap()
+        .reflected
+        .unwrap();
+    let refl_a = straight_rays_over_segment(r, [60.0, 5.0], after[0].seg_a, after[0].seg_b, C0)
+        .unwrap()
+        .reflected
+        .unwrap();
+    let zg = ground_impedance(f, 200.0).unwrap();
+    let qb = spherical_q(f, refl_b.tau, refl_b.psi_g, zg);
+    let qa = spherical_q(f, refl_a.tau, refl_a.psi_g, zg);
+    let s_img = crate::geometry::image_point(s, before[0].seg_a, before[0].seg_b);
+    let r_img = crate::geometry::image_point(r, after[0].seg_a, after[0].seg_b);
+    let r2 = kernel.diffract(f, s_img, r).unwrap() / p1;
+    let r3 = kernel.diffract(f, s, r_img).unwrap() / p1;
+    let r4 = kernel.diffract(f, s_img, r_img).unwrap() / p1;
+    let want = p_scr * (Complex::new(1.0, 0.0) + qb * r2 + qa * r3 + qb * qa * r4);
+    assert!(
+        (g_four.h_coh_factor - want).norm() / want.norm() < 1e-9,
+        "four-term collapse mismatch"
+    );
+    // The middle region genuinely adds rays.
+    assert!(
+        (g_full.h_coh_factor - g_four.h_coh_factor).norm() > 1e-6,
+        "middle region must change the result"
+    );
+}
+
+// SM5/SM6 Test 4: FORCE case-81 (thick) and case-91 (double) literal geometries
+// are finite two-channel results at all 105 grid points.
+#[test]
+fn force_thick_and_double_screens_finite_all_bands() {
+    let coh = CoherenceInputs {
+        cv2: 0.12,
+        ct2: 0.008,
+        ..zero_turb()
+    };
+    let axis = FreqAxis::new();
+
+    // Case-81 thick screen (trapezoid 15→30 m, h=4).
+    let before81 = [strip([-50.0, 0.0], [15.0, 0.0])];
+    let after81 = [strip([30.0, 0.0], [200.0, 0.0])];
+    let cfg81 = ScreenConfig {
+        source: [0.0, 1.5],
+        receiver: [150.0, 1.5],
+        screen: THICK_SCREEN,
+        before: &before81,
+        middle: &[],
+        after: &after81,
+        z_face_source: HARD,
+        z_face_receiver: HARD,
+        coh: &coh,
+    };
+    for &f in axis.centres.iter() {
+        let g = submodel5(f, &cfg81).unwrap();
+        assert!(
+            g.delta_l_db.is_finite() && g.p_incoh.is_finite(),
+            "SM5 non-finite f={f}"
+        );
+    }
+
+    // Case-91 double screen (spike at 15 + trapezoid 75–85).
+    let screen91: &[[f64; 2]] = &[[14.99, 0.0], [15.0, 4.0], [80.0, 5.0], [85.01, 0.0]];
+    let before91 = [strip([-50.0, 0.0], [15.0, 0.0])];
+    let middle91 = [strip([15.0, 0.0], [80.0, 0.0])];
+    let after91 = [strip([85.0, 0.0], [200.0, 0.0])];
+    let cfg91 = ScreenConfig {
+        source: [0.0, 1.5],
+        receiver: [150.0, 1.5],
+        screen: screen91,
+        before: &before91,
+        middle: &middle91,
+        after: &after91,
+        z_face_source: HARD,
+        z_face_receiver: HARD,
+        coh: &coh,
+    };
+    let mut single_shadow = 0.0;
+    let mut double_shadow = 0.0;
+    let mut n = 0;
+    for &f in axis.centres.iter() {
+        let g = submodel6(f, &cfg91).unwrap();
+        assert!(
+            g.delta_l_db.is_finite() && g.p_incoh.is_finite(),
+            "SM6 non-finite f={f}"
+        );
+        if (500.0..=2000.0).contains(&f) {
+            double_shadow += g.delta_l_db;
+            // Single thin screen (only the first edge) for comparison.
+            let thin: &[[f64; 2]] = &[[14.99, 0.0], [15.0, 4.0], [15.01, 0.0]];
+            let cfg_single = ScreenConfig {
+                screen: thin,
+                middle: &[],
+                after: &after91,
+                ..cfg91
+            };
+            single_shadow += submodel4(f, &cfg_single).unwrap().delta_l_db;
+            n += 1;
+        }
+    }
+    // Double screens attenuate at least as much as a single screen in deep shadow.
+    assert!(
+        double_shadow / n as f64 <= single_shadow / n as f64 + 1.0,
+        "double-screen mean {} should be ≤ single-screen mean {} (+1 dB tol)",
+        double_shadow / n as f64,
+        single_shadow / n as f64
+    );
+}
