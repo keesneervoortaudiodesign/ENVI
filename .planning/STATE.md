@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 4
 current_phase_name: Transfer Tensor, Directional Sources & Full Validation
 status: in-progress
-stopped_at: 04-02 complete (directivity balloons + Rotation3 + Nord2000 road emission + LE−dL free-field anchor); 04-03 next
-last_updated: "2026-07-08T20:50:00.000Z"
-last_activity: 2026-07-08
-last_activity_desc: 04-02 complete (per-band DirectivityBalloon + hand-rolled 3×3 rotation + Nord2000 road emission model with LE−dL anchor green on 26 flat FORCE cases; SRC-02/03/04)
+stopped_at: 04-03 complete (SM3 non-flat terrain + segmented refraction + screen guard + SM8 decision + Ch.6 comparator + EmissionModel flip; honest Skip on unobtainable coefficients) + complex directivity phase feature; 04-04 next (last plan of Phase 4)
+last_updated: "2026-07-09T00:00:00.000Z"
+last_activity: 2026-07-09
+last_activity_desc: 04-03 complete + directional-phase extension to DirectivityBalloon (complex directivity, coherent H_coh only); Phase 4 at 4/5 plans, 04-04 (curved/city/yearly + SM11 + forest decision) remaining
 progress:
   total_phases: 11
   completed_phases: 3
   total_plans: 16
-  completed_plans: 14
-  percent: 27
+  completed_plans: 15
+  percent: 29
 ---
 
 # Project State
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 4 (Transfer Tensor, Directional Sources & Full Validation) — IN PROGRESS
-Plan: 3 of 5 complete (04-01 tensor + solver + MAC)
-Status: 04-01 complete — 04-02 (directional sources + emission model) next
-Last activity: 2026-07-08 — 04-01 complete (dense complex transfer tensor + chunked solver + bit-exact MAC conditioning + 256 MiB streaming budget; OUT-01..06)
+Plan: 4 of 5 complete (04-01, 04-02, 04-03, 04-05)
+Status: 04-03 complete — 04-04 (curved/city/yearly + SM11 + forest decision) next, the last plan of Phase 4
+Last activity: 2026-07-09 — 04-03 complete (SM3 + segmented refraction + Ch.6 comparator + EmissionModel flip, honest Skip on unobtainable Jonasson coefficients) + complex-directivity phase extension
 
-Progress: [██░░░░░░░░] Phase 4 — 1/5 plans complete (04-01 tensor/solver/MAC ✅; 04-02 directional+emission, 04-03 straight-road FORCE, 04-04 curved/city/yearly, 04-05 NoiseModelling next)
+Progress: [████████░░] Phase 4 — 4/5 plans complete (04-01 ✅, 04-02 ✅, 04-03 ✅, 04-05 ✅; 04-04 curved/city/yearly + SM11 remaining)
 
 ## Performance Metrics
 
