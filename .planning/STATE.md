@@ -5,7 +5,7 @@ milestone_name: milestone
 current_phase: 3
 current_phase_name: Meteorology & Refraction
 status: phase-complete
-stopped_at: 03-03 complete; Phase 3 done (run phase-completion gates, then Phase 4)
+stopped_at: Phase 3 fully closed — all 5 completion gates green (review/simplify/secure/verify/docs); Phase 4 next
 last_updated: "2026-07-08T17:12:21Z"
 last_activity: 2026-07-08
 last_activity_desc: 03-03 complete (F_τ fluctuating-refraction coherence Eq. 112 + weather Route 1 energy-weighted L_den + Route 3 Monin–Obukhov/3×3 LSQ + Capability::Refraction flip — FORCE wind/gradient requires shrinks to emission-model only)
