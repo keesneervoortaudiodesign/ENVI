@@ -28,6 +28,11 @@ pub enum Capability {
     Diffraction,
     /// Meteorological refraction: wind and temperature gradients (Phase 3).
     Refraction,
+    /// Forest / vegetation scattering (Sub-model 10). The FORCE forest cases
+    /// (121–124) need this; deferred to a later plan (Open-Q3) — so those cases
+    /// keep an honest `Skipped(requires: forest-scattering)` reason rather than a
+    /// false pass.
+    ForestScattering,
 }
 
 impl Capability {
@@ -41,6 +46,7 @@ impl Capability {
             Self::GroundEffect => "ground-effect",
             Self::Diffraction => "diffraction",
             Self::Refraction => "refraction",
+            Self::ForestScattering => "forest-scattering",
         }
     }
 }
@@ -91,6 +97,9 @@ pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
             if description.contains("screen") {
                 required.insert(Capability::Diffraction);
             }
+            if description.contains("forest") {
+                required.insert(Capability::ForestScattering);
+            }
 
             let nonzero = |v: Option<f64>| v.is_some_and(|x| x != 0.0);
             if nonzero(case.propagation.u_ms)
@@ -116,6 +125,17 @@ pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
 /// gradient cases' `Skipped(requires: …)` list SHRINKS: `refraction` drops out,
 /// leaving **only** `emission-model` (Phase 4). No harness rewrite; no false
 /// numeric Pass (D-03).
+///
+/// Plan 04-03 adds [`Capability::EmissionModel`] — the Nord2000 road source model
+/// (Jonasson tables, sub-source split, pass-by integration, directivity) is wired
+/// (04-02/04-03), so the FORCE road cases' `Skipped(requires: …)` list SHRINKS
+/// again: `emission-model` drops out. `ForestScattering` (Sub-model 10) is NOT
+/// implemented, so the forest cases (121–124) keep `forest-scattering` in their
+/// missing set (honest gap, Open-Q3). No false numeric Pass: the road cases still
+/// fail-soft to `Skipped` inside `run_case` because the Jonasson emission
+/// coefficients are `[ASSUMED]` (SP 2006:12 not obtained) — the propagation chain
+/// is validated in-crate, but an OVERALL LAeq,24h numeric Pass cannot be honestly
+/// claimed without the verified coefficients (D-03).
 #[must_use]
 pub fn implemented_capabilities() -> BTreeSet<Capability> {
     BTreeSet::from([
@@ -124,6 +144,7 @@ pub fn implemented_capabilities() -> BTreeSet<Capability> {
         Capability::GroundEffect,
         Capability::Diffraction,
         Capability::Refraction,
+        Capability::EmissionModel,
     ])
 }
 
@@ -203,9 +224,9 @@ mod tests {
             implemented.contains(&Capability::Geometry),
             "plan 01-02 turns on the Geometry capability"
         );
-        // FreeField goes green in plan 01-03; the FORCE physics is Phases 2-4.
+        // FreeField goes green in plan 01-03; EmissionModel is flipped in 04-03.
         assert!(implemented.contains(&Capability::FreeField));
-        assert!(!implemented.contains(&Capability::EmissionModel));
+        assert!(implemented.contains(&Capability::EmissionModel));
     }
 
     #[test]
@@ -213,80 +234,66 @@ mod tests {
         let implemented = implemented_capabilities();
         assert!(implemented.contains(&Capability::GroundEffect));
         assert!(implemented.contains(&Capability::Diffraction));
-        // Only the Phase-4 emission model is still missing.
-        assert!(!implemented.contains(&Capability::EmissionModel));
     }
 
     #[test]
     fn plan_03_03_implements_refraction() {
         let implemented = implemented_capabilities();
-        // Phase 3 closes: refraction is now implemented (weather routes + F_τ).
+        // Phase 3 closes: refraction is implemented (weather routes + F_tau).
         assert!(implemented.contains(&Capability::Refraction));
-        // The Phase-4 emission model is still the only outstanding capability.
-        assert!(!implemented.contains(&Capability::EmissionModel));
     }
 
     #[test]
-    fn force_wind_gradient_skip_reason_shrinks_to_emission_model_only() {
-        // The requires-list SHRANK for wind/gradient FORCE cases: after the
-        // Phase-3 refraction flip, a downwind/inversion FORCE road case skips
-        // ONLY on the emission model — `refraction` (and ground-effect,
-        // diffraction) have disappeared from the missing set, while
-        // `emission-model` is RETAINED (stays Skipped, never a false Pass, D-03).
+    fn plan_04_03_flips_emission_model_and_shrinks_the_force_skip_reason() {
+        // The requires-list SHRANK again for the in-scope straight-road FORCE
+        // cases: after the 04-03 emission-model flip, a flat homogeneous / wind /
+        // gradient road case has an EMPTY missing capability set — every physics
+        // capability it needs is implemented. It may still fail-soft to Skipped
+        // at RUN time on the [ASSUMED] emission coefficients (D-03), but the
+        // CAPABILITY gate no longer fires.
         let implemented = implemented_capabilities();
 
         let mut downwind = base_case(CaseKind::ForceStraightRoad, "Flat terrain, downwind");
         downwind.propagation.u_ms = Some(5.0);
-
         let mut inversion = base_case(CaseKind::ForceStraightRoad, "Flat terrain");
         inversion.propagation.dtdz = Some(0.1);
-
-        for case in [downwind, inversion] {
-            let required = required_capabilities(&case);
-            // The case genuinely requires refraction …
-            assert!(required.contains(&Capability::Refraction));
-            let missing: BTreeSet<Capability> =
-                required.difference(&implemented).copied().collect();
-            // … but refraction is no longer missing.
-            assert!(
-                !missing.contains(&Capability::Refraction),
-                "refraction must be gone from the skip reason: {missing:?}"
-            );
-            // Emission-model is retained — the honest-green D-03 contract.
-            assert_eq!(
-                missing,
-                BTreeSet::from([Capability::EmissionModel]),
-                "wind/gradient FORCE case must skip ONLY on emission-model"
-            );
-        }
-    }
-
-    #[test]
-    fn force_skip_reason_no_longer_mentions_ground_effect_or_diffraction() {
-        // The requires-list SHRANK: a FORCE homogeneous screen case now skips ONLY
-        // on the emission model — ground-effect and diffraction have disappeared
-        // from the missing set (plan 02-05 flipped them on).
-        let implemented = implemented_capabilities();
-        for desc in [
+        let flat = base_case(
+            CaseKind::ForceStraightRoad,
             "Flat terrain, d=100 m, impedance A, homogeneous atm.",
-            "Flat terrain with thin screen, d=100 m, homogeneous atm.",
-        ] {
-            let case = base_case(CaseKind::ForceStraightRoad, desc);
+        );
+
+        for case in [downwind, inversion, flat] {
             let missing: BTreeSet<Capability> = required_capabilities(&case)
                 .difference(&implemented)
                 .copied()
                 .collect();
             assert!(
-                !missing.contains(&Capability::GroundEffect),
-                "ground-effect must be gone from the skip reason ({desc}): {missing:?}"
+                !missing.contains(&Capability::EmissionModel),
+                "emission-model must be gone from the capability skip reason: {missing:?}"
             );
             assert!(
-                !missing.contains(&Capability::Diffraction),
-                "diffraction must be gone from the skip reason ({desc}): {missing:?}"
+                missing.is_empty(),
+                "in-scope straight-road FORCE case must have no missing capability: {missing:?}"
             );
-            // The homogeneous screen case now skips ONLY on the emission model.
-            assert_eq!(missing, BTreeSet::from([Capability::EmissionModel]));
         }
+    }
+
+    #[test]
+    fn forest_cases_retain_forest_scattering_in_the_skip_reason() {
+        // The forest FORCE cases (121–124) still need Sub-model 10 scattering,
+        // which is NOT implemented — so they keep an honest
+        // `Skipped(requires: forest-scattering)` reason (never a false pass).
+        let implemented = implemented_capabilities();
+        let forest = base_case(CaseKind::ForceStraightRoad, "Forest, hr=1.5, u=0");
+        let missing: BTreeSet<Capability> = required_capabilities(&forest)
+            .difference(&implemented)
+            .copied()
+            .collect();
+        assert_eq!(
+            missing,
+            BTreeSet::from([Capability::ForestScattering]),
+            "forest case must skip ONLY on forest-scattering"
+        );
     }
 
     #[test]

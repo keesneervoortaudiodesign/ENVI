@@ -74,13 +74,70 @@ pub fn run_case(case: &cases::CaseDefinition) -> Outcome {
              property/oracle tests; [ASSUMED] weather constants not numerically pinned)"
                 .to_string(),
         ),
-        cases::CaseKind::ForceStraightRoad
-        | cases::CaseKind::ForceCurvedRoad
+        cases::CaseKind::ForceStraightRoad => run_force_straight_road_case(case),
+        cases::CaseKind::ForceCurvedRoad
         | cases::CaseKind::ForceCityStreet
         | cases::CaseKind::ForceYearlyAverage => {
-            Outcome::Skipped("FORCE dispatch lands in Phases 2-4".to_string())
+            Outcome::Skipped("curved / city / yearly FORCE layouts land in plan 04-04".to_string())
         }
     }
+}
+
+/// Run a FORCE straight-road case: the capability gate has already passed
+/// (emission-model + ground-effect + refraction all implemented), so this is the
+/// runtime dispatch. It mirrors [`run_terrain_case`] — a typed engine error maps
+/// to `Skipped` mid-run (honest-green), a scene/build failure to `FailDetail`.
+///
+/// # Honest-green (D-03): the Jonasson emission coefficients are `[ASSUMED]`
+///
+/// The Nord2000 road source model is fully wired (04-02/04-03: sub-source split,
+/// pass-by integration, directivity, the full propagation chain SM1/2/3 +
+/// refraction), and the free-field `LE − dL` shape is anchored. But the absolute
+/// rolling/propulsion sound-power coefficients (Jonasson SP 2006:12) could not be
+/// obtained — they are `[ASSUMED]` fits (04-02). An OVERALL LAeq,24h / LAE /
+/// LAmax numeric Pass therefore depends on unobtainable coefficients, so this
+/// case stays `Skipped` with an honest, SHRUNKEN reason rather than a false Pass.
+/// The propagation physics it exercises (terrain effect, refraction, the Ch.6
+/// comparator + A-weighting conversions) is validated in-crate by the oracle /
+/// property / anchor tests.
+fn run_force_straight_road_case(case: &cases::CaseDefinition) -> Outcome {
+    // The reference must be present (it always is for a loaded FORCE sheet).
+    let Some(reference) = case.reference_spectrum.as_ref() else {
+        return Outcome::FailDetail(
+            "FORCE straight-road case is missing its 27-band reference spectrum".to_string(),
+        );
+    };
+    if reference.bands.len() != envi_engine::freq::N_THIRD_OCT {
+        return Outcome::FailDetail(format!(
+            "FORCE reference has {} bands (expected {})",
+            reference.bands.len(),
+            envi_engine::freq::N_THIRD_OCT
+        ));
+    }
+
+    // The road emission model is implemented but its coefficients are [ASSUMED]
+    // (SP 2006:12 not obtained). A verified overall-level numeric Pass is not
+    // honestly achievable — stay Skipped with the shrunken reason (never a false
+    // Pass, D-03). This is the `provenance == Assumed` gate.
+    if matches!(
+        emission::coefficients::PROVENANCE,
+        emission::Provenance::Assumed
+    ) {
+        return Outcome::Skipped(
+            "requires: verified emission coefficients (Jonasson SP 2006:12); the road \
+             emission model is wired but its rolling/propulsion coefficients are [ASSUMED], \
+             so an overall LAeq,24h numeric Pass would be false. Propagation (SM1/2/3 + \
+             refraction) + the Ch.6 comparator are validated in-crate."
+                .to_string(),
+        );
+    }
+
+    // Reached only once verified coefficients are in hand: build the road pass-by,
+    // integrate LE / LAeq,24h / LAmax, and compare via the Ch.6 dip-shift rule.
+    // (Left as the numeric-green entry point for the coefficient-verification plan.)
+    Outcome::Skipped(
+        "FORCE straight-road numeric comparison pending verified emission coefficients".to_string(),
+    )
 }
 
 /// Run a synthetic geometry case end-to-end: file → Scene → engine geometry →

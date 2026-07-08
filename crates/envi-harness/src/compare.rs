@@ -346,10 +346,77 @@ pub fn a_weighting_db(f_hz: f64) -> f64 {
     20.0 * r_a.log10() + 2.00
 }
 
+/// Seconds in 24 h — the LAeq,24h averaging denominator.
+pub const SECONDS_PER_DAY: f64 = 86_400.0;
+
+/// Sound exposure level `LAE` from a 27-band 1/3-octave pass-by exposure
+/// spectrum `LE(f)`: the A-weighted energy sum over the exact `FreqAxis`
+/// third-octave centres (never nominal Hz).
+///
+/// `LAE = 10·lg Σ_k 10^{(LE_k + A(f_k))/10}`.
+#[must_use]
+pub fn l_ae(le_third_octave_db: &[f64], axis: &FreqAxis) -> f64 {
+    let mut energy = 0.0_f64;
+    for (k, &l) in le_third_octave_db.iter().enumerate() {
+        if l.is_finite() {
+            energy += 10f64.powf((l + a_weighting_db(axis.third_octave_pick(k))) / 10.0);
+        }
+    }
+    10.0 * energy.max(f64::MIN_POSITIVE).log10()
+}
+
+/// Equivalent continuous A-weighted level over 24 h from the single-event sound
+/// exposure level `LAE` and the vehicle count `N`:
+///
+/// `LAeq,24h = LAE + 10·lg N − 10·lg 86400`.
+///
+/// Case-1 anchor: with the workbook's `LAE` and traffic `N`, this reproduces the
+/// full-precision `LAeq,24h = 39.398…` cell (see the FORCE loader test).
+#[must_use]
+pub fn l_aeq_24h(l_ae_db: f64, n_vehicles: f64) -> f64 {
+    l_ae_db + 10.0 * n_vehicles.max(f64::MIN_POSITIVE).log10() - 10.0 * SECONDS_PER_DAY.log10()
+}
+
+/// Maximum A-weighted pass-by level `LAmax` from the closest-approach (θ = 0)
+/// 1/3-octave immission spectrum `L_max(f)` — the A-weighted overall of the
+/// instantaneous spectrum at the receiver's nearest point.
+#[must_use]
+pub fn l_amax(lmax_third_octave_db: &[f64], axis: &FreqAxis) -> f64 {
+    // Same A-weighted overall reduction as LAE (an instantaneous, not integrated,
+    // spectrum — the caller supplies the θ = 0 immission spectrum).
+    l_ae(lmax_third_octave_db, axis)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use approx::{assert_abs_diff_eq, assert_relative_eq};
+
+    #[test]
+    fn laeq_24h_conversion_matches_the_formula() {
+        // N = 10 000 ⇒ offset = 40 − 49.3651 = −9.3651 dB.
+        let lae = 48.77;
+        let laeq = l_aeq_24h(lae, 10_000.0);
+        assert_relative_eq!(
+            laeq,
+            lae + 40.0 - 10.0 * SECONDS_PER_DAY.log10(),
+            epsilon = 1e-12
+        );
+        assert_relative_eq!(laeq - lae, -9.365_1, epsilon = 1e-3);
+    }
+
+    #[test]
+    fn a_weighted_le_sums_over_exact_centres() {
+        let axis = FreqAxis::new();
+        // A flat 50 dB LE spectrum: LAE = 50 + 10·lg Σ 10^{A(f_k)/10}.
+        let flat = vec![50.0_f64; N_THIRD_OCT];
+        let got = l_ae(&flat, &axis);
+        let mut e = 0.0;
+        for k in 0..N_THIRD_OCT {
+            e += 10f64.powf(a_weighting_db(axis.third_octave_pick(k)) / 10.0);
+        }
+        assert_relative_eq!(got, 50.0 + 10.0 * e.log10(), epsilon = 1e-9);
+    }
 
     #[test]
     fn spectrum_compared_against_itself_passes_with_zero_deviation() {
