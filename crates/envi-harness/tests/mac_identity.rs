@@ -61,6 +61,7 @@ fn coherent_mac_equals_full_recompute_bit_for_bit() {
                 axis: &axis,
                 weather: None,
                 directivity_gain_db: None,
+                directivity_phase_rad: None,
             });
         }
     }

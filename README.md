@@ -37,6 +37,20 @@ operation — nothing collapses to magnitude/energy along the chain:
   convention — `transfer::nord_ratio_to_transfer`. The grep gate
   `grep -rh '\.conj()' crates/envi-engine/src/propagation/` returns **0**.
 
+### Directional phase — beyond stock Nord2000
+
+Stock Nord2000 road directivity is a **real** `ΔL(θ,φ,f)` summed *incoherently*.
+ENVI's directivity balloons additionally carry an **optional per-band phase**
+`Δφ(θ,φ,f)`, so a directional source contributes a genuinely **complex** gain
+`10^{ΔL/20}·e^{+jΔφ}` (the GLL/complex-balloon datum) — which is what makes
+**coherent** summation of multiple directional sub-sources (e.g. loudspeaker
+arrays) correct rather than merely energetic. The phase enters the **coherent
+`H_coh` channel only** (applied on the ENVI post-conj side, never in
+`propagation/`); the incoherent energy channel stays magnitude-only, so the
+two-channel contract is untouched. A phase-free balloon is **bit-identical** to
+the magnitude-only path. Engine seam: `DirectivityBalloon::eval_phase` /
+`eval_complex` → `SolveJob::directivity_phase_rad`.
+
 ## Capabilities
 
 | Capability | Status | Phase |

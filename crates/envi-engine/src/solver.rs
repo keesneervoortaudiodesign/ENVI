@@ -17,8 +17,11 @@
 //! `transfer.rs`; the solver runs entirely on the ENVI-convention (post-conj)
 //! side. Conditioning (filter `G_s`, delay ramp) is NOT applied here — it is a
 //! readout-time multiply (see [`crate::tensor`]). The optional per-band
-//! directivity gain is a REAL magnitude factor only: `arg(H_coh)` is never
-//! touched, and directivity never enters `propagation/`.
+//! directivity is a **source** property applied on the post-conj side, never in
+//! `propagation/`: its magnitude `10^{ΔL/20}` scales `H_coh` (and `10^{ΔL/10}`
+//! the incoherent energy), and its optional directional **phase** `e^{+jΔφ}`
+//! multiplies `H_coh` only — the two-channel contract holds (phase never enters
+//! `P_incoh`). A balloon without phase leaves `arg(H_coh)` untouched, bit-for-bit.
 
 use ndarray::{Array3, s};
 use num_complex::Complex;
@@ -65,9 +68,15 @@ pub struct SolveJob<'a> {
     pub weather: Option<&'a SoundSpeedProfile>,
     /// Optional pre-evaluated per-band directivity gain ΔL (dB), applied as a
     /// real magnitude factor `10^{ΔL/20}` to `H_coh` and `10^{ΔL/10}` to
-    /// `P_incoh_abs`. The harness / plan 04-02 evaluates a balloon into this
-    /// slice; the solver only applies the factor.
+    /// `P_incoh_abs`. The harness evaluates a balloon (`DirectivityBalloon::eval`)
+    /// into this slice; the solver only applies the factor.
     pub directivity_gain_db: Option<[f64; N_BANDS]>,
+    /// Optional pre-evaluated per-band directional **phase** Δφ (radians),
+    /// applied as `e^{+jΔφ}` to `H_coh` ONLY — the coherent channel carries a
+    /// directional source's phase (`DirectivityBalloon::eval_phase`), while
+    /// `P_incoh_abs` stays magnitude-only (incoherent energy). `None` leaves
+    /// `arg(H_coh)` untouched (bit-identical to the magnitude-only path).
+    pub directivity_phase_rad: Option<[f64; N_BANDS]>,
 }
 
 /// Fill a paired tensor by streaming receiver-axis chunks into `sink`.
@@ -180,10 +189,18 @@ fn solve_pair(job: &SolveJob<'_>) -> Result<(Vec<Complex<f64>>, Vec<f64>), Propa
         let mut hc = hf * nord_ratio_to_transfer(factor);
         // Absolute incoherent energy rides at the free-field magnitude.
         let mut pa = hf.norm_sqr() * pi;
-        // Optional directivity: a REAL magnitude factor only (phase untouched).
+        // Optional directivity magnitude: scales both channels (10^{ΔL/20} on the
+        // coherent transfer, 10^{ΔL/10} on the incoherent energy).
         if let Some(dir) = job.directivity_gain_db.as_ref() {
             hc *= 10f64.powf(dir[i] / 20.0);
             pa *= 10f64.powf(dir[i] / 10.0);
+        }
+        // Optional directional phase: e^{+jΔφ} on the COHERENT channel only
+        // (ENVI e^{+jωt}; explicit (cos, sin), never `.conj()`). The incoherent
+        // energy channel is phase-agnostic and is left untouched.
+        if let Some(phase) = job.directivity_phase_rad.as_ref() {
+            let (s, c) = phase[i].sin_cos();
+            hc *= Complex::new(c, s);
         }
         h_coh.push(hc);
         p_abs.push(pa);
@@ -247,6 +264,7 @@ mod tests {
             axis: &axis,
             weather: None,
             directivity_gain_db: None,
+            directivity_phase_rad: None,
         };
         let mut sink = InMemorySink::new(1, 1);
         solve([job], 1, 1, &mut sink).unwrap();
@@ -298,6 +316,7 @@ mod tests {
                         axis: &axis,
                         weather: None,
                         directivity_gain_db: None,
+                        directivity_phase_rad: None,
                     });
                 }
             }
@@ -337,6 +356,7 @@ mod tests {
             axis: &axis,
             weather: None,
             directivity_gain_db: None,
+            directivity_phase_rad: None,
         };
         let mut plain = InMemorySink::new(1, 1);
         solve([base], 1, 1, &mut plain).unwrap();
@@ -369,6 +389,62 @@ mod tests {
     }
 
     #[test]
+    fn directivity_phase_rotates_coherent_channel_only() {
+        let profile = flat_profile();
+        let axis = FreqAxis::new();
+        let a = atmos();
+        let c = coh();
+        let src = [2.5, 0.0, 0.5];
+        let rcv = [100.0, 0.0, 1.5];
+        let base = SolveJob {
+            sub_source: 0,
+            receiver: 0,
+            profile: &profile,
+            src,
+            rcv,
+            atmosphere: &a,
+            coh: &c,
+            axis: &axis,
+            weather: None,
+            directivity_gain_db: None,
+            directivity_phase_rad: None,
+        };
+        let mut plain = InMemorySink::new(1, 1);
+        solve([base], 1, 1, &mut plain).unwrap();
+
+        // A pure directional phase (no magnitude change).
+        let phi = 0.7_f64;
+        let phased = SolveJob {
+            directivity_phase_rad: Some([phi; N_BANDS]),
+            ..base
+        };
+        let mut with_phase = InMemorySink::new(1, 1);
+        solve([phased], 1, 1, &mut with_phase).unwrap();
+
+        let rot = Complex::new(phi.cos(), phi.sin());
+        for f in 0..N_BANDS {
+            let h0 = plain.tensor().h_coh[[0, 0, f]];
+            let h1 = with_phase.tensor().h_coh[[0, 0, f]];
+            // H_coh is multiplied by e^{+jφ}: magnitude preserved, arg advanced.
+            let want = h0 * rot;
+            assert!(
+                (h1 - want).norm() <= 1e-12 * (1.0 + h0.norm()),
+                "band {f}: H_coh should be e^(+jφ)·H0"
+            );
+            assert!(
+                (h1.norm() - h0.norm()).abs() <= 1e-12 * (1.0 + h0.norm()),
+                "band {f}: phase must not change |H_coh|"
+            );
+            // P_incoh is phase-agnostic — bit-for-bit unchanged.
+            assert_eq!(
+                with_phase.tensor().p_incoh_abs[[0, 0, f]].to_bits(),
+                plain.tensor().p_incoh_abs[[0, 0, f]].to_bits(),
+                "band {f}: directional phase must not touch P_incoh"
+            );
+        }
+    }
+
+    #[test]
     fn degenerate_geometry_is_a_typed_error_not_a_panic() {
         let profile = flat_profile();
         let axis = FreqAxis::new();
@@ -386,6 +462,7 @@ mod tests {
             axis: &axis,
             weather: None,
             directivity_gain_db: None,
+            directivity_phase_rad: None,
         };
         let mut sink = InMemorySink::new(1, 1);
         assert!(matches!(
@@ -411,6 +488,7 @@ mod tests {
             axis: &axis,
             weather: None,
             directivity_gain_db: None,
+            directivity_phase_rad: None,
         };
         let mut sink = InMemorySink::new(1, 1);
         assert!(matches!(

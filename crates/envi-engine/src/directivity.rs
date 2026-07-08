@@ -18,7 +18,34 @@
 //! `a = atan2(y, x)`; [`DirectivityBalloon::eval`] bilinearly interpolates the
 //! grid at that `(a, p)` and returns a per-band ΔL dB slice. The slice is what a
 //! `SolveJob`'s `directivity_gain_db` carries — a **real magnitude** factor
-//! `10^{ΔL/20}` on `H_coh` (phase untouched), never a `propagation/` operator.
+//! `10^{ΔL/20}` on `H_coh`, never a `propagation/` operator.
+//!
+//! # Directional phase (optional complex directivity)
+//!
+//! A balloon may ALSO carry a per-band **phase** grid `Δφ(azimuth, polar, band)`
+//! in radians (source-local, ENVI's `e^{+jωt}` convention). It models the phase
+//! of a directional source's far-field response — the load-bearing datum for
+//! coherently summing multiple sub-sources (loudspeaker arrays / GLL-style
+//! complex balloons), and consistent with the project pillar that phase is
+//! preserved through the coherent chain. [`DirectivityBalloon::eval_complex`]
+//! returns the complex linear gain `10^{ΔL/20}·e^{+jΔφ}` and
+//! [`DirectivityBalloon::eval_phase`] returns the interpolated phase alone; a
+//! balloon built without a phase grid reports phase `0` everywhere, so
+//! `eval_complex` is exactly `10^{ΔL/20}` (bit-identical to the magnitude-only
+//! path).
+//!
+//! The phase enters the **coherent** channel only: a `SolveJob` multiplies
+//! `H_coh` by `10^{ΔL/20}·e^{+jΔφ}` while the incoherent energy channel keeps the
+//! magnitude-only `10^{ΔL/10}` (`|·|²`) — the two-channel contract holds
+//! (`F→1 ⇒ P_incoh→0` unaffected). Directivity is applied on the ENVI (post-conj)
+//! side, never inside `propagation/`.
+//!
+//! **Interpolation:** magnitude is interpolated bilinearly in dB (so existing
+//! real balloons are bit-identical); phase is interpolated as a unit complex
+//! vector (`e^{+jΔφ}` corners, bilinear on re/im, then `arg`) so it is robust
+//! across the ±π wrap. Supply a smoothly-sampled grid (the analytic samplers do);
+//! near a phase antipode the unit-vector interpolant degenerates gracefully to
+//! `0` rather than a NaN.
 //!
 //! # Band axis is locked to the grid (never nominal Hz)
 //!
@@ -37,6 +64,7 @@
 //! T-04-02-04); the balloon itself is bounded by its fixed resolution.
 
 use ndarray::Array3;
+use num_complex::Complex;
 use thiserror::Error;
 
 use crate::freq::N_BANDS;
@@ -131,6 +159,9 @@ pub struct DirectivityBalloon {
     azimuths_deg: Vec<f64>,
     polars_deg: Vec<f64>,
     grid: Array3<f64>,
+    /// Optional per-band phase `Δφ(azimuth, polar, band)` in radians, same shape
+    /// as `grid`. `None` is an all-real balloon (phase `0` everywhere).
+    phase_grid_rad: Option<Array3<f64>>,
 }
 
 impl DirectivityBalloon {
@@ -143,6 +174,7 @@ impl DirectivityBalloon {
             azimuths_deg: vec![0.0, 360.0],
             polars_deg: vec![0.0, 180.0],
             grid: Array3::zeros((2, 2, N_BANDS)),
+            phase_grid_rad: None,
         }
     }
 
@@ -208,6 +240,50 @@ impl DirectivityBalloon {
             azimuths_deg,
             polars_deg,
             grid,
+            phase_grid_rad: None,
+        })
+    }
+
+    /// Validate and construct a complex balloon: a magnitude grid `ΔL` (dB) plus
+    /// a per-band phase grid `Δφ` (radians), sharing the same angle axes and
+    /// shape.
+    ///
+    /// The magnitude grid follows the same rules as [`DirectivityBalloon::new`];
+    /// the phase grid must have the identical shape `(azimuths.len(),
+    /// polars.len(), N_BANDS)` and be everywhere finite. Phase is in ENVI's
+    /// `e^{+jωt}` convention (see the module docs).
+    ///
+    /// # Errors
+    ///
+    /// Any [`DirectivityError`] from [`DirectivityBalloon::new`], or an
+    /// [`AxisGridMismatch`](DirectivityError::AxisGridMismatch) /
+    /// [`NonFinite`](DirectivityError::NonFinite) for a phase grid whose shape
+    /// disagrees with the magnitude grid or that carries a non-finite value.
+    pub fn new_with_phase(
+        azimuths_deg: Vec<f64>,
+        polars_deg: Vec<f64>,
+        grid: Array3<f64>,
+        phase_grid_rad: Array3<f64>,
+    ) -> Result<Self, DirectivityError> {
+        if phase_grid_rad.dim() != grid.dim() {
+            let (_, _, pb) = phase_grid_rad.dim();
+            return Err(DirectivityError::AxisGridMismatch {
+                axis: "phase",
+                axis_len: pb,
+                grid_len: grid.dim().2,
+            });
+        }
+        for (i, v) in phase_grid_rad.iter().enumerate() {
+            if !v.is_finite() {
+                return Err(DirectivityError::NonFinite {
+                    what: format!("phase Δφ (flat index {i})"),
+                });
+            }
+        }
+        let base = Self::new(azimuths_deg, polars_deg, grid)?;
+        Ok(Self {
+            phase_grid_rad: Some(phase_grid_rad),
+            ..base
         })
     }
 
@@ -244,6 +320,48 @@ impl DirectivityBalloon {
         Self::new(azimuths_deg, polars_deg, grid)
     }
 
+    /// Build an equal-angle **complex** balloon by sampling magnitude and phase
+    /// analytic patterns: `f_gain(az, pol, band) -> ΔL dB` and
+    /// `f_phase(az, pol, band) -> Δφ rad`, evaluated on the same equal-angle grid
+    /// as [`DirectivityBalloon::from_equirect_sampler`].
+    ///
+    /// # Errors
+    ///
+    /// [`DirectivityError::UnevenStep`] if a step does not divide its span, or
+    /// any error from [`DirectivityBalloon::new_with_phase`] (e.g. a non-finite
+    /// magnitude or phase sample).
+    pub fn from_equirect_sampler_with_phase<G, P>(
+        az_step_deg: f64,
+        pol_step_deg: f64,
+        f_gain: G,
+        f_phase: P,
+    ) -> Result<Self, DirectivityError>
+    where
+        G: Fn(f64, f64, usize) -> f64,
+        P: Fn(f64, f64, usize) -> f64,
+    {
+        let azimuths_deg = equal_angle_axis(az_step_deg, 360.0, "azimuth")?;
+        let polars_deg = equal_angle_axis(pol_step_deg, 180.0, "polar")?;
+        let shape = (azimuths_deg.len(), polars_deg.len(), N_BANDS);
+        let mut grid = Array3::<f64>::zeros(shape);
+        let mut phase = Array3::<f64>::zeros(shape);
+        for (ia, &az) in azimuths_deg.iter().enumerate() {
+            for (ip, &pol) in polars_deg.iter().enumerate() {
+                for band in 0..N_BANDS {
+                    grid[[ia, ip, band]] = f_gain(az, pol, band);
+                    phase[[ia, ip, band]] = f_phase(az, pol, band);
+                }
+            }
+        }
+        Self::new_with_phase(azimuths_deg, polars_deg, grid, phase)
+    }
+
+    /// Whether this balloon carries directional phase data.
+    #[must_use]
+    pub fn has_phase(&self) -> bool {
+        self.phase_grid_rad.is_some()
+    }
+
     /// The per-band ΔL dB slice in the direction `dir_local` (a vector in the
     /// balloon's source-local frame; it is normalized internally).
     ///
@@ -254,22 +372,74 @@ impl DirectivityBalloon {
     /// tensor).
     #[must_use]
     pub fn eval(&self, dir_local: [f64; 3]) -> [f64; N_BANDS] {
-        let Some((az, pol)) = dir_to_az_pol(dir_local) else {
+        let Some(cell) = self.cell(dir_local) else {
             return [0.0; N_BANDS];
         };
-        let (a0, a1, ta) = bracket(&self.azimuths_deg, az);
-        let (p0, p1, tp) = bracket(&self.polars_deg, pol);
         let mut out = [0.0; N_BANDS];
         for (band, slot) in out.iter_mut().enumerate() {
-            let c00 = self.grid[[a0, p0, band]];
-            let c10 = self.grid[[a1, p0, band]];
-            let c01 = self.grid[[a0, p1, band]];
-            let c11 = self.grid[[a1, p1, band]];
-            let bottom = c00 + (c10 - c00) * ta;
-            let top = c01 + (c11 - c01) * ta;
-            *slot = bottom + (top - bottom) * tp;
+            *slot = cell.bilinear(&self.grid, band);
         }
         out
+    }
+
+    /// The per-band directional **phase** slice `Δφ` (radians) in the direction
+    /// `dir_local`. A balloon without a phase grid returns all-zero (an all-real
+    /// pattern); a degenerate direction returns all-zero (matching [`eval`]).
+    ///
+    /// Phase is interpolated as a unit complex vector (`e^{+jΔφ}` corners,
+    /// bilinear on re/im, then `arg`) so the result is robust across the ±π wrap.
+    ///
+    /// [`eval`]: DirectivityBalloon::eval
+    #[must_use]
+    pub fn eval_phase(&self, dir_local: [f64; 3]) -> [f64; N_BANDS] {
+        let Some(phase) = self.phase_grid_rad.as_ref() else {
+            return [0.0; N_BANDS];
+        };
+        let Some(cell) = self.cell(dir_local) else {
+            return [0.0; N_BANDS];
+        };
+        let mut out = [0.0; N_BANDS];
+        for (band, slot) in out.iter_mut().enumerate() {
+            *slot = cell.bilinear_phase(phase, band);
+        }
+        out
+    }
+
+    /// The per-band **complex** linear gain `10^{ΔL/20}·e^{+jΔφ}` in the
+    /// direction `dir_local` — magnitude from the dB grid (bit-identical to
+    /// `10^{eval/20}`), phase from the phase grid (`0` if absent).
+    ///
+    /// This is the datum a `SolveJob` multiplies into `H_coh`; the incoherent
+    /// channel uses only its magnitude (`|·|² = 10^{ΔL/10}`).
+    #[must_use]
+    pub fn eval_complex(&self, dir_local: [f64; 3]) -> [Complex<f64>; N_BANDS] {
+        let mag_db = self.eval(dir_local);
+        let phase = self.eval_phase(dir_local);
+        let mut out = [Complex::new(0.0, 0.0); N_BANDS];
+        for (band, slot) in out.iter_mut().enumerate() {
+            let mag = 10f64.powf(mag_db[band] / 20.0);
+            // ENVI e^{+jωt}: explicit (cos, sin), never `.conj()`.
+            *slot = Complex::new(mag * phase[band].cos(), mag * phase[band].sin());
+        }
+        out
+    }
+
+    /// Resolve a direction to a bilinear cell (bracketed indices + weights),
+    /// shared by [`eval`], [`eval_phase`], and [`eval_complex`].
+    ///
+    /// [`eval`]: DirectivityBalloon::eval
+    fn cell(&self, dir_local: [f64; 3]) -> Option<BilinearCell> {
+        let (az, pol) = dir_to_az_pol(dir_local)?;
+        let (a0, a1, ta) = bracket(&self.azimuths_deg, az);
+        let (p0, p1, tp) = bracket(&self.polars_deg, pol);
+        Some(BilinearCell {
+            a0,
+            a1,
+            p0,
+            p1,
+            ta,
+            tp,
+        })
     }
 
     /// The azimuth axis (degrees), strictly ascending, spanning `[0, 360]`.
@@ -394,6 +564,57 @@ impl Rotation3 {
             }
         }
         Rotation3 { m }
+    }
+}
+
+/// A resolved bilinear interpolation cell: the four bracketing grid indices and
+/// the fractional weights, computed once per direction and reused across bands.
+#[derive(Debug, Clone, Copy)]
+struct BilinearCell {
+    a0: usize,
+    a1: usize,
+    p0: usize,
+    p1: usize,
+    ta: f64,
+    tp: f64,
+}
+
+impl BilinearCell {
+    /// Bilinearly interpolate a real grid at this cell for one band.
+    fn bilinear(&self, grid: &Array3<f64>, band: usize) -> f64 {
+        let c00 = grid[[self.a0, self.p0, band]];
+        let c10 = grid[[self.a1, self.p0, band]];
+        let c01 = grid[[self.a0, self.p1, band]];
+        let c11 = grid[[self.a1, self.p1, band]];
+        let bottom = c00 + (c10 - c00) * self.ta;
+        let top = c01 + (c11 - c01) * self.ta;
+        bottom + (top - bottom) * self.tp
+    }
+
+    /// Interpolate a phase grid (radians) as a unit complex vector, returning the
+    /// `arg` of the interpolant so the result is robust across the ±π wrap. A
+    /// degenerate (near-zero-length) interpolant returns `0`.
+    fn bilinear_phase(&self, phase: &Array3<f64>, band: usize) -> f64 {
+        let unit = |ia: usize, ip: usize| -> (f64, f64) {
+            let p = phase[[ia, ip, band]];
+            (p.cos(), p.sin())
+        };
+        let (r00, i00) = unit(self.a0, self.p0);
+        let (r10, i10) = unit(self.a1, self.p0);
+        let (r01, i01) = unit(self.a0, self.p1);
+        let (r11, i11) = unit(self.a1, self.p1);
+        let lerp = |a: f64, b: f64, t: f64| a + (b - a) * t;
+        let re_b = lerp(r00, r10, self.ta);
+        let re_t = lerp(r01, r11, self.ta);
+        let im_b = lerp(i00, i10, self.ta);
+        let im_t = lerp(i01, i11, self.ta);
+        let re = lerp(re_b, re_t, self.tp);
+        let im = lerp(im_b, im_t, self.tp);
+        if re.abs() < 1e-15 && im.abs() < 1e-15 {
+            0.0
+        } else {
+            im.atan2(re)
+        }
     }
 }
 
@@ -658,5 +879,109 @@ mod tests {
         for dir in [[1.0, 0.0, 0.0], [0.0, 1.0, 1.0], [-1.0, -1.0, -1.0]] {
             assert_eq!(b.eval(dir), [0.0; N_BANDS]);
         }
+    }
+
+    /// A smooth analytic directional phase (radians): an azimuthal ramp plus a
+    /// mild band tilt, kept well inside [−π, π] to exercise interpolation.
+    fn analytic_phase(dir: [f64; 3], band: usize) -> f64 {
+        let (az, _pol) = dir_to_az_pol(dir).unwrap();
+        0.5 * (az.to_radians()).sin() + 0.001 * band as f64
+    }
+
+    fn complex_balloon() -> DirectivityBalloon {
+        DirectivityBalloon::from_equirect_sampler_with_phase(
+            5.0,
+            5.0,
+            |az, pol, band| {
+                let (x, y, z) = az_pol_to_unit(az, pol);
+                analytic([x, y, z], band)
+            },
+            |az, pol, band| {
+                let (x, y, z) = az_pol_to_unit(az, pol);
+                analytic_phase([x, y, z], band)
+            },
+        )
+        .expect("complex equal-angle sampler builds a valid balloon")
+    }
+
+    #[test]
+    fn real_balloon_reports_no_phase_and_real_complex_gain() {
+        // A magnitude-only balloon carries no phase; eval_complex is exactly
+        // 10^{eval/20} bit-for-bit (the backward-compatible invariant).
+        let b = sampled_balloon();
+        assert!(!b.has_phase());
+        for dir in [[1.0, 0.0, 0.0], [0.3, -0.7, 0.5], [0.0, 0.0, -1.0]] {
+            assert_eq!(b.eval_phase(dir), [0.0; N_BANDS]);
+            let mag = b.eval(dir);
+            let cx = b.eval_complex(dir);
+            for band in 0..N_BANDS {
+                let want = Complex::new(10f64.powf(mag[band] / 20.0), 0.0);
+                assert_eq!(cx[band], want, "band {band}");
+            }
+        }
+    }
+
+    #[test]
+    fn complex_balloon_evals_magnitude_and_phase_at_a_node() {
+        let b = complex_balloon();
+        assert!(b.has_phase());
+        // Node at azimuth 45°, polar 60° (both multiples of 5°).
+        let (x, y, z) = az_pol_to_unit(45.0, 60.0);
+        let dir = [x, y, z];
+        let phase = b.eval_phase(dir);
+        let cx = b.eval_complex(dir);
+        for band in 0..N_BANDS {
+            let want_phase = analytic_phase(dir, band);
+            assert_relative_eq!(phase[band], want_phase, epsilon = 1e-9);
+            let want_mag = 10f64.powf(analytic(dir, band) / 20.0);
+            assert_relative_eq!(cx[band].norm(), want_mag, epsilon = 1e-9);
+            assert_relative_eq!(cx[band].arg(), want_phase, epsilon = 1e-9);
+        }
+    }
+
+    #[test]
+    fn phase_interpolation_is_robust_across_the_pi_wrap() {
+        // Two azimuth nodes straddling the ±π branch cut: +170° and +190°
+        // (i.e. −170°). The unit-vector interpolant at the midpoint (180°) must
+        // land at ±π, NOT at 0° (which naive radian averaging would give).
+        let b = DirectivityBalloon::from_equirect_sampler_with_phase(
+            10.0,
+            10.0,
+            |_az, _pol, _band| 0.0,
+            |az, _pol, _band| {
+                // Phase = the azimuth itself mapped to (−π, π].
+                let a = az.to_radians();
+                if a > PI { a - 2.0 * PI } else { a }
+            },
+        )
+        .unwrap();
+        let (x, y, z) = az_pol_to_unit(180.0, 90.0);
+        let phase = b.eval_phase([x, y, z]);
+        // Interpolated phase magnitude ≈ π (either branch), never ≈ 0.
+        assert!(
+            (phase[0].abs() - PI).abs() < 1e-9,
+            "phase at 180° should be ±π, got {}",
+            phase[0]
+        );
+    }
+
+    #[test]
+    fn new_with_phase_rejects_a_shape_mismatched_phase_grid() {
+        let grid = Array3::<f64>::zeros((2, 2, N_BANDS));
+        let bad_phase = Array3::<f64>::zeros((2, 2, N_BANDS - 1));
+        assert!(matches!(
+            DirectivityBalloon::new_with_phase(vec![0.0, 360.0], vec![0.0, 180.0], grid, bad_phase),
+            Err(DirectivityError::AxisGridMismatch { axis: "phase", .. })
+        ));
+    }
+
+    #[test]
+    fn eval_complex_is_non_panicking_on_a_degenerate_direction() {
+        let b = complex_balloon();
+        assert_eq!(
+            b.eval_complex([0.0, 0.0, 0.0]),
+            [Complex::new(1.0, 0.0); N_BANDS]
+        );
+        assert_eq!(b.eval_phase([f64::NAN, 0.0, 1.0]), [0.0; N_BANDS]);
     }
 }

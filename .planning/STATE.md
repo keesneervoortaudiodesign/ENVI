@@ -107,7 +107,14 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None yet.
+- **Wire directional phase into the coherent composition path (do not miss).**
+  `DirectivityBalloon` now carries optional per-band phase `Δφ(θ,φ,f)`
+  (`eval_phase`/`eval_complex`) and the solver applies it via
+  `SolveJob::directivity_phase_rad` to `H_coh` only — an ENVI extension beyond
+  stock Nord2000 (real ΔL, incoherent). **No harness `SolveJob` site populates it
+  yet**; wire it when the coherent directional-source composition path lands
+  (Milestone 2 Phases 10–11, SRC-03 end-to-end). Full detail + how-to in
+  `.planning/phases/04-.../deferred-items.md` ("Directional phase seam").
 
 ### Blockers/Concerns
 

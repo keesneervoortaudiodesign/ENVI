@@ -64,6 +64,7 @@ fn hundred_k_receiver_solve_stays_within_the_budget() {
             axis: axis_ref,
             weather: None,
             directivity_gain_db: None,
+            directivity_phase_rad: None,
         })
     });
 
