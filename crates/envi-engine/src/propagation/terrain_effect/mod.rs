@@ -47,7 +47,7 @@ use crate::propagation::PropagationError;
 use crate::propagation::coherence::{CoherenceInputs, coherence_f_delta_nu};
 use crate::propagation::rays::{RayPair, circular_rays, straight_rays};
 use crate::propagation::refraction::SoundSpeedProfile;
-use crate::propagation::refraction::eqssp::calc_eq_ssp;
+use crate::propagation::refraction::eqssp::{calc_eq_ssp, calc_eq_ssp_ground};
 use crate::propagation::refraction::shadow_zone::shadow_zone_shielding;
 use crate::propagation::terrain_interpretation::{
     ScreenClass, StripSpec, TerrainInterpretation, interpret_terrain,
@@ -59,6 +59,7 @@ pub mod submodel1;
 pub mod submodel2;
 pub mod submodel3;
 pub mod submodel7;
+pub mod submodel8;
 
 /// Two-channel result of any terrain-effect sub-model, normalized relative to
 /// the free-field direct path `p̂₀`.
@@ -138,19 +139,21 @@ pub struct TerrainEffect {
 /// `refraction = Some(profile)` swaps the flat-channel `straight_rays` for
 /// `circular_rays` with `(ξ, c₀)` from CalcEqSSP; `|ξ|<1e-6` keeps the result
 /// bit-for-bit the homogeneous Phase-2 path (D-02). `None` is the homogeneous
-/// atmosphere (every Phase-2 caller). Only the single-surface (Sub-model 1) path
-/// is refracted here; a refraction profile over **segmented** ground is a typed
-/// [`PropagationError::SegmentedRefractionNotImplemented`] error (never a silent
-/// homogeneous result), awaiting the `calc_eq_ssp_ground` wiring (WR-01).
+/// atmosphere. Both the single-surface (Sub-model 1) and the **segmented**
+/// (Sub-model 2) ground paths are refracted: the segmented path uses the
+/// frequency-dependent `calc_eq_ssp_ground` collapse (§5.5.3, WR-01 wired).
+/// A **screen** under an active weather profile is still a typed error
+/// ([`PropagationError::WeatherScreenNotImplemented`], Pitfall 9) — refusing to
+/// compute an unrefracted screen.
 ///
 /// # Errors
 ///
 /// [`PropagationError::ConvexSegmentNotImplemented`] if the no-screen branch
 /// demands Sub-model 3 (`r_flat < 1` with weight) over a **convex**/transition
 /// ground segment (the §5.12 concave path IS wired);
-/// [`PropagationError::SegmentedRefractionNotImplemented`] if a weather profile
-/// is supplied over segmented ground; other [`PropagationError`]s propagate from
-/// the sub-models on degenerate geometry.
+/// [`PropagationError::WeatherScreenNotImplemented`] if a weather profile is
+/// supplied over a screen terrain (Pitfall 9); other [`PropagationError`]s
+/// propagate from the sub-models on degenerate geometry.
 pub fn terrain_effect(
     profile: &TerrainProfile,
     src: [f64; 3],
@@ -217,6 +220,15 @@ pub fn terrain_effect(
         let scr_res = if interp.class == ScreenClass::Flat {
             no_screen_res
         } else {
+            // Pitfall 9 guard: the screen diffraction rays are straight-line, so a
+            // screen case under an active weather profile would be silently
+            // UNREFRACTED. Refuse (typed error) rather than compute a wrong screen
+            // — but only when the screen branch actually carries weight
+            // (r_scr1 > 0); a marginal screen at r_scr1 = 0 collapses to the
+            // refracted no-screen result and is fine.
+            if refraction.is_some() && tp.r_scr1 > 1e-12 {
+                return Err(PropagationError::WeatherScreenNotImplemented { f_hz: f });
+            }
             screen_channel(f, &interp, coh)?
         };
 
@@ -277,10 +289,15 @@ struct FlatChannel {
     strips: Vec<submodel2::SurfaceStrip>,
     /// `true` when every strip shares one `(σ, r)` type ⇒ Sub-model 1.
     single_type: bool,
-    /// Refraction state (CalcEqSSP), `None` for a homogeneous atmosphere. Only
-    /// the single-type (Sub-model 1) path is refracted; a segmented refracted
-    /// case is deferred to the frequency-dependent CalcEqSSPGround of plan 03-02.
+    /// Refraction state (CalcEqSSP), `None` for a homogeneous atmosphere. The
+    /// single-type (Sub-model 1) path consumes this precomputed mean-profile
+    /// state; the segmented (Sub-model 2) path uses the raw [`Self::profile`]
+    /// with the frequency-dependent `calc_eq_ssp_ground` collapse (§5.5.3).
     refraction: Option<RefractionState>,
+    /// The raw weather profile, retained for the segmented (Sub-model 2) path so
+    /// `calc_eq_ssp_ground` can be applied **per band** (its `(ξ, c₀)` is
+    /// frequency-dependent over soft ground). `None` ⇒ homogeneous.
+    profile: Option<SoundSpeedProfile>,
 }
 
 impl FlatChannel {
@@ -291,6 +308,9 @@ impl FlatChannel {
         c0: f64,
         refraction: Option<&SoundSpeedProfile>,
     ) -> Result<Self, PropagationError> {
+        // Retain the raw weather profile for the segmented (Sub-model 2) path
+        // (`refraction` below is shadowed by the collapsed RefractionState).
+        let weather_profile = refraction.copied();
         let d = receiver[0] - source[0];
         if !(d.is_finite() && d > 0.0) {
             return Err(PropagationError::DegenerateRayGeometry {
@@ -366,6 +386,7 @@ impl FlatChannel {
             strips,
             single_type,
             refraction,
+            profile: weather_profile,
         })
     }
 
@@ -415,32 +436,56 @@ impl FlatChannel {
                 )
             }
         } else {
-            // Segmented ground + an active weather profile cannot yet be
-            // refracted: Sub-model 2 uses `straight_rays` and does NOT consume
-            // `self.refraction`. Surface this honestly as a typed error rather
-            // than silently returning a homogeneous result (WR-01) — mirroring the
-            // `NonFlatTerrainNotImplemented` contract. The frequency-dependent
-            // `calc_eq_ssp_ground` collapse (§5.5.3) is the ready building block
-            // for wiring segmented refraction in a later plan.
-            if self.refraction.is_some() {
-                let mut types: Vec<(u64, u64)> = self
-                    .strips
-                    .iter()
-                    .map(|s| (s.sigma_kpa.to_bits(), s.roughness_r.to_bits()))
-                    .collect();
-                types.sort_unstable();
-                types.dedup();
-                return Err(PropagationError::SegmentedRefractionNotImplemented {
-                    n_types: types.len(),
-                    f_hz: f,
-                });
-            }
             let geom = submodel2::FlatGeometry {
                 d: self.d,
                 h_s: self.h_s,
                 h_r: self.h_r,
                 c0: self.c0,
             };
+            // Segmented ground with an active weather profile: the frequency-
+            // dependent `calc_eq_ssp_ground` collapse (§5.5.3) gives the per-band
+            // (ξ, c₀) over the softest ground (Ẑ_G,min — the same representative
+            // impedance Sub-model 2's PhaseDiffFreq uses), then `circular_rays`
+            // replaces the straight rays. |ξ|<1e-6 keeps the case bit-identical to
+            // the homogeneous Sub-model 2 path (WR-01 resolved).
+            if let Some(p) = self.profile {
+                let sigma_min = self
+                    .strips
+                    .iter()
+                    .map(|s| s.sigma_kpa)
+                    .fold(f64::INFINITY, f64::min);
+                let (xi, c0_ray) = calc_eq_ssp_ground(
+                    f, self.d, self.h_s, self.h_r, sigma_min, p.z0, p.a, p.b, p.c,
+                )?;
+                let rays = circular_rays(self.d, self.h_s, self.h_r, xi, c0_ray)?;
+                // Upward-refraction shadow zone: no reflected ray ⇒ the Eq. 121
+                // shadow branch applies to every surface type.
+                let shadow_l_sz = if xi < 0.0 && rays.reflected.is_none() {
+                    Some(shadow_zone_shielding(
+                        f, self.d, self.h_s, self.h_r, xi, c0_ray, rays.d_sz,
+                    )?)
+                } else {
+                    None
+                };
+                // FΔν (Eq. 112) from the mean-vs-plus travel-time difference,
+                // multiplied into the coherence seam (sA=sB=0 ⇒ factor 1 exactly).
+                let a_plus = p.a + 1.7 * p.s_a;
+                let b_plus = p.b + 1.7 * p.s_b;
+                let (xi_plus, c0_plus) = calc_eq_ssp_ground(
+                    f, self.d, self.h_s, self.h_r, sigma_min, p.z0, a_plus, b_plus, p.c,
+                )?;
+                let dtau_plus = circular_rays(self.d, self.h_s, self.h_r, xi_plus, c0_plus)?.dtau;
+                let f_delta_nu = coh.f_delta_nu * coherence_f_delta_nu(f, rays.dtau, dtau_plus);
+                let coh_ft = CoherenceInputs { f_delta_nu, ..*coh };
+                return submodel2::submodel2_with_rays(
+                    f,
+                    &self.strips,
+                    &geom,
+                    &coh_ft,
+                    &rays,
+                    shadow_l_sz,
+                );
+            }
             submodel2::submodel2(f, &self.strips, &geom, coh)
         }
     }
@@ -869,11 +914,12 @@ mod terrain_effect_tests {
         );
     }
 
-    // WR-01: a refraction profile over SEGMENTED ground (>1 surface type) is a
-    // typed hard error, never a silent homogeneous result. The same segmented
-    // profile with `None` (homogeneous) still evaluates fine.
+    // WR-01 (now wired): a refraction profile over SEGMENTED ground routes
+    // through `calc_eq_ssp_ground` + `circular_rays` (Sub-model 2) — a finite
+    // result, never a NaN and never the old typed error. A homogeneous
+    // (A=B=0) weather profile is BIT-IDENTICAL to the `None` path (D-02).
     #[test]
-    fn segmented_refraction_is_a_typed_error_not_silent() {
+    fn segmented_refraction_is_wired_and_homogeneous_limit_is_bit_identical() {
         let axis = FreqAxis::new();
         let coh = zero_turb();
         // Flat ground, two surface types (σ=200 then σ=20) ⇒ Sub-model 2 path.
@@ -884,10 +930,26 @@ mod terrain_effect_tests {
         .unwrap();
         let src = [0.0, 0.0, 0.5];
         let rcv = [100.0, 0.0, 1.5];
-        // Homogeneous (None) still works — the limitation is refraction-specific.
-        assert!(terrain_effect(&seg_profile, src, rcv, C0, &coh, &axis, None).is_ok());
-        // With a weather profile it is a typed error, not a silent discard.
-        let err = terrain_effect(
+        let base = terrain_effect(&seg_profile, src, rcv, C0, &coh, &axis, None).unwrap();
+        // A homogeneous weather profile (A=B=0 ⇒ |ξ|<1e-6) is bit-identical.
+        let hom = terrain_effect(
+            &seg_profile,
+            src,
+            rcv,
+            C0,
+            &coh,
+            &axis,
+            Some(&SoundSpeedProfile::homogeneous(C0)),
+        )
+        .unwrap();
+        for i in 0..N_BANDS {
+            assert_eq!(
+                base.delta_l_db[i], hom.delta_l_db[i],
+                "band {i}: homogeneous segmented refraction must match the None path"
+            );
+        }
+        // A real downwind profile now COMPUTES (finite, no NaN, no typed error).
+        let down = terrain_effect(
             &seg_profile,
             src,
             rcv,
@@ -896,13 +958,47 @@ mod terrain_effect_tests {
             &axis,
             Some(&profile(1.0, 0.05)),
         )
-        .unwrap_err();
+        .unwrap();
         assert!(
-            matches!(
-                err,
-                PropagationError::SegmentedRefractionNotImplemented { n_types: 2, .. }
-            ),
-            "segmented refraction must be a typed error, got {err:?}"
+            down.delta_l_db.iter().all(|v| v.is_finite())
+                && down.p_incoh.iter().all(|p| p.is_finite() && *p >= 0.0)
+                && down
+                    .h_coh_factor
+                    .iter()
+                    .all(|z| z.re.is_finite() && z.im.is_finite()),
+            "segmented refraction must produce a finite two-channel result"
+        );
+    }
+
+    // Pitfall 9: a SCREEN terrain under an active weather profile is a typed
+    // error (never a silently-unrefracted screen). The same screen with `None`
+    // (homogeneous) evaluates fine — the guard is refraction-specific.
+    #[test]
+    fn weather_over_a_screen_is_a_typed_error_not_silent() {
+        let axis = FreqAxis::new();
+        let coh = zero_turb();
+        let (sp, ssrc, srcv) = thin_screen();
+        // Homogeneous (None) computes fine.
+        assert!(terrain_effect(&sp, ssrc, srcv, C0, &coh, &axis, None).is_ok());
+        // With a weather profile: a typed WeatherScreenNotImplemented error,
+        // never a silent unrefracted screen result.
+        let err = terrain_effect(&sp, ssrc, srcv, C0, &coh, &axis, Some(&profile(1.0, 0.05)))
+            .unwrap_err();
+        assert!(
+            matches!(err, PropagationError::WeatherScreenNotImplemented { .. }),
+            "weather+screen must be a typed error, got {err:?}"
+        );
+    }
+
+    // SM8 decision (Eq. 279): the short-range downwind FORCE geometry stays below
+    // the N ≥ 4 multiple-ground-reflection threshold, so Sub-models 1–6 carry all
+    // significant rays (accepted-gap evidence, Assumption A6).
+    #[test]
+    fn submodel8_ray_count_short_range_downwind_below_threshold() {
+        let n = submodel8::ray_count_eq279(100.0, 0.01, 1.5, 0.43, C0);
+        assert!(
+            n < submodel8::SM8_RAY_COUNT_THRESHOLD,
+            "short-range downwind N = {n} must stay below the SM8 threshold"
         );
     }
 

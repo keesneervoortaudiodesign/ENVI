@@ -84,8 +84,33 @@ pub fn submodel2(
     geom: &FlatGeometry,
     coh: &CoherenceInputs,
 ) -> Result<GroundResult, PropagationError> {
-    let weights = type_weights(f_hz, strips, geom)?;
     let rays = straight_rays(geom.d, geom.h_s, geom.h_r, geom.c0)?;
+    submodel2_with_rays(f_hz, strips, geom, coh, &rays, None)
+}
+
+/// Sub-model 2 over a **precomputed** ray pair — the segmented-refraction seam.
+///
+/// Identical to [`submodel2`] but the caller supplies the ray pair (straight for
+/// a homogeneous atmosphere, or `circular_rays` from the frequency-dependent
+/// `calc_eq_ssp_ground` collapse for a refracting one — §5.5.3), plus an optional
+/// upward-refraction `shadow_l_sz` (Eq. 121) applied to every surface type. The
+/// per-type Fresnel-zone weights are still taken from the flat baseline geometry
+/// (`geom`), so a `None`/near-clamp weather profile reproduces [`submodel2`]
+/// exactly.
+///
+/// # Errors
+///
+/// [`PropagationError::DegenerateRayGeometry`] for empty strips or degenerate
+/// geometry; [`PropagationError::InvalidFlowResistivity`] for σ ≤ 0.
+pub fn submodel2_with_rays(
+    f_hz: f64,
+    strips: &[SurfaceStrip],
+    geom: &FlatGeometry,
+    coh: &CoherenceInputs,
+    rays: &crate::propagation::rays::RayPair,
+    shadow_l_sz: Option<f64>,
+) -> Result<GroundResult, PropagationError> {
+    let weights = type_weights(f_hz, strips, geom)?;
 
     // Blend the per-type Sub-model 1 results (Eq. 124, two-channel extension):
     // h_coh sums complex-linearly with w′; p_incoh sums with w′² (see module docs).
@@ -94,7 +119,7 @@ pub fn submodel2(
     for ((sigma, rough), w) in weights {
         // ΔL_{ii,ir}: Sub-model 1 as if the whole ground were this type
         // (grouped by TYPE, evaluated once per type — Pitfall 3).
-        let g = submodel1_eval(f_hz, &rays, sigma, rough, coh, None, None)?;
+        let g = submodel1_eval(f_hz, rays, sigma, rough, coh, None, shadow_l_sz)?;
         h_coh += w * g.h_coh_factor;
         p_incoh += w * w * g.p_incoh;
     }

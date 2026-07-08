@@ -164,6 +164,23 @@ pub enum PropagationError {
         /// The frequency at which the segmented-refraction branch was demanded, Hz.
         f_hz: f64,
     },
+    /// A weather (sound-speed) profile was supplied over a **screen** terrain
+    /// (Sub-model 4/5/6). The screen channel's diffraction rays are still
+    /// straight-line (the ξ<0 screen shadow branches, §5.13–5.15 Eqs. 184–186,
+    /// are not wired), so a refracting screen case cannot yet be computed
+    /// correctly. Rather than silently return an **unrefracted** screen result —
+    /// which would flip a wind/gradient FORCE screen case to a false pass
+    /// (Pitfall 9, threat T-04-03-02) — this is a hard error by design, mirroring
+    /// [`Self::SegmentedRefractionNotImplemented`]. The ground channel IS
+    /// refracted (Sub-model 1/2/3); only the screen diffraction gap remains.
+    #[error(
+        "screen diffraction under a weather profile (§5.13–5.15 refracted screen) \
+         is not implemented at {f_hz} Hz — refusing to compute an unrefracted screen"
+    )]
+    WeatherScreenNotImplemented {
+        /// The frequency at which a refracted screen was demanded, Hz.
+        f_hz: f64,
+    },
     /// A [`solver::SolveJob`](crate::solver::SolveJob) carried degenerate
     /// direct-path geometry (coincident source/receiver) — a domain error at the
     /// solver's job → path boundary (threat T-04-01-01), never a panic. Wraps the
