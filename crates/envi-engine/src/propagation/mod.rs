@@ -145,6 +145,35 @@ pub enum PropagationError {
         /// The frequency at which the segmented-refraction branch was demanded, Hz.
         f_hz: f64,
     },
+    /// A [`solver::SolveJob`](crate::solver::SolveJob) carried degenerate
+    /// direct-path geometry (coincident source/receiver) — a domain error at the
+    /// solver's job → path boundary (threat T-04-01-01), never a panic. Wraps the
+    /// underlying [`GeometryError`](crate::geometry::GeometryError) message.
+    #[error("degenerate solve-job geometry: {detail}")]
+    DegenerateJobGeometry {
+        /// The underlying geometry-failure description.
+        detail: String,
+    },
+    /// A [`solve`](crate::solver::solve) was requested with `chunk_receivers = 0`,
+    /// which cannot bound the streaming working set — a domain error, never a
+    /// divide-by-zero / empty-chunk panic (threat T-04-01-01).
+    #[error("degenerate chunk size: chunk_receivers must be ≥ 1")]
+    DegenerateChunkSize,
+    /// A solve job named a sub-source index at or beyond the tensor's declared
+    /// sub-source count — caller-controlled indexing rejected at the boundary,
+    /// never an out-of-bounds panic (threat T-04-01-01).
+    #[error("solve job sub-source {sub_source} out of range (n_sub = {n_sub})")]
+    SubSourceOutOfRange {
+        /// The offending sub-source index.
+        sub_source: usize,
+        /// The tensor's sub-source count.
+        n_sub: usize,
+    },
+    /// A [`TensorSink`](crate::tensor::TensorSink) rejected a chunk during a
+    /// solve (dimension mismatch, out-of-bounds receiver span, or non-finite
+    /// cell). Propagated verbatim so the honest typed cause survives.
+    #[error("tensor sink rejected a chunk: {0}")]
+    Sink(#[from] crate::tensor::SinkError),
 }
 
 /// Speed of sound in air, `c = Coft(t) = 20.05·√(t + 273.15)` (AV 1106/07
