@@ -40,11 +40,18 @@ use ndarray::{Array2, Array3, ArrayView3, Axis, s};
 use num_complex::Complex;
 use thiserror::Error;
 
-use crate::freq::N_BANDS;
+use crate::freq::{FreqAxis, N_BANDS};
+use crate::scene::BandSpectrum;
 
 /// Bytes held per `(sub_source, receiver, band)` cell across the pair:
 /// 16 B for one `Complex<f64>` (`H_coh`) + 8 B for one `f64` (`P_incoh_abs`).
 pub const BYTES_PER_CELL_PAIR: usize = 16 + 8;
+
+/// The stated streaming memory budget for a tensor solve (OUT-06): 256 MiB.
+///
+/// A solve chunks the receiver axis so the resident working set stays under
+/// this bound; `chunk_receivers = floor(budget / (n_sub · N_BANDS · 24))`.
+pub const DEFAULT_TENSOR_BUDGET_BYTES: usize = 256 * 1024 * 1024;
 
 /// Errors from the tensor sink and readout trust boundaries.
 ///
@@ -105,6 +112,14 @@ pub enum SinkError {
         /// Expected band count.
         expected: usize,
         /// Actual band count.
+        got: usize,
+    },
+    /// A conditioning filter vector was not [`N_BANDS`] long.
+    #[error("filter has {got} bands, expected {expected}")]
+    FilterLengthMismatch {
+        /// Expected band count ([`N_BANDS`]).
+        expected: usize,
+        /// Actual filter length.
         got: usize,
     },
     /// A caller-supplied value (chunk cell or gain) was NaN or infinite.
@@ -345,6 +360,76 @@ pub fn readout_incoherent(
     Ok(e)
 }
 
+/// Compose one per-band conditioning gain per sub-source (OUT-04/05):
+/// `G_s(f) = 10^{L_W(f)/20} · Ĝ_filter(f) · e^{−j2πf·τ_s}`.
+///
+/// The three factors multiply in this frozen order, ONCE per band, using the
+/// exact [`FreqAxis::centres`] value at each grid point. Composing the gain once
+/// and multiplying it once in [`readout_coherent`] is what makes the coherent
+/// MAC equal a full recompute *bit-for-bit* (Pitfall 6): there is exactly one
+/// composition order, so no last-ulp drift can creep in.
+///
+/// The delay phase is written `Complex::from_polar(1.0, -2π·f·τ)` — the minus
+/// sign is the frozen outgoing-phase convention (`e^{−jωτ}` under ENVI's
+/// `e^{+jωt}`); a delayed source composes exactly like extra travel time. It is
+/// written explicitly, never via `.conj()`.
+///
+/// # Errors
+///
+/// [`SinkError::FilterLengthMismatch`] if `filter` is `Some` and not
+/// [`N_BANDS`] long; [`SinkError::NonFinite`] if `delay_s` or a filter entry is
+/// non-finite.
+pub fn compose_gain(
+    l_w_db: &BandSpectrum,
+    filter: Option<&[Complex<f64>]>,
+    delay_s: f64,
+    axis: &FreqAxis,
+) -> Result<Vec<Complex<f64>>, SinkError> {
+    todo!()
+}
+
+/// A streaming sink that allocates NO full-tensor backing: it tracks the
+/// high-water-mark chunk byte footprint and folds the incoherent energy
+/// `Σ_s (|H_coh|² + P_incoh_abs)` per chunk into a compact `[n_rcv, N_BANDS]`
+/// readout — so a huge receiver set never materializes the complex tensor
+/// (OUT-06 budget proof).
+#[derive(Debug, Clone)]
+pub struct CountingSink {
+    readout: Array2<f64>,
+    high_water_bytes: usize,
+}
+
+impl CountingSink {
+    /// A counting sink for `n_rcv` receivers (readout is `[n_rcv, N_BANDS]`).
+    #[must_use]
+    pub fn new(n_rcv: usize) -> Self {
+        todo!()
+    }
+
+    /// The largest single chunk handed in, in bytes across the pair.
+    #[must_use]
+    pub fn high_water_bytes(&self) -> usize {
+        todo!()
+    }
+
+    /// The folded incoherent energy readout `[n_rcv, N_BANDS]` (unit weights).
+    #[must_use]
+    pub fn readout(&self) -> &Array2<f64> {
+        todo!()
+    }
+}
+
+impl TensorSink for CountingSink {
+    fn put_chunk(
+        &mut self,
+        r_offset: usize,
+        h_coh: ArrayView3<'_, Complex<f64>>,
+        p_incoh_abs: ArrayView3<'_, f64>,
+    ) -> Result<(), SinkError> {
+        todo!()
+    }
+}
+
 /// Validate a complex per-sub-source gain against the tensor dimensions and
 /// reject non-finite entries.
 fn validate_complex_gain(
@@ -534,6 +619,64 @@ mod tests {
         assert!(matches!(
             sink.put_chunk(0, hc.view(), pi.view()),
             Err(SinkError::ChannelShapeMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn compose_gain_delay_ramp_has_negative_phase_increment() {
+        // Pure delay τ>0, unit filter, L_W=0 ⇒ G(f) = e^{−j2πfτ}. At two low
+        // bands (no wrap) the phase equals −2π·f·τ exactly and grows more
+        // negative with frequency — the frozen e^{−jωτ} sign.
+        let axis = FreqAxis::new();
+        let tau = 1.0e-4;
+        let g = compose_gain(&BandSpectrum::uniform(0.0), None, tau, &axis).unwrap();
+        for &i in &[0usize, 4] {
+            let want = -std::f64::consts::TAU * axis.centres[i] * tau;
+            assert_relative_eq!(g[i].arg(), want, epsilon = 1e-12);
+            assert!(g[i].arg() < 0.0, "phase must be negative for τ>0 at band {i}");
+            // Unit magnitude (pure delay).
+            assert_relative_eq!(g[i].norm(), 1.0, epsilon = 1e-12);
+        }
+        // Higher band ⇒ more negative phase (still below the first wrap).
+        assert!(g[4].arg() < g[0].arg());
+    }
+
+    #[test]
+    fn compose_gain_real_half_filter_drops_level_six_db() {
+        // A real 0.5 filter gain drops the coherent level by 20·lg 0.5 =
+        // −6.0206 dB in every band, phase otherwise unchanged.
+        let axis = FreqAxis::new();
+        let mut pair = TensorPair::zeros((1, 1, N_BANDS));
+        let h: Vec<Complex<f64>> = (0..N_BANDS)
+            .map(|i| Complex::from_polar(0.3, 0.17 * i as f64))
+            .collect();
+        for (i, &z) in h.iter().enumerate() {
+            pair.h_coh[[0, 0, i]] = z;
+        }
+        let unit = compose_gain(&BandSpectrum::uniform(0.0), None, 0.0, &axis).unwrap();
+        let half_filter = vec![Complex::new(0.5, 0.0); N_BANDS];
+        let half =
+            compose_gain(&BandSpectrum::uniform(0.0), Some(&half_filter), 0.0, &axis).unwrap();
+        let p_unit = readout_coherent(pair.h_coh.view(), &[unit]).unwrap();
+        let p_half = readout_coherent(pair.h_coh.view(), &[half]).unwrap();
+        for i in 0..N_BANDS {
+            let l_unit = 20.0 * p_unit[[0, i]].norm().log10();
+            let l_half = 20.0 * p_half[[0, i]].norm().log10();
+            assert_relative_eq!(l_half - l_unit, 20.0 * 0.5f64.log10(), epsilon = 1e-12);
+        }
+    }
+
+    #[test]
+    fn compose_gain_rejects_wrong_filter_length() {
+        let axis = FreqAxis::new();
+        let bad = vec![Complex::new(1.0, 0.0); N_BANDS - 1];
+        assert!(matches!(
+            compose_gain(&BandSpectrum::uniform(0.0), Some(&bad), 0.0, &axis),
+            Err(SinkError::FilterLengthMismatch { .. })
+        ));
+        assert!(matches!(
+            compose_gain(&BandSpectrum::uniform(0.0), None, f64::NAN, &axis),
+            Err(SinkError::NonFinite { .. })
         ));
     }
 }
