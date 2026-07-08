@@ -250,28 +250,13 @@ pub fn circular_rays(
     };
     use super::refraction::eqssp::XI_HOMOGENEOUS;
 
-    // Input guards shared with `straight_rays` (T-02-01 / T-03-01-02).
-    if !(d.is_finite() && d > 0.0) {
-        return Err(PropagationError::DegenerateRayGeometry {
-            detail: "horizontal distance d must be positive and finite",
-        });
-    }
-    let height_ok = |h: f64| h.is_finite() && h >= 0.0;
-    if !(height_ok(h_s) && height_ok(h_r)) {
-        return Err(PropagationError::DegenerateRayGeometry {
-            detail: "source/receiver heights must be non-negative and finite",
-        });
-    }
-    if !(c0.is_finite() && c0 > 0.0) {
-        return Err(PropagationError::DegenerateRayGeometry {
-            detail: "speed of sound c₀ must be positive and finite",
-        });
-    }
-    if !xi.is_finite() {
-        return Err(PropagationError::DegenerateRayGeometry {
-            detail: "relative sound-speed gradient ξ must be finite",
-        });
-    }
+    // Input guards (d / heights / c₀ / ξ finite & sign checks, T-02-01 /
+    // T-03-01-02) are NOT duplicated here: both delegation paths re-run the
+    // identical checks with identical typed error variants and detail strings —
+    // the homogeneous shortcut through `straight_rays` (d / heights / c₀), and
+    // the refracted path through `direct_ray`'s `guard` (d / heights / c₀ / ξ,
+    // same order). A non-finite ξ fails `xi.abs() < XI_HOMOGENEOUS` (NaN/∞
+    // comparisons are false), so it always reaches `direct_ray`'s ξ guard.
 
     // Homogeneous shortcut → the exact Phase-2 straight-ray path (D-02).
     if xi.abs() < XI_HOMOGENEOUS {
