@@ -27,6 +27,7 @@
 //! 0.05 dB budget) — validated by structure/property tests, never a false Pass.
 
 pub mod coefficients;
+pub mod passby;
 
 use envi_engine::directivity::DirectivityBalloon;
 use envi_engine::freq::{N_BANDS, N_THIRD_OCT};
