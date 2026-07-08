@@ -55,61 +55,91 @@
 - [ ] **VAL-02**: Engine reproduces the FORCE test-case reference results within the standard's tolerance
 - [ ] **VAL-03**: Cross-validate shared sub-effects (divergence, ISO 9613-1 air absorption, screen geometry) against NoiseModelling's CNOSSOS output
 
-## v2 Requirements
+## Milestone 2 Requirements (v2.0 — Interactive Calculation UI)
 
-Deferred to later milestones. Tracked, not in the current roadmap.
+**Scope:** the self-hosted web application around the validated engine — project CRUD, GIS + weather import, scene drawing, calculation jobs, receiver spectra, and dB(A)/dB(C) isophone maps. Workflow modeled on d&b NoizCalc (TI 386 ch. 3–4) as a **single integrated app**, **Nord2000-only**. Full differentiator set included (named weather what-if scenarios + interactive source conditioning via the tensor MAC). Two **engine extensions** — forest scattering and semi-transparent (finite-transmission) partitions — are new acoustics scoped into this milestone.
+
+> **Engine sequencing.** ENG-09/ENG-10 are new engine physics; together with the calculation features they depend on engine Milestone-1 Phases 3–4 (meteorology + transfer tensor). The roadmap places the engine extensions in an early Milestone-2 engine phase, ahead of the calculation service. CRUD, GIS import, and scene drawing (SVC/DATA/GEOX/WEB) are engine-independent and parallel-safe with the engine finish.
+
+### Engine extensions — new acoustics for Milestone 2 (ENG)
+
+- [ ] **ENG-09**: Compute forest scattering/attenuation `A = d·a(f)` (Nord2000: mean tree density, mean stem radius, factor kp, mean absorption coefficient) along the through-forest path length `d`, evaluated at 1/12-octave and applied to the transfer as a per-path attenuation
+- [ ] **ENG-10**: Compute a **semi-transparent partition** — a transmission path through a screen/façade attenuated by a per-band **isolation spectrum** (transmission loss `R(f)`, amplitude factor 10^(−R(f)/20)), with the ray **direction preserved** (straight source→receiver line), combined with the diffracted and reflected contributions as **complex pressure with phase intact** (two-channel `H_coh`/`P_incoh` contract). The opaque limit `R(f)→∞` reproduces the standard opaque screen bit-for-bit. (Per-façade building transmission reuses ENG-10 with each façade's `R(f)`.)
+
+### Scene model extensions (SCN)
+
+- [ ] **SCN-01**: Semi-transparent **screen** object — a screen carrying an assigned isolation spectrum; transmission via ENG-10, diffraction/reflection unchanged
+- [ ] **SCN-02**: Semi-transparent **building** object — a 3D building where each façade (footprint edge) can be assigned its own isolation spectrum; transmission through a façade uses that façade's `R(f)`
+- [ ] **SCN-03**: **Isolation-spectrum** data type on the 105-point 1/12-octave grid; accept 1/1-octave or 1/3-octave input and **linearly interpolate** (dB across band index = linear in log-frequency; octave/third-octave centres fall exactly on 1/12-octave band indices) to the full grid
+- [ ] **SCN-04**: **Forest** object with editable mean tree density / mean stem radius / height (feeds ENG-09); single trees and tree lines have no effect
 
 ### GIS data ingestion (DATA)
 
-- **DATA-01**: Fetch terrain — Copernicus GLO-30 DEM (COG range reads) + national LiDAR DTM where available
-- **DATA-02**: Fetch ESA WorldCover land cover and map classes → Nordtest σ / CNOSSOS G impedance
-- **DATA-03**: Fetch buildings (Overture/OSM) with a height-resolution fallback chain
-- **DATA-04**: Cache fetched tiles/data locally
+- [ ] **DATA-01**: Fetch terrain — Copernicus GLO-30 DEM (COG `/vsicurl/` windowed reads) + national LiDAR DTM where available
+- [ ] **DATA-02**: Fetch ESA WorldCover land cover and map classes → Nordtest σ / impedance class (reviewed mapping table)
+- [ ] **DATA-03**: Fetch buildings (Overture GeoParquet / OSM) with a height-resolution fallback chain
+- [ ] **DATA-04**: Cache fetched tiles/data locally on disk; the compute path reads only the local cache
 
 ### Real GIS geometry pipeline (GEOX)
 
-- **GEOX-01**: Extract terrain elevation profile along a source→receiver line from a DEM raster
-- **GEOX-02**: Segment ground into impedance classes along the profile from land-cover + OSM overrides
-- **GEOX-03**: Derive screening edges from building/barrier geometry along the path
-- **GEOX-04**: Reproject inputs to an auto-selected local metric CRS (UTM)
+- [ ] **GEOX-01**: Extract the terrain elevation profile (DEM cut-profile) along a source→receiver line from a DEM raster (oracle: GRASS `r.profile`)
+- [ ] **GEOX-02**: Segment ground into impedance classes along the profile from land cover + drawn/imported overrides (priority: drawn > imported > default)
+- [ ] **GEOX-03**: Derive screening edges from building/barrier/wall geometry along the path
+- [ ] **GEOX-04**: Reproject inputs to an auto-selected local metric CRS (UTM), pinned per project, at a single reprojection boundary
 
-### Meteorology import (METX)
+### Meteorology import & what-if (METX)
 
-- **METX-01**: Import runtime meteorology from Open-Meteo (multi-level winds/temps, cloud, BLH)
-- **METX-02**: Import ERA5/CDS reanalysis to derive wind×stability weather-class occurrence statistics (Obukhov length)
+- [ ] **METX-01**: Import runtime meteorology from Open-Meteo (multi-level winds/temps, cloud, BLH), cached per (site, window); what-if edits never call the API
+- [ ] **METX-02**: Import ERA5/CDS reanalysis to derive wind×stability weather-class occurrence statistics (Obukhov length) — groundwork; full L_den statistics deferred (see GRID-03)
+- [ ] **METX-03**: **Manually override** meteorology for a scenario — T/RH/p, Beaufort wind class + direction, downwind worst-case toggle, temperature gradient, per-azimuth A/B/C — for what-if analysis
+- [ ] **METX-04**: **Named weather scenarios** with per-scenario cached tensors, instant switching, and difference maps between scenarios
 
 ### Receiver grid & output (GRID)
 
-- **GRID-01**: Generate a building-aware receiver grid via constrained Delaunay (spade)
-- **GRID-02**: Batch-compute the transfer tensor over the grid, parallelized
-- **GRID-03**: Combine per-weather-class results into energy-weighted L_den
-- **GRID-04**: Contour results into isophone polygons (GDAL contour)
-- **GRID-05**: Export results (GeoTIFF / GeoJSON / GeoPackage)
+- [ ] **GRID-01**: Generate a building-aware receiver grid via constrained Delaunay (spade); plus discrete receiver points
+- [ ] **GRID-02**: Batch-compute the transfer tensor over the grid, parallelized (rayon), receiver-axis chunked
+- [ ] **GRID-04**: Contour results into isophone fill polygons (pure-Rust `contour`; `gdal-sys` escape hatch)
+- [ ] **GRID-05**: Export results (GeoTIFF / GeoJSON) and spectra (CSV)
 
 ### Web frontend (WEB)
 
-- **WEB-01**: OpenStreetMap basemap (MapLibre GL JS)
-- **WEB-02**: Place/edit sources on the map (Terra Draw)
-- **WEB-03**: Place/edit receivers and the receiver-grid domain
-- **WEB-04**: Draw barriers/buildings
-- **WEB-05**: Configure source sound power, directivity, and input conditioning (filter/delay) in the UI, with fast recalculation
-- **WEB-06**: Render isophone overlays as fill polygons
-- **WEB-07**: Submit a calculation job and view status/results
+- [ ] **WEB-01**: OSM/vector basemap (MapLibre GL JS 5)
+- [ ] **WEB-02**: Place/edit directional sources on the map (Terra Draw), with sound power / spectrum / SPL-at-reference-point calibration
+- [ ] **WEB-03**: Place/edit receiver points and the receiver-grid / calculation-area domain
+- [ ] **WEB-04**: Draw/edit buildings, walls, ground-effect (impedance A–H + roughness N/S/M/L) zones, forests, and elevation points/lines with DGM re-triangulation; last-object property inheritance; click-to-select validation messages
+- [ ] **WEB-05**: Configure source input conditioning (per-source gain/filter/delay) in the UI with **interactive fast recalculation** (tensor MAC) and a results-stale badge
+- [ ] **WEB-06**: Render isophone overlays as fill polygons with an editable color scale + legend (dB weighting from result metadata)
+- [ ] **WEB-07**: Submit a calculation job and view progress / abort / results; pre-run cost estimate
+- [ ] **WEB-08**: Draw/assign a **semi-transparent screen** and edit its isolation spectrum (SCN-01)
+- [ ] **WEB-09**: Assign **per-façade isolation spectra** on a semi-transparent building (SCN-02)
+- [ ] **WEB-10**: **Isolation-spectrum editor** — enter 1/12-octave directly, or 1/1- / 1/3-octave with linear interpolation to the 1/12-octave grid (SCN-03)
+- [ ] **WEB-11**: **Receiver-point spectrum readout** — per-band (1/12-oct expert + 1/3-oct display aggregated by band index), dB(A)/dB(C) totals, coherent/incoherent split, instant dB(A)⇄dB(C) toggle without recompute
+- [ ] **WEB-12**: Weather what-if panel — import, manual override, named-scenario management and difference-map view (METX-03/04)
 
-### Service (SVC)
+### Service & persistence (SVC)
 
-- **SVC-01**: Persist projects (scene + settings + cached tensors)
-- **SVC-02**: Compute-job model (submit, queue, run, fetch results)
-- **SVC-03**: Rust HTTP API backend
-- **SVC-04**: Single self-hosted deployable service
+- [ ] **SVC-01**: Persist projects as a project folder (scene + settings + chunked cached tensors)
+- [ ] **SVC-02**: Compute-job model (submit, queue, run, progress via SSE, cancel, fetch results) with a Queued/Running/Done/Failed/Cancelled state machine
+- [ ] **SVC-03**: Rust HTTP API backend (axum), serving the built frontend bundle
+- [ ] **SVC-04**: Single self-hosted deployable service (localhost bind; GDAL/PROJ startup self-check)
+- [ ] **SVC-05**: Project CRUD lifecycle — create / open / save (autosave) / delete / duplicate with metadata; reopen-last
+- [ ] **SVC-06**: API separates **`recondition`** (conditioning-only → tensor MAC) from **`recompute`** (scene/terrain/ground/met → full propagation); tensor cache keyed by content hash; a MAC request with a mismatched hash is rejected, never silently served
+- [ ] **SVC-07**: All acoustic quantities are computed **server-side**; spectra cross the wire keyed by **band index** with the 1/12-octave grid served once (no Hz-based client-side acoustic math)
 
-### Future imports & BEM (FUT)
+### Future imports & BEM (FUT — deferred beyond Milestone 2)
 
 - **FUT-01**: DXF import (Rust `dxf` crate) → canonical semantic model
 - **FUT-02**: SketchUp import via glTF/COLLADA export (never `.skp`/SDK)
 - **FUT-03**: Per-path-segment `PropagationCorrection` interface (architecture hook lands in v1 engine; corrections themselves v2+)
 - **FUT-04**: 2.5D BEM barrier-correction tables (Bempp Rust stack: bempp-rs / kifmm)
 - **FUT-05**: SOFA/AES69 directivity import
+
+### Deferred within v2 (v2.x / v3+ — not in Milestone 2)
+
+- **GRID-03**: Combine per-weather-class results into energy-weighted L_den (needs METX-02 statistics; named-scenario what-if ≠ L_den statistics)
+- Variable wall height along a base line (split walls instead for MVP)
+- Multi-height / façade receivers; road / railway / berm emission objects
+- Report / print-sheet generation, bitmap geo-referencing, palette editor (NoizCalc ch. 4 desktop features)
 
 ## Out of Scope
 
@@ -123,6 +153,10 @@ Explicitly excluded. Documented to prevent scope creep.
 | Direct `.skp` binary parsing | Proprietary + OSS-hostile, Linux-less SDK — use glTF/COLLADA export |
 | FABDEM terrain, Meteostat weather | Non-commercial licenses — avoided for clean data hygiene |
 | Real-time / streaming calculation | Batch compute-job model suffices |
+| ArrayCalc-style companion tool / two-package split | ENVI folds source definition into the single app — no ArrayCalc dependency (NoizCalc anti-feature) |
+| ISO 9613-2 dual-standard parameter sets in the UI | ENVI is Nord2000-only; carrying NoizCalc's second standard doubles the model with no benefit here |
+| Print/sheet-layout subsystem, bitmap geo-referencing, palette editor | NoizCalc ch. 4 desktop-era features; a web result view + color-scale editor + image/vector export suffice |
+| Google Maps data sources; heatmap result layer | Data via Copernicus/ESA/Overture/OSM; results are server-side isophone fill polygons, not a `heatmap` layer |
 
 ## Traceability
 
@@ -167,6 +201,8 @@ Mapped during roadmap creation (2026-07-07). See `.planning/ROADMAP.md`.
 - Mapped to phases: 30/30 ✓
 - Unmapped: 0 ✓
 
+**Milestone 2 (v2.0) requirements** are listed above (ENG-09/10, SCN, DATA, GEOX, METX, GRID, WEB, SVC). Their phase mapping is filled in by the Milestone-2 roadmap (phases 5+); the table above covers Milestone 1 (phases 1–4).
+
 ---
-*Requirements defined: 2026-07-07*
-*Last updated: 2026-07-07 after roadmap creation (traceability mapped)*
+*Requirements defined: 2026-07-07 (Milestone 1)*
+*Last updated: 2026-07-08 — Milestone 2 (v2.0 Interactive Calculation UI) requirements defined, incl. semi-transparent partitions (ENG-10) + forest term (ENG-09)*

@@ -18,6 +18,7 @@ A **numerically faithful Nord2000 engine** — validated against the FORCE road-
 - Get weather data — Open-Meteo import feeding the A/B/C meteorology inputs
 - Manual weather what-if — override wind (Beaufort), downwind worst-case toggle, temperature gradient, edit A/B/C; fast recompute
 - Draw scene objects — directional sources, walls, buildings, forests, ground-effect (damping/impedance) zones, elevation points/lines, receivers, calculation area
+- Semi-transparent screens & buildings — finite-transmission partitions: standard diffraction/reflection PLUS a straight-through transmission path attenuated by a per-band **isolation spectrum** `R(f)` (per-façade for buildings), phase-preserving; a new engine extension beyond stock (opaque-screen) Nord2000
 - Spectral results at receiver points (per-band readout via the transfer tensor)
 - Noise map in dB(A) and dB(C) — server-side filled isophone contour polygons with an editable color scale
 
@@ -87,6 +88,8 @@ A **numerically faithful Nord2000 engine** — validated against the FORCE road-
 | **Phase preserved through every environmental operator; two-channel transfer (`H_coh` complex + `P_incoh` real)** | User-mandated: phase must survive all environmental calcs (delays/filters need it). A single complex value can't represent Nord2000 partial coherence, so the turbulence `(1−F²)` energy lives in a separate incoherent-power channel added at readout — never collapsing phase in `H_coh` | ✓ Decided 2026-07-07 |
 | Milestone 2 UI workflow modeled on d&b NoizCalc (TI 386 ch. 3–4), single integrated app | Proven environmental-noise UX (import→model→calculate→plot); ENVI folds the ArrayCalc "stage" source-definition into one package and stays Nord2000-only | ✓ Decided 2026-07-08 |
 | Milestone 2 planned ahead non-destructively (UI phases append from Phase 5; engine Phases 3–4 untouched) | Lets the UI be scoped/roadmapped now without resetting STATE or clearing the in-progress engine phase directories; engine finish stays the execution priority | ✓ Decided 2026-07-08 |
+| Semi-transparent partitions (ENG-10): finite-transmission screens/façades via a straight-through path attenuated by an isolation spectrum `R(f)`, combined as phase-preserving complex pressure; opaque limit `R→∞` = standard screen | User-requested extension beyond stock Nord2000 (opaque barriers only); keeps ray direction intact, per-façade `R(f)` for buildings; isolation spectra on the 1/12-oct grid with linear octave→1/12 interpolation | ✓ Decided 2026-07-08 |
+| Forest attenuation term added to the engine (ENG-09, Nord2000 `A=d·a(f)`) | Milestone-1 engine had no forest term but goal 5 lists forests as objects; adding the faithful Nord2000 term makes drawn forests actually attenuate | ✓ Decided 2026-07-08 |
 
 ## Evolution
 
