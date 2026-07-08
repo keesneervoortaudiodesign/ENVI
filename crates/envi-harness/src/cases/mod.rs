@@ -219,9 +219,9 @@ pub struct PropagationParams {
     pub dtdz: Option<f64>,
     /// Standard deviation of the temperature gradient, °C/m (`sdt/dz`).
     pub sdtdz: Option<f64>,
-    /// Wind turbulence strength, m^(4/3)/s² (`Cv2`).
+    /// Wind-velocity structure parameter `Cv²`, m^{4/3}·s⁻².
     pub cv2: Option<f64>,
-    /// Temperature turbulence strength, K/s² (`Ct2`).
+    /// Temperature structure parameter `CT²`, K²·m^{−2/3}.
     pub ct2: Option<f64>,
     /// Relative humidity, %. Not on the FORCE sheets — 70 % globally per the
     /// Env. Project 1335 report text.
@@ -231,14 +231,14 @@ pub struct PropagationParams {
 }
 
 /// Nord2000 default wind-turbulence strength `Cv²` when a case omits it,
-/// m^(4/3)·s⁻² (D-11). **`[ASSUMED]`** moderate-turbulence value — validated by
+/// m^{4/3}·s⁻² (D-11). **`[ASSUMED]`** moderate-turbulence value — validated by
 /// F_τ property tests in 03-03 (F_τ < 1 under turbulence, correct blend
 /// direction), never a fixed-value oracle. The FORCE cases that carry `Cv2`
 /// override this; only cases that omit it fall back here.
 pub const NORD2000_DEFAULT_CV2: f64 = 1.0;
 
 /// Nord2000 default temperature-turbulence strength `CT²` when a case omits it,
-/// K²·s⁻² (D-11). **`[ASSUMED]`** — see [`NORD2000_DEFAULT_CV2`].
+/// K²·m^{−2/3} (D-11). **`[ASSUMED]`** — see [`NORD2000_DEFAULT_CV2`].
 pub const NORD2000_DEFAULT_CT2: f64 = 0.1;
 
 impl PropagationParams {
