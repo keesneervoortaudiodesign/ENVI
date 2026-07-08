@@ -28,7 +28,7 @@
 use crate::cases::{CaseLoadError, PropagationParams};
 use envi_engine::propagation::sound_speed_ms;
 
-use super::{WeatherComponents, WeatherProfile, profile_for_bearing};
+use super::{ReflectionProfiles, WeatherComponents, WeatherProfile, profile_for_bearing};
 
 /// Absolute-zero offset for the Kelvin conversion in `Coft` (Eq. 335).
 const KELVIN_OFFSET: f64 = 273.15;
@@ -160,6 +160,29 @@ pub fn route2(
     Ok(profile_for_bearing(&comps, bearing_deg, phi_u))
 }
 
+/// Route 2 for a **reflection path** (ENG-06): FORCE surface met + the two
+/// sub-path bearings → a [`ReflectionProfiles`] before/after pair. The
+/// isotropic temperature part is computed once (via [`route2_components`]) and
+/// the wind part is projected onto each sub-path bearing.
+///
+/// # Errors
+///
+/// [`CaseLoadError::NonFinite`] on any malformed met field (never a panic).
+pub fn route2_reflection(
+    params: &PropagationParams,
+    bearing_before_deg: f64,
+    bearing_after_deg: f64,
+) -> Result<ReflectionProfiles, CaseLoadError> {
+    let comps = route2_components(params)?;
+    let phi_u = finite_or(params.phi_deg, 0.0, "phi")?;
+    Ok(ReflectionProfiles::from_components(
+        &comps,
+        bearing_before_deg,
+        bearing_after_deg,
+        phi_u,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,5 +274,21 @@ mod tests {
         assert!(prof.c.is_finite() && prof.c > 0.0);
         assert_eq!(prof.a, 0.0, "no wind ⇒ A = 0");
         assert_eq!(prof.b, 0.0, "no gradient ⇒ B = 0");
+    }
+
+    // The reflection variant projects the same met onto two sub-path bearings:
+    // A₁ ≠ A₂ across differing bearings, B₁ = B₂ (bearing-independent).
+    #[test]
+    fn weather_route2_reflection_splits_a_shares_b() {
+        let params = met(5.0, 90.0, 0.04); // wind east, an inversion
+        let rp = route2_reflection(&params, 90.0, 180.0).unwrap();
+        assert!(
+            (rp.before.a - rp.after.a).abs() > 1e-9,
+            "sub-path A₁ {} and A₂ {} must differ",
+            rp.before.a,
+            rp.after.a
+        );
+        assert_eq!(rp.before.b, rp.after.b, "B shared across sub-paths");
+        assert!(rp.before.b > 0.0, "inversion ⇒ B > 0 on both sub-paths");
     }
 }

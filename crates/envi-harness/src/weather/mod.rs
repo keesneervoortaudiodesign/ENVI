@@ -27,6 +27,8 @@
 
 pub mod route2;
 
+use envi_engine::propagation::PropagationError;
+use envi_engine::propagation::refraction::eqssp::calc_eq_ssp;
 use envi_engine::propagation::refraction::profile::Z0_MIN_M;
 
 /// A log-lin sound-speed profile for one propagation bearing:
@@ -116,6 +118,83 @@ pub fn profile_for_bearing(
     WeatherProfile::new(a, base.b, base.c, base.s_a, base.s_b, base.z0)
 }
 
+/// One sub-path CalcEqSSP collapse `(ξ, c₀)` — the equivalent relative gradient
+/// and ground sound speed for a single reflection sub-path leg.
+pub type SubPathCollapse = (f64, f64);
+
+/// The before/after weather-profile pair for a **reflection path** (ENG-06,
+/// §5.3.4): the propagation model runs on each sub-path with its own equivalent
+/// profile — `before` between source and the reflection point (`A₁, B₁`),
+/// `after` between the reflection point and the receiver (`A₂, B₂`).
+///
+/// `A` differs per sub-path because each leg has its own bearing (the wind
+/// projection `A ∝ u·cos(bearing − φ_u)` differs); `B`/`C`/`z₀` are shared
+/// (bearing-independent). No FORCE numeric target this phase (Open Q2) — this is
+/// the clean interface Phase-4 obstacle reflection consumes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ReflectionProfiles {
+    /// Source → reflection-point sub-path profile (`A₁, B₁`).
+    pub before: WeatherProfile,
+    /// Reflection-point → receiver sub-path profile (`A₂, B₂`).
+    pub after: WeatherProfile,
+}
+
+impl ReflectionProfiles {
+    /// Build the before/after pair from the shared [`WeatherComponents`] and the
+    /// two sub-path bearings (MET-02: the wind part of `A` is projected onto
+    /// each bearing; the isotropic temperature part and `B` are shared).
+    #[must_use]
+    pub fn from_components(
+        base: &WeatherComponents,
+        bearing_before_deg: f64,
+        bearing_after_deg: f64,
+        phi_u_deg: f64,
+    ) -> Self {
+        Self {
+            before: profile_for_bearing(base, bearing_before_deg, phi_u_deg),
+            after: profile_for_bearing(base, bearing_after_deg, phi_u_deg),
+        }
+    }
+
+    /// Collapse each sub-path to its own `(ξ, c₀)` via CalcEqSSP on its leg
+    /// geometry (§5.5.2 "separate equivalent profiles … between source and the
+    /// nearest screen … receiver and the nearest screen"): the `before` leg uses
+    /// `(before_hs, before_hr)`, the `after` leg `(after_hs, after_hr)`.
+    ///
+    /// Returns `((ξ₁, c₀₁), (ξ₂, c₀₂))`.
+    ///
+    /// # Errors
+    ///
+    /// [`PropagationError::DegenerateProfile`] if either sub-path profile is
+    /// degenerate (non-finite / non-physical) — the same typed error the engine
+    /// raises, propagated so a bad reflector geometry never panics.
+    pub fn sub_path_collapses(
+        &self,
+        before_hs: f64,
+        before_hr: f64,
+        after_hs: f64,
+        after_hr: f64,
+    ) -> Result<(SubPathCollapse, SubPathCollapse), PropagationError> {
+        let e1 = calc_eq_ssp(
+            before_hs,
+            before_hr,
+            self.before.z0,
+            self.before.a,
+            self.before.b,
+            self.before.c,
+        )?;
+        let e2 = calc_eq_ssp(
+            after_hs,
+            after_hr,
+            self.after.z0,
+            self.after.a,
+            self.after.b,
+            self.after.c,
+        )?;
+        Ok((e1, e2))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,5 +272,98 @@ mod tests {
             p.a,
             base.a_temp
         );
+    }
+
+    // ----- Reflection-path before/after split (ENG-06) -----
+
+    fn wind_components() -> WeatherComponents {
+        WeatherComponents {
+            a_temp: 0.1,
+            a_wind: 0.8,
+            b: 0.03,
+            c: 340.0,
+            s_a: 0.0,
+            s_b: 0.0,
+            z0: 0.02,
+        }
+    }
+
+    // Differing sub-path bearings ⇒ A₁ ≠ A₂; B is shared (bearing-independent).
+    #[test]
+    fn reflection_path_profiles_split_a_share_b() {
+        let base = wind_components();
+        // φ_u = 90°: before leg downwind (bearing 90°, cos = 1), after leg
+        // crosswind (bearing 180°, cos = 0) — the projections genuinely differ.
+        let rp = ReflectionProfiles::from_components(&base, 90.0, 180.0, 90.0);
+        assert!(
+            (rp.before.a - rp.after.a).abs() > 1e-9,
+            "A₁ {} and A₂ {} must differ across bearings",
+            rp.before.a,
+            rp.after.a
+        );
+        assert_eq!(rp.before.b, rp.after.b, "B must be shared (B₁ = B₂)");
+        assert_eq!(rp.before.c, rp.after.c, "C shared");
+    }
+
+    // Homogeneous atmosphere: both sub-path profiles collapse to (0, C), so the
+    // combined reflection reduces to the single-profile 03-01 result. The
+    // reflection point is cross-checked against reflect_over_segment.
+    #[test]
+    fn reflection_path_homogeneous_collapses_to_single_profile() {
+        use envi_engine::geometry::{azimuth_deg, reflect_over_segment};
+
+        let c = 340.348;
+        // Homogeneous ⇒ no wind, no gradient: every projection gives A = B = 0.
+        let base = WeatherComponents {
+            a_temp: 0.0,
+            a_wind: 0.0,
+            b: 0.0,
+            c,
+            s_a: 0.0,
+            s_b: 0.0,
+            z0: 0.001,
+        };
+
+        // A reflection scenario in the vertical cut plane (x, z): source at
+        // (0, 0.5), receiver at (100, 1.5), reflecting off the ground segment.
+        let s = [0.0, 0.5];
+        let r = [100.0, 1.5];
+        let refl = reflect_over_segment(s, r, [0.0, 0.0], [100.0, 0.0])
+            .expect("homogeneous reflection must be defined");
+        assert!(refl.valid, "reflection point must lie within the segment");
+        // Homogeneous flat-ground image reflection point: x = d·hS/(hS+hR).
+        let want_x = 100.0 * 0.5 / (0.5 + 1.5);
+        assert!(
+            (refl.point_x - want_x).abs() < 1e-9,
+            "reflect_over_segment point_x {} must match the analytic {want_x}",
+            refl.point_x
+        );
+
+        // Two sub-path bearings from the reflection point (plan-view azimuths;
+        // here the cut-plane x maps to a north bearing — the convention only has
+        // to be self-consistent for the projection).
+        let refl_xy = [refl.point_x, 0.0];
+        let bearing_before = azimuth_deg([s[0], 0.0], refl_xy);
+        let bearing_after = azimuth_deg(refl_xy, [r[0], 0.0]);
+        let rp = ReflectionProfiles::from_components(&base, bearing_before, bearing_after, 0.0);
+
+        // Both sub-paths collapse to (0, C) — the homogeneous single-profile limit.
+        let ((xi1, c01), (xi2, c02)) = rp
+            .sub_path_collapses(0.5, refl.point_x.max(0.5), refl.point_x.max(0.5), 1.5)
+            .unwrap();
+        assert_eq!((xi1, c01), (0.0, c), "before leg homogeneous ⇒ (0, C)");
+        assert_eq!((xi2, c02), (0.0, c), "after leg homogeneous ⇒ (0, C)");
+    }
+
+    // Degenerate sub-path geometry (non-finite height) returns a typed error,
+    // never a panic.
+    #[test]
+    fn reflection_path_degenerate_geometry_is_typed_error() {
+        let base = wind_components();
+        let rp = ReflectionProfiles::from_components(&base, 0.0, 90.0, 0.0);
+        assert!(matches!(
+            rp.sub_path_collapses(f64::NAN, 1.5, 0.5, 1.5),
+            Err(PropagationError::DegenerateProfile { .. })
+        ));
     }
 }
