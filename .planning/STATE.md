@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 2
 current_phase_name: Ground Effect & Diffraction
 status: in-progress
-stopped_at: Completed 02-03-PLAN.md (Hadden–Pierce wedge diffraction kernel family) — wave 2 of Phase 2
-last_updated: "2026-07-08T00:00:00.000Z"
+stopped_at: Completed 02-04-PLAN.md (screen⇄ground sub-models 4/5/6 + turbulence scattering 7) — wave 3 of Phase 2
+last_updated: "2026-07-08T09:23:35.912Z"
 last_activity: 2026-07-08
-last_activity_desc: "Completed 02-03-PLAN.md: propagation::diffraction — pwedge/dwedge (Eqs.78-94), pwedge0 (105-107), p2wedge (95-99), p2edge (100-104); IL table ±0.005 dB, shadow-boundary |p|·ℓ→0.500 both sides, case-71 105/105 finite, complex phase live (no conj); independent scipy Hadden–Pierce oracle; all quality gates pass"
+last_activity_desc: "Completed 02-04-PLAN.md: terrain_effect::{screen, submodel7} + §5.23 geometry helpers. Generic DiffractionKernel engine realizes Sub-models 4/5/6 (four/eight-path complex image model, Eqs. 157-270) with the phase-preserving two-channel GroundResult; Sub-model 7 turbulence scattering (Tables 6/7, ×10 strengths, Eqs. 271-274) returns f64-only (phase-safe). Eq. 187-188 geometric-mean reading transcribed (Open Q5); committed scipy SM4+SM7 oracle matches case-71 ΔL₄+ΔL₇ at 105/105 ≤ 0.1 dB. ENG-07 complete. All quality gates pass."
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 5
-  completed_plans: 3
-  percent: 60
+  completed_plans: 4
+  percent: 80
 ---
 
 # Project State
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 2 of 4 (Ground Effect & Diffraction) — IN PROGRESS
-Plan: 3 of 5 in current phase complete (02-01, 02-02, 02-03 done; 02-04/02-05 wave 3)
-Status: Wave 2 complete — the flat-terrain ground effect (02-02) and the Hadden–Pierce wedge diffraction kernel family (02-03) both landed on the 02-01 core. 02-03 delivers propagation::diffraction: pwedge/dwedge (Eqs.78-94) reproducing the IL anchor table ±0.005 dB, the shadow-boundary |p|·ℓ→0.500 half-field limit from both sides, pwedge0 (105-107), p2wedge (95-99) and p2edge (100-104, 0.5 factor + hard tops). All kernels return live Complex<f64> (no conj — Nord2000-native e^{−jωt} quarantine), cross-checked against an independent scipy Hadden–Pierce oracle. Wave 3 (02-04 screen⇄ground sub-models, 02-05 terrain composition) can proceed against the frozen kernel signatures.
-Last activity: 2026-07-08 — Completed 02-03-PLAN.md: propagation::diffraction (pwedge/dwedge/pwedge0/p2wedge/p2edge); case-71 105/105 finite; Assumption A6 resolved (p2wedge/p2edge argument lists image-verified); all quality gates pass (build/test/clippy/fmt, engine deps unchanged)
+Plan: 4 of 5 in current phase complete (02-01, 02-02, 02-03, 02-04 done; 02-05 remains)
+Status: Wave 3 (screen⇄ground) complete — 02-04 delivers terrain_effect::{screen, submodel7} plus the §5.23 image-method geometry helpers. One generic DiffractionKernel engine realizes Sub-model 4 (single edge, pwedge), Sub-model 5 (thick screen, p2edge) and Sub-model 6 (two screens, eight-ray bitmask, p2wedge), all producing the phase-preserving two-channel GroundResult (complex screen factor p̂₁/p̂₀ × coherent Δp̂_G; (1−F²) residuals only in p_incoh). Sub-model 7 turbulence scattering (Tables 6/7, deliberate ×10 strengths, Eqs. 271-274) returns f64-only — structurally phase-safe. Eq. 187-188 geometric-mean reading transcribed from page images (Open Q5); a committed scipy SM4+SM7 oracle matches the case-71 ΔL₄+ΔL₇ curve at 105/105 within 0.1 dB. ENG-07 complete. Only 02-05 (§5.21 terrain interpretation + Eq. 332 composition + transfer integration) remains in Phase 2.
+Last activity: 2026-07-08 — Completed 02-04-PLAN.md: terrain_effect::{screen, submodel7} + §5.23 helpers; Sub-models 4/5/6 four/eight-path complex combination; SM7 turbulence floor (f64-only, phase-safe); Eqs. 162/174-188 + Tables 6/7 transcribed; screen oracle 105/105 ≤ 0.1 dB; all quality gates pass (build/test/clippy/fmt, engine deps unchanged)
 
-Progress: [██████░░░░] 60% (3/5 plans in phase 2)
+Progress: [████████░░] 80% (4/5 plans in phase 2)
 
 ## Performance Metrics
 
@@ -108,6 +108,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-07T18:40:00.000Z
+Last session: 2026-07-08T09:23:35.897Z
 Stopped at: Completed 02-01-PLAN.md (Nord2000-native numerics core) — wave 1 of Phase 2; wave 2 (02-02, 02-03) ready to run
 Resume file: None

@@ -57,7 +57,7 @@ Plans:
   2. FORCE cases with single-edge and multiple-edge screens/barriers match reference within tolerance
   3. Direct + ground-reflected + diffracted contributions are combined as complex pressures retaining Δτ interference phase, and combined-case results stay finite and stable across the full 1/12-octave range (no NaN/blow-up at any evaluated frequency)
 
-**Plans**: 3/5 plans executed
+**Plans**: 4/5 plans executed
 
 Note (planned 2026-07-07): success criteria 1-2 are satisfied at propagation level via the oracle+anchor acceptance ladder — FORCE reference spectra require the Phase 4 emission model (VAL-02 maps to Phase 4), so road cases stay capability-gated with a shrinking requires-list. Sub-model 3 (non-flat terrain, §5.12) is explicitly deferred to Phase 3 (typed-error stub; flat Phase 2 targets give r_flat = 1).
 
@@ -66,7 +66,7 @@ Plans:
 - [x] 02-01-PLAN.md — Nord2000-native numerics core: Faddeeva w(ẑ) + Fresnel fits, Ẑ_G→Q̂ chain + ρᵢ, straight-ray Δτ (cancellation-free), coherence F with FΔν seam; committed scipy oracle (ENG-02, ENG-07)
 - [x] 02-02-PLAN.md — Flat-terrain ground effect: Fresnel-zone machinery, Sub-model 1 (dip anchors ±0.05 dB, two-channel GroundResult), Sub-model 2 segmented impedance per surface type + PhaseDiffFreq; committed scipy flat-ground oracle 2×105-pt ≤0.1 dB (ENG-02, ENG-07)
 - [x] 02-03-PLAN.md — Wedge diffraction kernels: Hadden–Pierce pwedge/Dwedge, lit-zone + angle-modification, p2wedge/p2edge/pwedge0; IL + shadow-boundary anchors (ENG-03)
-- [ ] 02-04-PLAN.md — Screen⇄ground sub-models 4/5/6 (generic engine, four/eight-path complex combination) + Sub-model 7 turbulence scattering; thin-screen oracle curve (ENG-03, ENG-07)
+- [x] 02-04-PLAN.md — Screen⇄ground sub-models 4/5/6 (generic engine, four/eight-path complex combination) + Sub-model 7 turbulence scattering; thin-screen oracle curve (ENG-03, ENG-07)
 - [ ] 02-05-PLAN.md — §5.21 terrain interpretation + Eq. 332 composition + two-channel H_coh/P_incoh transfer integration (single conj boundary), capabilities flipped, five oracle-pinned terrain cases + finiteness sweep (ENG-02, ENG-03, ENG-07)
 
 ### Phase 3: Meteorology & Refraction
@@ -132,7 +132,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. FORCE Harness, Geometry Model & Direct Path | 3/3 | Complete | 2026-07-07 |
-| 2. Ground Effect & Diffraction | 2/5 | In Progress | - |
+| 2. Ground Effect & Diffraction | 4/5 | In Progress | - |
 | 3. Meteorology & Refraction | 0/3 | Not started | - |
 | 4. Transfer Tensor, Directional Sources & Full Validation | 0/3 | Not started | - |
 

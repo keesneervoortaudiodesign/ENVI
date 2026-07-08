@@ -15,7 +15,7 @@
 - [x] **ENG-04**: Compute air absorption per ISO 9613-1 from temperature, humidity, pressure
 - [ ] **ENG-05**: Compute refraction via the equivalent-linear sound-speed profile (circular-ray ξ, Δτ) with guarded numerics (f64, ξ singularity clamps, Δτ cancellation-safe reformulation)
 - [ ] **ENG-06**: Compute reflection paths with separate before/after profile coefficients (A₁/B₁, A₂/B₂)
-- [ ] **ENG-07**: Combine direct + reflected + diffracted contributions as complex pressure, retaining Δτ interference phase
+- [x] **ENG-07**: Combine direct + reflected + diffracted contributions as complex pressure, retaining Δτ interference phase
 - [ ] **ENG-08**: Apply the fluctuating-refraction coherence coefficient F_τ (turbulence C_v², C_T²) to blend coherent/partial-coherent contributions
 
 ### Engine output — complex transfer tensor (OUT)
@@ -136,7 +136,7 @@ Mapped during roadmap creation (2026-07-07). See `.planning/ROADMAP.md`.
 | ENG-04 | Phase 1 | Complete (01-03) |
 | ENG-05 | Phase 3 | Pending |
 | ENG-06 | Phase 3 | Pending |
-| ENG-07 | Phase 2 | Pending |
+| ENG-07 | Phase 2 | Complete |
 | ENG-08 | Phase 3 | Pending |
 | OUT-01 | Phase 4 | Pending |
 | OUT-02 | Phase 4 | Pending |
