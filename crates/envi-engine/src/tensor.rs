@@ -385,7 +385,40 @@ pub fn compose_gain(
     delay_s: f64,
     axis: &FreqAxis,
 ) -> Result<Vec<Complex<f64>>, SinkError> {
-    todo!()
+    if !delay_s.is_finite() {
+        return Err(SinkError::NonFinite { what: "delay_s" });
+    }
+    if let Some(fl) = filter {
+        if fl.len() != N_BANDS {
+            return Err(SinkError::FilterLengthMismatch {
+                expected: N_BANDS,
+                got: fl.len(),
+            });
+        }
+        if fl.iter().any(|z| !z.re.is_finite() || !z.im.is_finite()) {
+            return Err(SinkError::NonFinite {
+                what: "conditioning filter",
+            });
+        }
+    }
+
+    let mut g = Vec::with_capacity(N_BANDS);
+    for (i, (&lw, &f)) in l_w_db
+        .as_slice()
+        .iter()
+        .zip(axis.centres.iter())
+        .enumerate()
+    {
+        // Frozen composition order: amplitude · filter · delay-phase — ONE
+        // Complex<f64> per band, so the MAC is bit-identical to a recompute.
+        let amp = Complex::new(10f64.powf(lw / 20.0), 0.0);
+        let filt = filter.map_or(Complex::new(1.0, 0.0), |fl| fl[i]);
+        // Delay ramp e^{−j2πfτ} — the frozen outgoing-phase sign, written
+        // explicitly (never `.conj()`).
+        let delay = Complex::from_polar(1.0, -std::f64::consts::TAU * f * delay_s);
+        g.push(amp * filt * delay);
+    }
+    Ok(g)
 }
 
 /// A streaming sink that allocates NO full-tensor backing: it tracks the
@@ -403,19 +436,22 @@ impl CountingSink {
     /// A counting sink for `n_rcv` receivers (readout is `[n_rcv, N_BANDS]`).
     #[must_use]
     pub fn new(n_rcv: usize) -> Self {
-        todo!()
+        Self {
+            readout: Array2::zeros((n_rcv, N_BANDS)),
+            high_water_bytes: 0,
+        }
     }
 
     /// The largest single chunk handed in, in bytes across the pair.
     #[must_use]
     pub fn high_water_bytes(&self) -> usize {
-        todo!()
+        self.high_water_bytes
     }
 
     /// The folded incoherent energy readout `[n_rcv, N_BANDS]` (unit weights).
     #[must_use]
     pub fn readout(&self) -> &Array2<f64> {
-        todo!()
+        &self.readout
     }
 }
 
@@ -426,7 +462,51 @@ impl TensorSink for CountingSink {
         h_coh: ArrayView3<'_, Complex<f64>>,
         p_incoh_abs: ArrayView3<'_, f64>,
     ) -> Result<(), SinkError> {
-        todo!()
+        let (hs, hr, hf) = h_coh.dim();
+        if p_incoh_abs.dim() != (hs, hr, hf) {
+            return Err(SinkError::ChannelShapeMismatch {
+                h_coh: (hs, hr, hf),
+                p_incoh: p_incoh_abs.dim(),
+            });
+        }
+        if hf != N_BANDS {
+            return Err(SinkError::BandCountMismatch {
+                expected: N_BANDS,
+                got: hf,
+            });
+        }
+        let (n_rcv, _) = self.readout.dim();
+        if r_offset + hr > n_rcv {
+            return Err(SinkError::ChunkOutOfBounds {
+                r_offset,
+                chunk_len: hr,
+                n_receivers: n_rcv,
+            });
+        }
+
+        // Fold Σ_s (|H_coh|² + P_incoh_abs) into the compact real readout — the
+        // full complex chunk is consumed here and never retained.
+        for s in 0..hs {
+            let h_s = h_coh.index_axis(Axis(0), s);
+            let p_s = p_incoh_abs.index_axis(Axis(0), s);
+            let mut out = self.readout.slice_mut(s![r_offset..r_offset + hr, ..]);
+            for ((mut orow, hrow), prow) in out
+                .outer_iter_mut()
+                .zip(h_s.outer_iter())
+                .zip(p_s.outer_iter())
+            {
+                for (o, (hv, pv)) in orow.iter_mut().zip(hrow.iter().zip(prow.iter())) {
+                    if !hv.re.is_finite() || !hv.im.is_finite() || !pv.is_finite() {
+                        return Err(SinkError::NonFinite { what: "chunk cell" });
+                    }
+                    *o += hv.norm_sqr() + *pv;
+                }
+            }
+        }
+
+        let bytes = hs * hr * hf * BYTES_PER_CELL_PAIR;
+        self.high_water_bytes = self.high_water_bytes.max(bytes);
+        Ok(())
     }
 }
 
@@ -633,7 +713,10 @@ mod tests {
         for &i in &[0usize, 4] {
             let want = -std::f64::consts::TAU * axis.centres[i] * tau;
             assert_relative_eq!(g[i].arg(), want, epsilon = 1e-12);
-            assert!(g[i].arg() < 0.0, "phase must be negative for τ>0 at band {i}");
+            assert!(
+                g[i].arg() < 0.0,
+                "phase must be negative for τ>0 at band {i}"
+            );
             // Unit magnitude (pure delay).
             assert_relative_eq!(g[i].norm(), 1.0, epsilon = 1e-12);
         }
