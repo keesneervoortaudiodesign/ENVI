@@ -117,11 +117,11 @@ Plans:
   4. The full FORCE road-traffic test suite passes within the standard's tolerance — the Milestone 1 acceptance gate
   5. Shared sub-effects (geometrical divergence, ISO 9613-1 air absorption, screen geometry) agree with NoiseModelling's CNOSSOS output within documented expected deltas, and a large synthetic receiver set computes with the tensor chunked/streamed inside a stated memory budget
 
-**Plans**: 5/5 planned (expanded from 3 per 04-RESEARCH: VAL-02 needs six missing sub-model capabilities + three loaders + the emission model)
+**Plans**: 1/5 plans executed
 
 Plans:
 
-- [ ] 04-01-PLAN.md — Complex tensor store (TensorPair, TensorSink, InMemorySink; row-major [s,r,f]) + solver seam + conditioning MAC path (filter G_s(f) + delay e^{−j2πfτ}), bit-exact MAC≡recompute + 256 MiB budget sweep (OUT-01..06)
+- [x] 04-01-PLAN.md — Complex tensor store (TensorPair, TensorSink, InMemorySink; row-major [s,r,f]) + solver seam + conditioning MAC path (filter G_s(f) + delay e^{−j2πfτ}), bit-exact MAC≡recompute + 256 MiB budget sweep (OUT-01..06)
 - [ ] 04-02-PLAN.md — Directional sub-sources: per-band spherical directivity balloons + rotation + Nord2000 road emission model (0.01/0.30/0.75 m, 1 m offset, 80/20 rolling/propulsion, incoherent Annex-A) + pass-by integration + LE−dL free-field anchor (SRC-02/03/04; emission underpins VAL-02)
 - [ ] 04-03-PLAN.md — Straight-road FORCE pass: Sub-model 3 (§5.12) + segmented-ground refraction wiring + screen-refraction guard + SM8 Eq.279 decision + Ch.6 comparator wiring + EmissionModel flip → in-scope straight-road cases numeric Pass (VAL-02 part 1)
 - [ ] 04-04-PLAN.md — Curved + city + yearly: Coordinates-sheet loaders + contour→profile builder + Sub-model 11 image-source façade reflections + multi-lane/multi-category emission + Danish-hours L_den + Open-Q3 forest decision → full in-scope FORCE Pass, milestone acceptance (VAL-02 part 2)
@@ -129,7 +129,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 04-01: Complex tensor store + solver + conditioning MAC
+- [x] 04-01: Complex tensor store + solver + conditioning MAC
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -299,7 +299,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 1. FORCE Harness, Geometry Model & Direct Path | 3/3 | Complete | 2026-07-07 |
 | 2. Ground Effect & Diffraction | 5/5 | Complete | 2026-07-08 |
 | 3. Meteorology & Refraction | 3/3 | Complete | 2026-07-08 |
-| 4. Transfer Tensor, Directional Sources & Full Validation | 0/5 | Not started | - |
+| 4. Transfer Tensor, Directional Sources & Full Validation | 1/5 | In Progress | - |
 | 5. Engine Extensions — Forest & Semi-Transparent Partitions | 0/? | Not started | - |
 | 6. Service Foundation & Persistence | 0/? | Not started | - |
 | 7. Frontend Shell & Scene Editing | 0/? | Not started | - |

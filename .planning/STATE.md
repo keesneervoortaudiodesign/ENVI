@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 3
-current_phase_name: Meteorology & Refraction
-status: phase-complete
-stopped_at: Phase 3 fully closed — all 5 completion gates green (review/simplify/secure/verify/docs); Phase 4 next
-last_updated: "2026-07-08T17:12:21Z"
+current_phase: 4
+current_phase_name: Transfer Tensor, Directional Sources & Full Validation
+status: in-progress
+stopped_at: 04-01 complete (tensor + solver + MAC bit-exact + 256 MiB budget); 04-02 next
+last_updated: "2026-07-08T21:30:00.000Z"
 last_activity: 2026-07-08
-last_activity_desc: 03-03 complete (F_τ fluctuating-refraction coherence Eq. 112 + weather Route 1 energy-weighted L_den + Route 3 Monin–Obukhov/3×3 LSQ + Capability::Refraction flip — FORCE wind/gradient requires shrinks to emission-model only)
+last_activity_desc: "04-01 complete (TensorPair + TensorSink/InMemorySink/CountingSink + chunked solver + compose_gain; MAC ≡ recompute bit-for-bit; 100k-receiver solve under 256 MiB; OUT-01..06)"
 progress:
   total_phases: 11
   completed_phases: 3
-  total_plans: 11
-  completed_plans: 11
+  total_plans: 16
+  completed_plans: 12
   percent: 27
 ---
 
@@ -24,24 +24,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** A numerically faithful Nord2000 engine — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain.
-**Current focus:** Phase 3 — Meteorology & Refraction
+**Current focus:** Phase 4 — Transfer Tensor, Directional Sources & Full Validation
 
 ## Current Position
 
-Phase: 3 (Meteorology & Refraction) — COMPLETE
-Plan: 3 of 3 (all complete)
-Status: Phase complete — run the CLAUDE.md phase-completion gates (code-review, secure-phase, verify, doc-consistency), then Phase 4
-Last activity: 2026-07-08 — 03-03 complete (F_τ Eq. 112 + weather Routes 1/3 + Capability::Refraction flip; honest-green FORCE wind/gradient = emission-model only)
+Phase: 4 (Transfer Tensor, Directional Sources & Full Validation) — IN PROGRESS
+Plan: 1 of 5 complete (04-01 tensor + solver + MAC)
+Status: 04-01 complete — 04-02 (directional sources + emission model) next
+Last activity: 2026-07-08 — 04-01 complete (dense complex transfer tensor + chunked solver + bit-exact MAC conditioning + 256 MiB streaming budget; OUT-01..06)
 
-Progress: [██████████] Phase 3 — 3/3 plans complete (03-01 refraction core, 03-02 soft-ground + weather routes, 03-03 F_τ + Routes 1/3 + capability flip)
+Progress: [██░░░░░░░░] Phase 4 — 1/5 plans complete (04-01 tensor/solver/MAC ✅; 04-02 directional+emission, 04-03 straight-road FORCE, 04-04 curved/city/yearly, 04-05 NoiseModelling next)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: ~28min
-- Total execution time: ~5 hours
+- Total execution time: ~6 hours
 
 **By Phase:**
 
@@ -51,7 +51,7 @@ Progress: [██████████] Phase 3 — 3/3 plans complete (03-01
 
 **Recent Trend:**
 
-- Last 5 plans: 25min, 35min, 55min, 34min, 17min
+- Last 5 plans: 35min, 55min, 34min, 17min, 55min
 - Trend: —
 
 *Updated after each plan completion*
@@ -61,6 +61,7 @@ Progress: [██████████] Phase 3 — 3/3 plans complete (03-01
 | Phase 02 P01 | 55min | 3 tasks | 14 files |
 | Phase 3 P1 | 95min | 3 tasks | 21 files |
 | Phase 3 P02 | 34min | 3 tasks | 8 files |
+| Phase 4 P01 | 55min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -97,6 +98,10 @@ Recent decisions affecting current work:
 - [Phase 3, 03-03] Open-Q1 checkpoint resolved as option (c): proceed with the [ASSUMED] weather-route A/B/C constants clearly quarantined — validated by structural + direction property tests and the same-transcription committed oracle ONLY; NO false FORCE numeric Pass; wind/gradient FORCE cases stay Skipped(requires: emission-model) until Phase 4
 - [Phase 3, 03-03] F_τ (Eq. 112) uses the full 2π·f·|Δτ⁺−Δτ| argument (NOT 0.23π — Pitfall 5), injected through the pre-built CoherenceInputs::f_delta_nu seam with zero call-site change; sA=sB=0 ⇒ Δτ⁺=Δτ ⇒ F_τ=1 bit-exact; multiplies H_coh without overwriting the +j phase (D-12); property-tested only (no fixed oracle, D-11)
 - [Phase 3, 03-03] Route 3 LSQ = hand-rolled 3×3 normal equations (Cramer + singular guard), NO nalgebra/ndarray-linalg (D-08); SoundSpeedProfile gained s_a/s_b so the engine can form the Eq. 10 A⁺/B⁺ profile; Capability::Refraction flipped ⇒ FORCE wind/gradient skip-reason shrinks to emission-model only
+- [Phase 4, 04-01] Tensor is a PAIR: H_coh Array3<Complex<f64>> + P_incoh_abs Array3<f64> [sub_source, receiver, freq] row-major; P_incoh stored ABSOLUTE (|H_ff|²·p_incoh) at fill time so F→1⇒0 bit-exact and readout needs only two stores; TensorSink trait is the Phase-10 file-backed-store seam, SolveJob the Phase-9 PropagationPath seam
+- [Phase 4, 04-01] MAC ≡ recompute is bit-for-bit (assert_eq! on f64::to_bits, not epsilon): compose_gain builds G_s(f)=10^{L_W/20}·filter·e^{−j2πfτ} ONCE in a frozen order, one multiply in readout_coherent (Pitfall 6); delay phase written explicitly (no .conj()); conditioning/directivity live on the ENVI post-conj side — propagation/ conj-quarantine stays at zero actual calls
+- [Phase 4, 04-01] Two readout laws kept distinct: coherent MAC (OUT-03) vs incoherent Annex-A energy Σ_s w_s·(|H_coh|²+P_incoh_abs) — two identical co-located subs give +3.0103 dB, never +6 dB; 256 MiB budget proven structurally by CountingSink high-water-mark over a 100k-receiver solve (full complex tensor never resident); ZERO new engine deps
+- [Phase 4, 04-01, Rule 2/3] SolveJob carries atmosphere:&Atmosphere (direct_path needs full air-absorption state; terrain_effect takes coh.c0 as in build_terrain_inputs); compose_gain returns Result (validates filter length vs N_BANDS + rejects non-finite, threat T-04-01-03) — both documented interface deviations from the plan's literal field/signature
 
 ### Pending Todos
 
@@ -117,6 +122,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T16:33:18.660Z
-Stopped at: 03-01 complete; 03-02 next
+Last session: 2026-07-08T21:30:00.000Z
+Stopped at: 04-01 complete (tensor + solver + MAC); 04-02 next
 Resume file: None

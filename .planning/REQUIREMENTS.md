@@ -20,12 +20,12 @@
 
 ### Engine output — complex transfer tensor (OUT)
 
-- [ ] **OUT-01**: Produce, per (directional sub-source × receiver × 1/12-octave frequency point), a complex acoustic transfer value (magnitude + phase)
-- [ ] **OUT-02**: Store results as a dense multi-dimensional `Complex<f64>` array `H[sub_source, receiver, freq]`, frequency-contiguous, for both single-receiver and grid cases
-- [ ] **OUT-03**: Recompute receiver spectra on source-conditioning changes via complex multiply-accumulate `p[r,f] = Σ_s H[s,r,f]·G_s(f)` — no propagation re-run
-- [ ] **OUT-04**: Apply per-source **filtering** (complex per-frequency gain G_s(f)) as a conditioning input
-- [ ] **OUT-05**: Apply per-source **delay** (phase ramp e^{-j2πfτ}) as a conditioning input
-- [ ] **OUT-06**: Chunk/stream the tensor so large receiver grids stay within a memory budget
+- [x] **OUT-01**: Produce, per (directional sub-source × receiver × 1/12-octave frequency point), a complex acoustic transfer value (magnitude + phase)
+- [x] **OUT-02**: Store results as a dense multi-dimensional `Complex<f64>` array `H[sub_source, receiver, freq]`, frequency-contiguous, for both single-receiver and grid cases
+- [x] **OUT-03**: Recompute receiver spectra on source-conditioning changes via complex multiply-accumulate `p[r,f] = Σ_s H[s,r,f]·G_s(f)` — no propagation re-run
+- [x] **OUT-04**: Apply per-source **filtering** (complex per-frequency gain G_s(f)) as a conditioning input
+- [x] **OUT-05**: Apply per-source **delay** (phase ramp e^{-j2πfτ}) as a conditioning input
+- [x] **OUT-06**: Chunk/stream the tensor so large receiver grids stay within a memory budget
 
 ### Meteorology — sound-speed profile (MET)
 
@@ -172,12 +172,12 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | ENG-06 | Phase 3 | Complete |
 | ENG-07 | Phase 2 | Complete |
 | ENG-08 | Phase 3 | Complete (03-03) |
-| OUT-01 | Phase 4 | Pending |
-| OUT-02 | Phase 4 | Pending |
-| OUT-03 | Phase 4 | Pending |
-| OUT-04 | Phase 4 | Pending |
-| OUT-05 | Phase 4 | Pending |
-| OUT-06 | Phase 4 | Pending |
+| OUT-01 | Phase 4 | Complete |
+| OUT-02 | Phase 4 | Complete |
+| OUT-03 | Phase 4 | Complete |
+| OUT-04 | Phase 4 | Complete |
+| OUT-05 | Phase 4 | Complete |
+| OUT-06 | Phase 4 | Complete |
 | MET-01 | Phase 3 | Complete |
 | MET-02 | Phase 3 | Complete |
 | MET-03 | Phase 3 | Complete |
