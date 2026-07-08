@@ -86,9 +86,16 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 03-01: Log-lin profile + CalcEqSSP equivalent-linearization + guarded ray variables (ξ clamps, cancellation-safe Δτ, shadow zone)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 03-02: CalcEqSSPGround frequency-dependent variant + reflection-path A₁/B₁/A₂/B₂ + per-azimuth A derivation
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 03-03: Weather input routes (Route 1 classes, Route 3 Monin–Obukhov fit) + F_τ turbulence coherence; refraction FORCE cases green
 
 ### Phase 4: Transfer Tensor, Directional Sources & Full Validation
@@ -171,6 +178,7 @@ Architecture per `.planning/research/ARCHITECTURE.md`: three new crates (`envi-g
   2. Partially crossing ground-effect polygons are rejected at draw time (containment allowed, innermost wins), and validation messages click-to-select and zoom to the offending object
   3. User can mark a screen semi-transparent and assign it an isolation spectrum, and assign per-façade isolation spectra on a building; the spectrum editor accepts direct 1/12-octave entry or 1/1- / 1/3-octave input linearly interpolated onto the 105-point grid, with octave and third-octave centres landing exactly on their band indices
   4. The drawn scene survives a basemap switch, a page reload, and a project close/re-open — Terra Draw re-hydrates from the store on `style.load`, and the persisted scene is what comes back
+
 **Plans**: TBD
 **UI hint**: yes
 
