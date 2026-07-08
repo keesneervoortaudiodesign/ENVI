@@ -53,6 +53,12 @@ pub struct RayPair {
     pub reflected: Option<RayVars>,
     /// `Δτ = τ₂ − τ₁` seconds, via the cancellation-free `ΔR` identity.
     pub dtau: f64,
+    /// Shadow-zone distance `dSZ`, m — `∞` for straight rays and downward
+    /// refraction (`ξ ≥ 0`), finite only under upward refraction (`ξ < 0`).
+    /// Carried on the pair (from the direct ray's construction) so callers that
+    /// precompute a mean-profile pair need not re-derive it via a second
+    /// `direct_ray` call.
+    pub d_sz: f64,
 }
 
 /// The cancellation-free flat-ground travel-distance difference
@@ -135,6 +141,8 @@ pub fn straight_rays(d: f64, h_s: f64, h_r: f64, c0: f64) -> Result<RayPair, Pro
             r2: leg2,
         }),
         dtau,
+        // Flat homogeneous ground has no upward-refraction shadow zone.
+        d_sz: f64::INFINITY,
     })
 }
 
@@ -215,6 +223,8 @@ pub fn straight_rays_over_segment(
             r2: refl.r2_m,
         }),
         dtau,
+        // Homogeneous segment reflection: no upward-refraction shadow zone.
+        d_sz: f64::INFINITY,
     })
 }
 
@@ -284,6 +294,7 @@ pub fn circular_rays(
             direct: direct_vars,
             reflected: None,
             dtau: 0.0,
+            d_sz: direct.d_sz,
         });
     }
 
@@ -304,6 +315,7 @@ pub fn circular_rays(
         direct: direct_vars,
         reflected: Some(reflected),
         dtau,
+        d_sz: direct.d_sz,
     })
 }
 

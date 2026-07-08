@@ -45,9 +45,8 @@ use num_complex::Complex;
 use crate::freq::FreqAxis;
 use crate::propagation::PropagationError;
 use crate::propagation::coherence::{CoherenceInputs, coherence_f_delta_nu};
-use crate::propagation::rays::{circular_rays, straight_rays};
+use crate::propagation::rays::{RayPair, circular_rays, straight_rays};
 use crate::propagation::refraction::SoundSpeedProfile;
-use crate::propagation::refraction::circular_ray::direct_ray;
 use crate::propagation::refraction::eqssp::calc_eq_ssp;
 use crate::propagation::refraction::shadow_zone::shadow_zone_shielding;
 use crate::propagation::terrain_interpretation::{
@@ -212,12 +211,19 @@ pub fn terrain_effect(
 
 /// Frequency-independent refraction state for the flat channel: the
 /// equivalent-linear gradient `ξ`, the equivalent ground sound speed for the
-/// rays `c₀`, and the shadow-zone distance `dSZ` (`∞` for `ξ ≥ 0`).
+/// rays `c₀`, and the mean-profile ray pair (whose `d_sz` is the shadow-zone
+/// distance, `∞` for `ξ ≥ 0`).
 #[derive(Debug, Clone, Copy)]
 struct RefractionState {
     xi: f64,
     c0_ray: f64,
-    d_sz: f64,
+    /// Mean-profile ray pair `circular_rays(d, hS, hR, ξ, c₀)`, computed ONCE in
+    /// [`FlatChannel::from_profile`] — its geometry is band-independent, so
+    /// [`FlatChannel::eval`] reads this stored pair instead of recomputing the
+    /// identical `circular_rays` on every one of the ~105 bands. `rays.d_sz`
+    /// supplies the shadow-zone distance (mirroring the direct ray's own
+    /// construction), removing the separate `direct_ray` fetch.
+    rays: RayPair,
     /// Interference travel-time difference `Δτ⁺` under the upper-refraction
     /// profile `A⁺ = A + 1.7·sA`, `B⁺ = B + 1.7·sB` (Eq. 10). Frequency-
     /// independent geometry; equals the mean-profile `Δτ` bit-for-bit when
@@ -296,12 +302,12 @@ impl FlatChannel {
         let refraction = match refraction {
             Some(p) => {
                 let (xi, c0_ray) = calc_eq_ssp(h_s, h_r, p.z0, p.a, p.b, p.c)?;
-                // Shadow-zone distance dSZ (finite only for upward refraction).
-                let d_sz = if xi < 0.0 {
-                    direct_ray(d, h_s, h_r, xi, c0_ray)?.d_sz
-                } else {
-                    f64::INFINITY
-                };
+                // Mean-profile ray pair, computed ONCE (band-independent): eval
+                // reads this stored pair rather than recomputing the identical
+                // circular_rays on every band. The shadow-zone distance dSZ
+                // rides along inside the pair (`rays.d_sz`, from the direct ray's
+                // own construction) — no separate direct_ray fetch needed.
+                let rays = circular_rays(d, h_s, h_r, xi, c0_ray)?;
                 // Upper-refraction profile A⁺=A+1.7·sA, B⁺=B+1.7·sB (Eq. 10) →
                 // ξ⁺ → Δτ⁺ for the FΔν factor (Eq. 112). When sA=sB=0 the plus
                 // profile equals the mean profile, so ξ⁺=ξ, c₀⁺=c₀ and Δτ⁺=Δτ
@@ -313,7 +319,7 @@ impl FlatChannel {
                 Some(RefractionState {
                     xi,
                     c0_ray,
-                    d_sz,
+                    rays,
                     dtau_plus,
                 })
             }
@@ -336,12 +342,14 @@ impl FlatChannel {
             // Refraction dispatch (D-02): swap straight_rays → circular_rays when
             // a weather profile is active; |ξ|<1e-6 keeps the case bit-identical.
             if let Some(rs) = self.refraction {
-                let rays = circular_rays(self.d, self.h_s, self.h_r, rs.xi, rs.c0_ray)?;
+                // Band-independent mean-profile pair, precomputed in
+                // `from_profile` — was recomputed here per band before.
+                let rays = rs.rays;
                 // Upward-refraction shadow zone: no reflected ray (Eq. 45 note)
                 // ⇒ the Sub-model 1 shadow branch (Eq. 121) subtracts L_SZ.
                 let shadow_l_sz = if rs.xi < 0.0 && rays.reflected.is_none() {
                     Some(shadow_zone_shielding(
-                        f, self.d, self.h_s, self.h_r, rs.xi, rs.c0_ray, rs.d_sz,
+                        f, self.d, self.h_s, self.h_r, rs.xi, rs.c0_ray, rays.d_sz,
                     )?)
                 } else {
                     None
