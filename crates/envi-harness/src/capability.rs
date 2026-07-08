@@ -70,6 +70,14 @@ pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
                 required.insert(Capability::Diffraction);
             }
         }
+        CaseKind::Refraction => {
+            // The refraction engine core is built (plan 03-01), but wiring the
+            // case's weather profile into `terrain_effect` is plans 03-02/03-03.
+            // Gate on Refraction (unimplemented at the case level) so these stay
+            // `Skipped`, never a false `Pass` (D-03), until that wiring lands.
+            required.insert(Capability::GroundEffect);
+            required.insert(Capability::Refraction);
+        }
         CaseKind::ForceStraightRoad
         | CaseKind::ForceCurvedRoad
         | CaseKind::ForceCityStreet

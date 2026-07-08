@@ -122,6 +122,7 @@ pub fn load_toml_case(path: &Path) -> Result<CaseDefinition, CaseLoadError> {
         "free-field" => CaseKind::FreeField,
         "geometry" => CaseKind::Geometry,
         "terrain" => CaseKind::Terrain,
+        "refraction" => CaseKind::Refraction,
         other => {
             return Err(CaseLoadError::UnknownKind {
                 got: other.to_string(),

@@ -61,12 +61,16 @@ pub fn submodel1(f_hz: f64, inp: &SubModel1Inputs) -> Result<GroundResult, Propa
         inp.roughness_r,
         inp.coh,
         None,
+        None,
     )
 }
 
 /// Shared evaluator. `force_f = Some(v)` overrides the coherence coefficient
 /// (unit-test hook: `Some(1.0)` gives fully-coherent, `p_incoh == 0`); `None`
-/// computes `F` from [`coherence_f`]. Also used by Sub-model 2 per surface type.
+/// computes `F` from [`coherence_f`]. `shadow_l_sz = Some(L_SZ)` selects the
+/// upward-refraction shadow-zone branch (AV 1106/07 Eq. 121): the reflected
+/// term collapses and the per-band shadow-zone shielding `L_SZ` is subtracted.
+/// Also used by Sub-model 2 per surface type.
 pub(crate) fn eval(
     f_hz: f64,
     rays: &RayPair,
@@ -74,9 +78,21 @@ pub(crate) fn eval(
     roughness_r: f64,
     coh: &CoherenceInputs,
     force_f: Option<f64>,
+    shadow_l_sz: Option<f64>,
 ) -> Result<GroundResult, PropagationError> {
     use num_complex::Complex;
     use std::f64::consts::TAU;
+
+    // Shadow-zone branch (Eq. 121): in an upward-refraction shadow zone the
+    // reflected ray is not computed (rays.reflected is None); the coherent sum
+    // collapses to the direct ray, attenuated by the shadow-zone shielding L_SZ.
+    // NORD-NATIVE (no conj); the L_SZ attenuation is a real amplitude factor, so
+    // the free-field direct phase carried by H_ff is preserved downstream.
+    if let Some(l_sz) = shadow_l_sz {
+        let atten = 10f64.powf(-l_sz / 20.0);
+        let h_coh_factor = Complex::new(atten, 0.0);
+        return Ok(GroundResult::from_channels(h_coh_factor, 0.0));
+    }
 
     let refl = rays
         .reflected
@@ -282,8 +298,23 @@ mod tests {
         );
         assert!(coherence_ff(100.0, rays.dtau) > 0.9999);
         // Forcing F = 1 exactly ⇒ p_incoh == 0.0 (bit-exact).
-        let g1 = eval(1000.0, &rays, 200.0, 0.0, &coh, Some(1.0)).unwrap();
+        let g1 = eval(1000.0, &rays, 200.0, 0.0, &coh, Some(1.0), None).unwrap();
         assert_eq!(g1.p_incoh, 0.0, "F = 1 must zero the incoherent channel");
+    }
+
+    // Shadow-zone branch (Eq. 121): the reflected term collapses and L_SZ is
+    // subtracted, so ΔL_flat = −L_SZ exactly (p_incoh = 0).
+    #[test]
+    fn shadow_branch_subtracts_l_sz() {
+        let rays = anchor_rays();
+        let coh = zero_turb(97.5);
+        let g = eval(1000.0, &rays, 200.0, 0.0, &coh, None, Some(6.0)).unwrap();
+        assert!(
+            (g.delta_l_db - (-6.0)).abs() < 1e-9,
+            "shadow ΔL_flat must be −L_SZ, got {}",
+            g.delta_l_db
+        );
+        assert_eq!(g.p_incoh, 0.0);
     }
 
     // Test 5: soft ground (class A, σ=12.5) attenuates more than hard (class G,

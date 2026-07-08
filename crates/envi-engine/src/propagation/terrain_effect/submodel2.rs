@@ -94,7 +94,7 @@ pub fn submodel2(
     for ((sigma, rough), w) in weights {
         // ΔL_{ii,ir}: Sub-model 1 as if the whole ground were this type
         // (grouped by TYPE, evaluated once per type — Pitfall 3).
-        let g = submodel1_eval(f_hz, &rays, sigma, rough, coh, None)?;
+        let g = submodel1_eval(f_hz, &rays, sigma, rough, coh, None, None)?;
         h_coh += w * g.h_coh_factor;
         p_incoh += w * w * g.p_incoh;
     }

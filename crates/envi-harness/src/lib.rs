@@ -61,6 +61,11 @@ pub fn run_case(case: &cases::CaseDefinition) -> Outcome {
         cases::CaseKind::FreeField => run_freefield_case(case),
         cases::CaseKind::Geometry => run_geometry_case(case),
         cases::CaseKind::Terrain => run_terrain_case(case),
+        // Gated to Skipped above (requires the 03-02/03-03 weather-route wiring);
+        // this arm keeps the match exhaustive.
+        cases::CaseKind::Refraction => Outcome::Skipped(
+            "requires: weather-route profile wiring (plans 03-02/03-03)".to_string(),
+        ),
         cases::CaseKind::ForceStraightRoad
         | cases::CaseKind::ForceCurvedRoad
         | cases::CaseKind::ForceCityStreet
@@ -288,7 +293,7 @@ fn run_terrain_case(case: &cases::CaseDefinition) -> Outcome {
     };
 
     let axis = &*FREQ_AXIS;
-    let te = match terrain_effect(&profile, src, rcv, coh.c0, &coh, axis) {
+    let te = match terrain_effect(&profile, src, rcv, coh.c0, &coh, axis, None) {
         Ok(te) => te,
         Err(PropagationError::NonFlatTerrainNotImplemented { .. }) => {
             return Outcome::Skipped(

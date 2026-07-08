@@ -45,7 +45,11 @@ use num_complex::Complex;
 use crate::freq::FreqAxis;
 use crate::propagation::PropagationError;
 use crate::propagation::coherence::CoherenceInputs;
-use crate::propagation::rays::straight_rays;
+use crate::propagation::rays::{circular_rays, straight_rays};
+use crate::propagation::refraction::SoundSpeedProfile;
+use crate::propagation::refraction::circular_ray::direct_ray;
+use crate::propagation::refraction::eqssp::calc_eq_ssp;
+use crate::propagation::refraction::shadow_zone::shadow_zone_shielding;
 use crate::propagation::terrain_interpretation::{
     ScreenClass, StripSpec, TerrainInterpretation, interpret_terrain,
 };
@@ -129,6 +133,14 @@ pub struct TerrainEffect {
 /// `r_scr2`/`r_scr12`/`r_flat`. Phase 3 revisits the fractional-`r` channel
 /// combination when refraction makes screens marginal (see the module note).
 ///
+/// # Refraction (plan 03-01)
+///
+/// `refraction = Some(profile)` swaps the flat-channel `straight_rays` for
+/// `circular_rays` with `(ξ, c₀)` from CalcEqSSP; `|ξ|<1e-6` keeps the result
+/// bit-for-bit the homogeneous Phase-2 path (D-02). `None` is the homogeneous
+/// atmosphere (every Phase-2 caller). Only the single-surface (Sub-model 1)
+/// path is refracted here; segmented + refraction awaits CalcEqSSPGround (03-02).
+///
 /// # Errors
 ///
 /// [`PropagationError::NonFlatTerrainNotImplemented`] if the no-screen branch
@@ -141,11 +153,12 @@ pub fn terrain_effect(
     atmos_c0: f64,
     coh: &CoherenceInputs,
     axis: &FreqAxis,
+    refraction: Option<&SoundSpeedProfile>,
 ) -> Result<TerrainEffect, PropagationError> {
     let source = [src[0], src[2]];
     let receiver = [rcv[0], rcv[2]];
     let interp = interpret_terrain(profile, source, receiver, atmos_c0)?;
-    let flat = FlatChannel::from_profile(profile, source, receiver, atmos_c0)?;
+    let flat = FlatChannel::from_profile(profile, source, receiver, atmos_c0, refraction)?;
 
     let n = axis.centres.len();
     let mut h_coh_factor = Vec::with_capacity(n);
@@ -193,6 +206,16 @@ pub fn terrain_effect(
     })
 }
 
+/// Frequency-independent refraction state for the flat channel: the
+/// equivalent-linear gradient `ξ`, the equivalent ground sound speed for the
+/// rays `c₀`, and the shadow-zone distance `dSZ` (`∞` for `ξ ≥ 0`).
+#[derive(Debug, Clone, Copy)]
+struct RefractionState {
+    xi: f64,
+    c0_ray: f64,
+    d_sz: f64,
+}
+
 /// The flat-ground channel (Sub-model 1 for a single surface type, Sub-model 2
 /// for a segmented one) built once per `terrain_effect` call.
 struct FlatChannel {
@@ -207,6 +230,10 @@ struct FlatChannel {
     strips: Vec<submodel2::SurfaceStrip>,
     /// `true` when every strip shares one `(σ, r)` type ⇒ Sub-model 1.
     single_type: bool,
+    /// Refraction state (CalcEqSSP), `None` for a homogeneous atmosphere. Only
+    /// the single-type (Sub-model 1) path is refracted; a segmented refracted
+    /// case is deferred to the frequency-dependent CalcEqSSPGround of plan 03-02.
+    refraction: Option<RefractionState>,
 }
 
 impl FlatChannel {
@@ -215,6 +242,7 @@ impl FlatChannel {
         source: [f64; 2],
         receiver: [f64; 2],
         c0: f64,
+        refraction: Option<&SoundSpeedProfile>,
     ) -> Result<Self, PropagationError> {
         let d = receiver[0] - source[0];
         if !(d.is_finite() && d > 0.0) {
@@ -253,6 +281,23 @@ impl FlatChannel {
             .iter()
             .all(|s| s.sigma_kpa == first.0 && s.roughness_r == first.1);
 
+        // CalcEqSSP once (frequency-independent, plan 03-01): collapse the
+        // weather profile to (ξ, c₀). Below the |ξ|<1e-6 clamp it returns (0, C)
+        // and the ray path stays bit-for-bit the Phase-2 straight-ray path.
+        let refraction = match refraction {
+            Some(p) => {
+                let (xi, c0_ray) = calc_eq_ssp(h_s, h_r, p.z0, p.a, p.b, p.c)?;
+                // Shadow-zone distance dSZ (finite only for upward refraction).
+                let d_sz = if xi < 0.0 {
+                    direct_ray(d, h_s, h_r, xi, c0_ray)?.d_sz
+                } else {
+                    f64::INFINITY
+                };
+                Some(RefractionState { xi, c0_ray, d_sz })
+            }
+            None => None,
+        };
+
         Ok(Self {
             d,
             h_s,
@@ -260,20 +305,46 @@ impl FlatChannel {
             c0,
             strips,
             single_type,
+            refraction,
         })
     }
 
     fn eval(&self, f: f64, coh: &CoherenceInputs) -> Result<GroundResult, PropagationError> {
         if self.single_type {
-            let rays = straight_rays(self.d, self.h_s, self.h_r, self.c0)?;
-            submodel1::eval(
-                f,
-                &rays,
-                self.strips[0].sigma_kpa,
-                self.strips[0].roughness_r,
-                coh,
-                None,
-            )
+            // Refraction dispatch (D-02): swap straight_rays → circular_rays when
+            // a weather profile is active; |ξ|<1e-6 keeps the case bit-identical.
+            if let Some(rs) = self.refraction {
+                let rays = circular_rays(self.d, self.h_s, self.h_r, rs.xi, rs.c0_ray)?;
+                // Upward-refraction shadow zone: no reflected ray (Eq. 45 note)
+                // ⇒ the Sub-model 1 shadow branch (Eq. 121) subtracts L_SZ.
+                let shadow_l_sz = if rs.xi < 0.0 && rays.reflected.is_none() {
+                    Some(shadow_zone_shielding(
+                        f, self.d, self.h_s, self.h_r, rs.xi, rs.c0_ray, rs.d_sz,
+                    )?)
+                } else {
+                    None
+                };
+                submodel1::eval(
+                    f,
+                    &rays,
+                    self.strips[0].sigma_kpa,
+                    self.strips[0].roughness_r,
+                    coh,
+                    None,
+                    shadow_l_sz,
+                )
+            } else {
+                let rays = straight_rays(self.d, self.h_s, self.h_r, self.c0)?;
+                submodel1::eval(
+                    f,
+                    &rays,
+                    self.strips[0].sigma_kpa,
+                    self.strips[0].roughness_r,
+                    coh,
+                    None,
+                    None,
+                )
+            }
         } else {
             let geom = submodel2::FlatGeometry {
                 d: self.d,
@@ -444,7 +515,7 @@ mod terrain_effect_tests {
         let (profile, src, rcv) = flat_sigma200();
         let coh = zero_turb();
         let axis = FreqAxis::new();
-        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis).unwrap();
+        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None).unwrap();
 
         // delta_l_db equals Sub-model 1 exactly (flat ⇒ r_scr1 = 0).
         let rays = straight_rays(97.5, 0.5, 1.5, C0).unwrap();
@@ -486,7 +557,7 @@ mod terrain_effect_tests {
         let (profile, src, rcv) = flat_sigma200();
         let coh = zero_turb();
         let axis = FreqAxis::new();
-        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis).unwrap();
+        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None).unwrap();
 
         let argmin = |v: &[f64]| {
             v.iter()
@@ -526,7 +597,7 @@ mod terrain_effect_tests {
         };
         let axis = FreqAxis::new();
         for (profile, src, rcv) in [flat_sigma200(), thin_screen()] {
-            let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis).unwrap();
+            let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None).unwrap();
             let hff = h_ff(src, rcv);
             let hc = h_coh(&te, &hff);
             let live = hc.iter().filter(|z| z.im.abs() > 1e-12).count();
@@ -553,7 +624,7 @@ mod terrain_effect_tests {
         let (profile, src, rcv) = flat_sigma200();
         let coh = zero_turb();
         let axis = FreqAxis::new();
-        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis).unwrap();
+        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None).unwrap();
 
         // Structural: band_levels_db_two_channel with p_incoh = 0 equals the pure
         // coherent readout band_levels_db(H_coh) — p_incoh never alters phase.
@@ -581,6 +652,7 @@ mod terrain_effect_tests {
                 ..zero_turb()
             },
             &axis,
+            None,
         )
         .unwrap();
         for (p, h) in te2.p_incoh.iter().zip(&te2.h_coh_factor) {
@@ -605,9 +677,9 @@ mod terrain_effect_tests {
             ..zero_turb()
         };
         let (fp, fsrc, frcv) = flat_sigma200();
-        let flat = terrain_effect(&fp, fsrc, frcv, C0, &coh, &axis).unwrap();
+        let flat = terrain_effect(&fp, fsrc, frcv, C0, &coh, &axis, None).unwrap();
         let (sp, ssrc, srcv) = thin_screen();
-        let screen = terrain_effect(&sp, ssrc, srcv, C0, &coh, &axis).unwrap();
+        let screen = terrain_effect(&sp, ssrc, srcv, C0, &coh, &axis, None).unwrap();
 
         // The screen deeply attenuates the mid/high band vs flat ground.
         let idx_1k = 64;
@@ -625,5 +697,102 @@ mod terrain_effect_tests {
                 .chain(&flat.delta_l_db)
                 .all(|v| v.is_finite())
         );
+    }
+
+    fn profile(a: f64, b: f64) -> SoundSpeedProfile {
+        SoundSpeedProfile {
+            a,
+            b,
+            c: C0,
+            z0: 0.01,
+        }
+    }
+
+    // Refraction dispatch regression (D-02): a homogeneous SoundSpeedProfile
+    // (A=B=0 ⇒ |ξ|<1e-6) yields a level bit-identical to the None (Phase-2) path.
+    #[test]
+    fn refraction_homogeneous_profile_is_bit_identical() {
+        let (fp, src, rcv) = flat_sigma200();
+        let coh = zero_turb();
+        let axis = FreqAxis::new();
+        let base = terrain_effect(&fp, src, rcv, C0, &coh, &axis, None).unwrap();
+        let hom = terrain_effect(
+            &fp,
+            src,
+            rcv,
+            C0,
+            &coh,
+            &axis,
+            Some(&SoundSpeedProfile::homogeneous(C0)),
+        )
+        .unwrap();
+        for i in 0..N_BANDS {
+            assert_eq!(
+                base.delta_l_db[i], hom.delta_l_db[i],
+                "band {i}: homogeneous refraction must match the Phase-2 path bit-for-bit"
+            );
+        }
+    }
+
+    // Direction property (D-02 rung c): downwind refraction (ξ>0) gives a level
+    // GAIN somewhere vs the homogeneous baseline; upward refraction into a shadow
+    // zone (ξ<0, long range) gives a LOSS. Compared by BAND INDEX (D-14).
+    #[test]
+    fn refraction_direction_downwind_gains_upwind_shadow_loses() {
+        let coh = zero_turb();
+        let axis = FreqAxis::new();
+        // Downwind at the σ=200 anchor geometry.
+        let (fp, src, rcv) = flat_sigma200();
+        let base = terrain_effect(&fp, src, rcv, C0, &coh, &axis, None).unwrap();
+        let down =
+            terrain_effect(&fp, src, rcv, C0, &coh, &axis, Some(&profile(1.0, 0.05))).unwrap();
+        let max_gain = (0..N_BANDS)
+            .map(|i| down.delta_l_db[i] - base.delta_l_db[i])
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            max_gain > 0.5,
+            "downwind refraction must gain at some band (max Δ = {max_gain:.3} dB)"
+        );
+
+        // Upward refraction into a shadow zone: strong negative gradient so the
+        // receiver sits beyond 0.95·dSZ at the anchor distance.
+        let up =
+            terrain_effect(&fp, src, rcv, C0, &coh, &axis, Some(&profile(-1.5, -0.08))).unwrap();
+        let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+        assert!(
+            mean(&up.delta_l_db) < mean(&base.delta_l_db) - 1.0,
+            "upward-refraction shadow must lose vs homogeneous: up {:.2} vs base {:.2}",
+            mean(&up.delta_l_db),
+            mean(&base.delta_l_db)
+        );
+    }
+
+    // Finiteness sweep: every 105-band level is finite across up / down / shadow
+    // geometries (T-03-01-01) — never NaN/Inf.
+    #[test]
+    fn refraction_finiteness_sweep_all_bands() {
+        let coh = zero_turb();
+        let axis = FreqAxis::new();
+        let (fp, src, rcv) = flat_sigma200();
+        for prof in [
+            profile(1.0, 0.05),   // downwind
+            profile(-1.5, -0.08), // upward / shadow
+            profile(0.5, 0.0),    // log-only downward
+            profile(-0.5, 0.02),  // mixed
+        ] {
+            let te = terrain_effect(&fp, src, rcv, C0, &coh, &axis, Some(&prof)).unwrap();
+            assert_eq!(te.delta_l_db.len(), N_BANDS);
+            for i in 0..N_BANDS {
+                assert!(
+                    te.delta_l_db[i].is_finite()
+                        && te.h_coh_factor[i].re.is_finite()
+                        && te.h_coh_factor[i].im.is_finite()
+                        && te.p_incoh[i].is_finite(),
+                    "non-finite refracted level (A={}, B={}) at band {i}",
+                    prof.a,
+                    prof.b
+                );
+            }
+        }
     }
 }

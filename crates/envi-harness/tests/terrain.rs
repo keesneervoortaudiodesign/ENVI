@@ -126,7 +126,7 @@ fn finiteness_sweep_across_all_force_geometries_and_bands() {
             d_m: (rcv[0] - src[0]).abs().max(1e-6),
         };
 
-        match terrain_effect(profile, src, rcv, c0, &coh, axis) {
+        match terrain_effect(profile, src, rcv, c0, &coh, axis, None) {
             Ok(te) => {
                 assert_eq!(te.delta_l_db.len(), 105);
                 for i in 0..105 {
@@ -169,13 +169,13 @@ fn turbulence_floors_the_screen_in_deep_shadow() {
     let (profile, src, rcv, coh) = build_terrain_inputs(&case).expect("inputs");
     let axis = &*FREQ_AXIS;
 
-    let turbulent = terrain_effect(&profile, src, rcv, coh.c0, &coh, axis).unwrap();
+    let turbulent = terrain_effect(&profile, src, rcv, coh.c0, &coh, axis, None).unwrap();
     let calm_coh = CoherenceInputs {
         cv2: 0.0,
         ct2: 0.0,
         ..coh
     };
-    let calm = terrain_effect(&profile, src, rcv, coh.c0, &calm_coh, axis).unwrap();
+    let calm = terrain_effect(&profile, src, rcv, coh.c0, &calm_coh, axis, None).unwrap();
 
     // In the DEEPEST shadow band (where the calm screen attenuates most in the
     // 2–8 kHz range), turbulence scattering floors the screen — the turbulent

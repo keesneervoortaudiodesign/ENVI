@@ -26,6 +26,13 @@ pub enum CaseKind {
     /// Synthetic terrain-effect case: ground + screen `ΔL_t` cross-checked
     /// against an oracle-pinned 105-point reference (Phase 2).
     Terrain,
+    /// Synthetic refraction case (up/downwind property target, Phase 3). The
+    /// engine refraction core is implemented, but feeding the `(A,B,C,z₀)`
+    /// weather profile from the case into `terrain_effect` is the weather-route
+    /// wiring of plans 03-02/03-03 — so these stay capability-gated (`Skipped`,
+    /// never a false `Pass`, D-03). The intended profile rides in a documentary
+    /// `[weather]` table the loader currently ignores.
+    Refraction,
     /// FORCE straight-road case (TestStraightRoad.xls worksheet).
     ForceStraightRoad,
     /// FORCE curved-road workbook placeholder (layout parsed in Phase 4).

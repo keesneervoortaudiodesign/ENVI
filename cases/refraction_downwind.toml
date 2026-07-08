@@ -1,0 +1,47 @@
+# Synthetic downwind (downward-refraction) property case (Phase 3, plan 03-01).
+#
+# The engine refraction core (CalcEqSSP + circular_rays + terrain_effect
+# dispatch) is implemented and property-tested in-crate. Feeding the [weather]
+# profile below into terrain_effect from the harness is the weather-route wiring
+# of plans 03-02/03-03, so this case stays capability-gated (Skipped, never a
+# false Pass — D-03) until then. Geometry mirrors the flat sigma=200 anchor.
+
+[meta]
+name = "downwind refraction, flat sigma=200, hs=0.5 hr=1.5 d=97.5"
+kind = "refraction"
+reference = "analytic"
+
+[source]
+position = [2.5, 0.0, 0.5]
+
+[receiver]
+position = [100.0, 0.0, 1.5]
+
+[atmosphere]
+t_air_c = 15.0
+cv2 = 0.0
+ct2 = 0.0
+
+# Documentary log-lin sound-speed profile c(z)=A·ln(z/z0+1)+B·z+C (Eq. 2).
+# Positive A/B ⇒ downward refraction (ξ>0). Consumed once the 03-02 weather
+# route wires it into terrain_effect; the loader ignores this table today.
+[weather]
+a = 1.0
+b = 0.05
+z0 = 0.01
+
+[[terrain]]
+x = 2.5
+z = 0.0
+sigma_kpa = 200.0
+roughness = 0.0
+
+[[terrain]]
+x = 100.0
+z = 0.0
+sigma_kpa = 200.0
+roughness = 0.0
+
+[expected]
+tolerance_db = 1.0
+bands = "none"
