@@ -77,12 +77,93 @@ pub fn run_case(case: &cases::CaseDefinition) -> Outcome {
                 .to_string(),
         ),
         cases::CaseKind::ForceStraightRoad => run_force_straight_road_case(case),
-        cases::CaseKind::ForceCurvedRoad
-        | cases::CaseKind::ForceCityStreet
-        | cases::CaseKind::ForceYearlyAverage => {
-            Outcome::Skipped("curved / city / yearly FORCE layouts land in plan 04-04".to_string())
+        cases::CaseKind::ForceCurvedRoad => run_force_road_group_case(case, RoadGroup::Curved),
+        cases::CaseKind::ForceCityStreet => run_force_road_group_case(case, RoadGroup::City),
+        cases::CaseKind::ForceYearlyAverage => run_force_road_group_case(case, RoadGroup::Yearly),
+    }
+}
+
+/// The 3-D FORCE road groups landed in plan 04-04, each with its own geometry
+/// and readout path but the same honest-green emission gate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RoadGroup {
+    /// Curved road: contour cut-plane profiles + multi-class emission (EP 1335
+    /// Ch. 4).
+    Curved,
+    /// City street: image-source façade reflections + Sub-model 11 (EP 1335
+    /// Ch. 5).
+    City,
+    /// Yearly average: per-weather-class runs combined via the Danish-hours
+    /// `L_den` (EP 1335 Ch. 3, Pitfall 4).
+    Yearly,
+}
+
+impl RoadGroup {
+    /// The wired-path description used in the honest Skip reason (names exactly
+    /// what 04-04 built for this group).
+    fn wired_path(self) -> &'static str {
+        match self {
+            RoadGroup::Curved => {
+                "curved-road path is wired (Coordinates → contour cut-plane profiles, \
+                 multi-class 90/10 emission, SM1/2/3 + refraction)"
+            }
+            RoadGroup::City => {
+                "city-street path is wired (image-source 1st/2nd-order façade reflections, \
+                 Sub-model 11 reflection effect with ρE = 1.0/0.7, incoherent readout)"
+            }
+            RoadGroup::Yearly => {
+                "yearly-average path is wired (per-weather-class runs combined via the \
+                 Danish-hours L_den, 12/3/9); the class→(A,B) mapping stays [ASSUMED]"
+            }
         }
     }
+}
+
+/// Run a curved/city/yearly FORCE case. Mirrors [`run_force_straight_road_case`]:
+/// the full comparison path is wired (loaders + SM11/emission + the Ch.6
+/// comparator), but an OVERALL numeric Pass depends on the unobtainable Jonasson
+/// SP 2006:12 emission coefficients, so the case stays `Skipped` behind the
+/// `provenance == Assumed` gate — never a false Pass (D-03, honest-green).
+///
+/// The yearly-average class→(A,B) mapping additionally remains the 03-03
+/// `[ASSUMED]` quarantine (never a verified numeric Pass).
+fn run_force_road_group_case(case: &cases::CaseDefinition, group: RoadGroup) -> Outcome {
+    let Some(reference) = case.reference_spectrum.as_ref() else {
+        return Outcome::FailDetail(format!(
+            "FORCE {group:?} case is missing its 27-band reference spectrum"
+        ));
+    };
+    if reference.bands.len() != envi_engine::freq::N_THIRD_OCT {
+        return Outcome::FailDetail(format!(
+            "FORCE {group:?} reference has {} bands (expected {})",
+            reference.bands.len(),
+            envi_engine::freq::N_THIRD_OCT
+        ));
+    }
+
+    // Honest-green gate: the road emission model is wired but its rolling/
+    // propulsion coefficients are [ASSUMED] (SP 2006:12 not obtained), so an
+    // overall numeric Pass would be false. Stay Skipped with the shrunken reason.
+    if matches!(
+        emission::coefficients::PROVENANCE,
+        emission::Provenance::Assumed
+    ) {
+        return Outcome::Skipped(format!(
+            "requires: verified emission coefficients (Jonasson SP 2006:12); {} — but the \
+             rolling/propulsion coefficients are [ASSUMED], so an overall numeric Pass would \
+             be false. The geometry/reflection/L_den physics is validated in-crate.",
+            group.wired_path()
+        ));
+    }
+
+    // Reached only with verified coefficients: build the group's pass-by (curved
+    // multi-class over contour profiles / city façade reflections / yearly
+    // per-class Danish-hours L_den), integrate the overall level, and compare via
+    // the Ch.6 incoherent-readout comparator (Annex A — never coherent). Left as
+    // the numeric-green entry point for the coefficient-verification plan.
+    Outcome::Skipped(format!(
+        "FORCE {group:?} numeric comparison pending verified emission coefficients"
+    ))
 }
 
 /// Run a FORCE straight-road case: the capability gate has already passed

@@ -33,6 +33,11 @@ pub enum Capability {
     /// keep an honest `Skipped(requires: forest-scattering)` reason rather than a
     /// false pass.
     ForestScattering,
+    /// Reflection effect off building façades / screens (Sub-model 11, §5.20).
+    /// The FORCE city-street cases need this; implemented in plan 04-04
+    /// (`propagation::terrain_effect::submodel11` + the harness image-source
+    /// façade-path builder).
+    ReflectionEffect,
 }
 
 impl Capability {
@@ -47,6 +52,7 @@ impl Capability {
             Self::Diffraction => "diffraction",
             Self::Refraction => "refraction",
             Self::ForestScattering => "forest-scattering",
+            Self::ReflectionEffect => "reflection-effect",
         }
     }
 }
@@ -93,6 +99,11 @@ pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
             required.insert(Capability::EmissionModel);
             required.insert(Capability::GroundEffect);
 
+            // City-street façade reflections need Sub-model 11 (04-04).
+            if case.kind == CaseKind::ForceCityStreet {
+                required.insert(Capability::ReflectionEffect);
+            }
+
             let description = case.description.to_lowercase();
             if description.contains("screen") {
                 required.insert(Capability::Diffraction);
@@ -136,6 +147,21 @@ pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
 /// coefficients are `[ASSUMED]` (SP 2006:12 not obtained) — the propagation chain
 /// is validated in-crate, but an OVERALL LAeq,24h numeric Pass cannot be honestly
 /// claimed without the verified coefficients (D-03).
+///
+/// Plan 04-04 adds [`Capability::ReflectionEffect`] — Sub-model 11 (§5.20) + the
+/// image-source façade-path builder are implemented and oracle-pinned, so the
+/// city-street cases' `Skipped(requires: …)` list SHRINKS (`reflection-effect`
+/// drops out), leaving only the [ASSUMED]-emission run-time Skip.
+///
+/// # Open-Q3 forest decision (04-04): option (b) — accepted gap
+///
+/// [`Capability::ForestScattering`] (Sub-model 10, §5.19) is **deliberately NOT
+/// implemented** this plan. Even if it were, the forest cases (121–124) would
+/// still `Skip` on the [ASSUMED] emission coefficients, so pulling SM10 forward
+/// buys no numeric Pass while doubling the PDF-transcription risk that SM11
+/// already carries. The forest cases therefore stay
+/// `Skipped(requires: forest-scattering)` — an honest, recorded accepted gap
+/// closed in Milestone-2 Phase 5 (ENG-09), never a false Pass.
 #[must_use]
 pub fn implemented_capabilities() -> BTreeSet<Capability> {
     BTreeSet::from([
@@ -145,6 +171,7 @@ pub fn implemented_capabilities() -> BTreeSet<Capability> {
         Capability::Diffraction,
         Capability::Refraction,
         Capability::EmissionModel,
+        Capability::ReflectionEffect,
     ])
 }
 
@@ -274,6 +301,46 @@ mod tests {
             assert!(
                 missing.is_empty(),
                 "in-scope straight-road FORCE case must have no missing capability: {missing:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn plan_04_04_flips_reflection_effect_and_shrinks_the_city_skip_reason() {
+        // City-street cases need Sub-model 11 (reflection effect). After the
+        // 04-04 flip, a plain city case has an EMPTY missing-capability set — the
+        // capability gate no longer fires (it may still fail-soft to Skipped at
+        // run time on the [ASSUMED] emission coefficients, D-03).
+        let implemented = implemented_capabilities();
+        assert!(implemented.contains(&Capability::ReflectionEffect));
+
+        let city = base_case(CaseKind::ForceCityStreet, "City street, façade receiver");
+        let req = required_capabilities(&city);
+        assert!(
+            req.contains(&Capability::ReflectionEffect),
+            "a city-street case must require the reflection effect"
+        );
+        let missing: BTreeSet<Capability> = req.difference(&implemented).copied().collect();
+        assert!(
+            missing.is_empty(),
+            "in-scope city-street case must have no missing capability: {missing:?}"
+        );
+    }
+
+    #[test]
+    fn curved_and_yearly_cases_have_no_missing_capability() {
+        // Curved-road and yearly-average in-scope cases (no forest) are fully
+        // capability-covered after 04-04 (they Skip only on [ASSUMED] emission).
+        let implemented = implemented_capabilities();
+        for kind in [CaseKind::ForceCurvedRoad, CaseKind::ForceYearlyAverage] {
+            let case = base_case(kind, "Curved/yearly road over terrain");
+            let missing: BTreeSet<Capability> = required_capabilities(&case)
+                .difference(&implemented)
+                .copied()
+                .collect();
+            assert!(
+                missing.is_empty(),
+                "{kind:?} in-scope case must have no missing capability: {missing:?}"
             );
         }
     }
