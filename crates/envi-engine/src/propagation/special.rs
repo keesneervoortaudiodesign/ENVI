@@ -35,7 +35,13 @@ pub fn faddeeva_w(z: Complex<f64>) -> Complex<f64> {
         } else {
             // Eq. 62: reflect across the imaginary axis into quadrant 1.
             // w(ẑ) = conj(w(−conj(ẑ))), with −conj(ẑ) = (−x, y), x < 0 ⇒ Re > 0.
-            w_plus((-z).conj()).conj()
+            // Conjugation is written explicitly (negate Im) rather than `.conj()`
+            // — this is Faddeeva symmetry math, NOT a convention conversion, and
+            // the sole convention-boundary conjugation lives in `transfer.rs`
+            // (the propagation-module `conj` quarantine, threat T-02-15).
+            let refl = Complex::new(-z.re, z.im); // −conj(ẑ)
+            let w = w_plus(refl);
+            Complex::new(w.re, -w.im) // conj(w)
         }
     } else {
         // Eq. 62: lower half-plane via w(−ẑ) = 2·exp(−ẑ²) − w(ẑ) ⇒
@@ -265,8 +271,12 @@ mod tests {
             Complex::new(7.0, 1.0),
         ] {
             let w = faddeeva_w(z);
-            // Eq. 62: w(conj(-ẑ)) == conj(w(ẑ))  (reflection across imag axis)
-            assert_c(faddeeva_w((-z).conj()), w.conj(), 1e-9);
+            // Eq. 62: w(conj(-ẑ)) == conj(w(ẑ))  (reflection across imag axis).
+            // Written without `.conj()` — the propagation-module conj quarantine
+            // keeps the sole convention conjugation in `transfer.rs`.
+            let conj_neg_z = Complex::new(-z.re, z.im); // conj(−ẑ)
+            let conj_w = Complex::new(w.re, -w.im); // conj(w)
+            assert_c(faddeeva_w(conj_neg_z), conj_w, 1e-9);
             // Eq. 62: w(-ẑ) == 2·exp(-ẑ²) - w(ẑ)  (lower half-plane, y<0)
             let two_exp = 2.0 * (-(z * z)).exp();
             assert_c(faddeeva_w(-z), two_exp - w, 1e-9);

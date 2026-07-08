@@ -116,6 +116,9 @@ pub struct TerrainInterpretation {
     pub sigma_face_receiver: f64,
     /// Speed of sound c₀, m/s (for the λ-dependent ramps).
     c0: f64,
+    /// Primary diffracting edge `[x, z]` (the primary screen apex; the S–R
+    /// midpoint for flat terrain, where it is unused).
+    edge: [f64; 2],
     /// Primary-edge path-length difference `Δℓ₀` (Eq. 300), meters.
     delta_l0: f64,
     /// Primary-edge height above the local terrain baseline, meters.
@@ -248,6 +251,12 @@ impl TerrainInterpretation {
     pub fn flat_deviation(&self) -> f64 {
         self.flat_dev
     }
+
+    /// The primary diffracting edge `[x, z]` (the primary screen apex).
+    #[must_use]
+    pub fn primary_edge(&self) -> [f64; 2] {
+        self.edge
+    }
 }
 
 /// A linear ramp: `0` for `v ≤ lo`, `1` for `v ≥ hi`, linear between.
@@ -366,6 +375,10 @@ pub fn interpret_terrain(
             sigma_face_source: segments[0].flow_resistivity,
             sigma_face_receiver: segments[segments.len() - 1].flow_resistivity,
             c0,
+            edge: [
+                0.5 * (source[0] + receiver[0]),
+                0.5 * (source[1] + receiver[1]),
+            ],
             delta_l0: 0.0,
             h_scr: 0.0,
             r_s: dist(source, receiver),
@@ -418,6 +431,7 @@ pub fn interpret_terrain(
         sigma_face_source,
         sigma_face_receiver,
         c0,
+        edge: edge_pt,
         delta_l0,
         h_scr,
         r_s,
