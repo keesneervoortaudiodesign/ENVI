@@ -128,15 +128,21 @@ pub struct TensorPair {
 
 impl TensorPair {
     /// A zero-initialized pair of the given `(n_sub, n_rcv, N_BANDS)` shape.
+    ///
+    /// `ndarray`'s default constructor is row-major, so the frequency axis is
+    /// contiguous on the last index (the frozen layout).
     #[must_use]
     pub fn zeros(shape: (usize, usize, usize)) -> Self {
-        todo!()
+        Self {
+            h_coh: Array3::zeros(shape),
+            p_incoh_abs: Array3::zeros(shape),
+        }
     }
 
     /// The `(n_sub, n_rcv, n_band)` shape of both stores.
     #[must_use]
     pub fn dim(&self) -> (usize, usize, usize) {
-        todo!()
+        self.h_coh.dim()
     }
 }
 
@@ -171,26 +177,29 @@ impl InMemorySink {
     /// A sink backing an `(n_sub, n_rcv, N_BANDS)` tensor.
     #[must_use]
     pub fn new(n_sub: usize, n_rcv: usize) -> Self {
-        todo!()
+        Self {
+            pair: TensorPair::zeros((n_sub, n_rcv, N_BANDS)),
+            high_water_bytes: 0,
+        }
     }
 
     /// The largest single chunk handed in, in bytes across the pair
     /// (`n_sub · chunk_len · N_BANDS · 24`).
     #[must_use]
     pub fn high_water_bytes(&self) -> usize {
-        todo!()
+        self.high_water_bytes
     }
 
     /// Borrow the assembled tensor pair.
     #[must_use]
     pub fn tensor(&self) -> &TensorPair {
-        todo!()
+        &self.pair
     }
 
     /// Consume the sink, returning the assembled tensor pair.
     #[must_use]
     pub fn into_tensor(self) -> TensorPair {
-        todo!()
+        self.pair
     }
 }
 
@@ -201,7 +210,62 @@ impl TensorSink for InMemorySink {
         h_coh: ArrayView3<'_, Complex<f64>>,
         p_incoh_abs: ArrayView3<'_, f64>,
     ) -> Result<(), SinkError> {
-        todo!()
+        // Validate the two channels agree, the band axis is the grid, the
+        // sub-source count matches the backing store, and the receiver span is
+        // in bounds — all before touching memory (threat T-04-01-02).
+        let (hs, hr, hf) = h_coh.dim();
+        if p_incoh_abs.dim() != (hs, hr, hf) {
+            return Err(SinkError::ChannelShapeMismatch {
+                h_coh: (hs, hr, hf),
+                p_incoh: p_incoh_abs.dim(),
+            });
+        }
+        if hf != N_BANDS {
+            return Err(SinkError::BandCountMismatch {
+                expected: N_BANDS,
+                got: hf,
+            });
+        }
+        let (n_sub, n_rcv, _) = self.pair.h_coh.dim();
+        if hs != n_sub {
+            return Err(SinkError::SubCountMismatch {
+                expected: n_sub,
+                got: hs,
+            });
+        }
+        if r_offset + hr > n_rcv {
+            return Err(SinkError::ChunkOutOfBounds {
+                r_offset,
+                chunk_len: hr,
+                n_receivers: n_rcv,
+            });
+        }
+        // Reject non-finite operator-controlled data (never store NaN/∞).
+        if h_coh.iter().any(|z| !z.re.is_finite() || !z.im.is_finite()) {
+            return Err(SinkError::NonFinite {
+                what: "chunk H_coh",
+            });
+        }
+        if p_incoh_abs.iter().any(|v| !v.is_finite()) {
+            return Err(SinkError::NonFinite {
+                what: "chunk P_incoh_abs",
+            });
+        }
+
+        // Copy the chunk into its receiver slice of the backing store.
+        self.pair
+            .h_coh
+            .slice_mut(s![.., r_offset..r_offset + hr, ..])
+            .assign(&h_coh);
+        self.pair
+            .p_incoh_abs
+            .slice_mut(s![.., r_offset..r_offset + hr, ..])
+            .assign(&p_incoh_abs);
+
+        // High-water mark = largest single chunk's byte footprint across the pair.
+        let bytes = hs * hr * hf * BYTES_PER_CELL_PAIR;
+        self.high_water_bytes = self.high_water_bytes.max(bytes);
+        Ok(())
     }
 }
 
@@ -220,7 +284,21 @@ pub fn readout_coherent(
     h_coh: ArrayView3<'_, Complex<f64>>,
     g: &[Vec<Complex<f64>>],
 ) -> Result<Array2<Complex<f64>>, SinkError> {
-    todo!()
+    let (n_sub, n_rcv, n_f) = h_coh.dim();
+    validate_complex_gain(g, n_sub, n_f)?;
+
+    let mut p = Array2::<Complex<f64>>::zeros((n_rcv, n_f));
+    // Sub-source outermost, band-contiguous innermost — the single frozen
+    // accumulation order that makes the MAC bit-identical to a full recompute.
+    for (s, gs) in g.iter().enumerate() {
+        let hs = h_coh.index_axis(Axis(0), s);
+        for (mut prow, hrow) in p.outer_iter_mut().zip(hs.outer_iter()) {
+            for (pf, (hf, gf)) in prow.iter_mut().zip(hrow.iter().zip(gs.iter())) {
+                *pf += *hf * *gf;
+            }
+        }
+    }
+    Ok(p)
 }
 
 /// The incoherent Annex-A energy readout: `e[r,f] = Σ_s w_s(f)·(|H_coh|² +
@@ -239,14 +317,95 @@ pub fn readout_incoherent(
     p_incoh_abs: ArrayView3<'_, f64>,
     w: &[Vec<f64>],
 ) -> Result<Array2<f64>, SinkError> {
-    todo!()
+    let (n_sub, n_rcv, n_f) = h_coh.dim();
+    if p_incoh_abs.dim() != (n_sub, n_rcv, n_f) {
+        return Err(SinkError::ChannelShapeMismatch {
+            h_coh: (n_sub, n_rcv, n_f),
+            p_incoh: p_incoh_abs.dim(),
+        });
+    }
+    validate_real_gain(w, n_sub, n_f)?;
+
+    let mut e = Array2::<f64>::zeros((n_rcv, n_f));
+    // Sub-source outermost, band-contiguous innermost. Energy per cell =
+    // |H_coh|² + P_incoh_abs; the real weight w_s(f) carries |G_s|²·(time weight).
+    for (s, ws) in w.iter().enumerate() {
+        let hs = h_coh.index_axis(Axis(0), s);
+        let ps = p_incoh_abs.index_axis(Axis(0), s);
+        for ((mut erow, hrow), prow) in e.outer_iter_mut().zip(hs.outer_iter()).zip(ps.outer_iter())
+        {
+            for (ef, ((hf, pf), wf)) in erow
+                .iter_mut()
+                .zip(hrow.iter().zip(prow.iter()).zip(ws.iter()))
+            {
+                *ef += *wf * (hf.norm_sqr() + *pf);
+            }
+        }
+    }
+    Ok(e)
+}
+
+/// Validate a complex per-sub-source gain against the tensor dimensions and
+/// reject non-finite entries.
+fn validate_complex_gain(
+    g: &[Vec<Complex<f64>>],
+    n_sub: usize,
+    n_f: usize,
+) -> Result<(), SinkError> {
+    if g.len() != n_sub {
+        return Err(SinkError::GainSubCountMismatch {
+            expected: n_sub,
+            got: g.len(),
+        });
+    }
+    for (sub, gs) in g.iter().enumerate() {
+        if gs.len() != n_f {
+            return Err(SinkError::GainBandCountMismatch {
+                sub,
+                expected: n_f,
+                got: gs.len(),
+            });
+        }
+        if gs.iter().any(|z| !z.re.is_finite() || !z.im.is_finite()) {
+            return Err(SinkError::NonFinite {
+                what: "coherent gain G_s",
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Validate a real per-sub-source weight against the tensor dimensions and
+/// reject non-finite entries.
+fn validate_real_gain(w: &[Vec<f64>], n_sub: usize, n_f: usize) -> Result<(), SinkError> {
+    if w.len() != n_sub {
+        return Err(SinkError::GainSubCountMismatch {
+            expected: n_sub,
+            got: w.len(),
+        });
+    }
+    for (sub, ws) in w.iter().enumerate() {
+        if ws.len() != n_f {
+            return Err(SinkError::GainBandCountMismatch {
+                sub,
+                expected: n_f,
+                got: ws.len(),
+            });
+        }
+        if ws.iter().any(|v| !v.is_finite()) {
+            return Err(SinkError::NonFinite {
+                what: "incoherent weight w_s",
+            });
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transfer::band_levels_db;
     use crate::scene::BandSpectrum;
+    use crate::transfer::band_levels_db;
     use approx::assert_relative_eq;
 
     #[test]
@@ -322,9 +481,11 @@ mod tests {
         for (i, &z) in h.iter().enumerate() {
             pair.h_coh[[0, 0, i]] = z;
         }
-        let g = vec![(0..N_BANDS)
-            .map(|_| Complex::new(10f64.powf(lw / 20.0), 0.0))
-            .collect::<Vec<_>>()];
+        let g = vec![
+            (0..N_BANDS)
+                .map(|_| Complex::new(10f64.powf(lw / 20.0), 0.0))
+                .collect::<Vec<_>>(),
+        ];
         let p = readout_coherent(pair.h_coh.view(), &g).unwrap();
         let spectrum = BandSpectrum::uniform(lw);
         let want = band_levels_db(&h, &spectrum);
@@ -340,7 +501,8 @@ mod tests {
         let mut sink = InMemorySink::new(n_sub, n_rcv);
         // Two chunks of receiver lengths 2 then 3.
         for &(r_off, len) in &[(0usize, 2usize), (2, 3)] {
-            let hc = Array3::<Complex<f64>>::from_elem((n_sub, len, N_BANDS), Complex::new(1.0, 0.0));
+            let hc =
+                Array3::<Complex<f64>>::from_elem((n_sub, len, N_BANDS), Complex::new(1.0, 0.0));
             let pi = Array3::<f64>::zeros((n_sub, len, N_BANDS));
             sink.put_chunk(r_off, hc.view(), pi.view()).unwrap();
         }
