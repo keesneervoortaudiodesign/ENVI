@@ -8,21 +8,39 @@
 //! every fixture row. Python is NOT needed at test time; the TOML is committed.
 //! A transcription error in ξ / c₀ / Δτ shows up here as a fixture mismatch.
 
+use envi_engine::freq::FreqAxis;
 use envi_engine::propagation::rays::circular_rays;
-use envi_engine::propagation::refraction::eqssp::calc_eq_ssp;
+use envi_engine::propagation::refraction::eqssp::{calc_eq_ssp, calc_eq_ssp_ground};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct Fixtures {
     meta: Meta,
     eqssp: Vec<EqSspRow>,
+    eqssp_ground: Vec<EqSspGroundRow>,
     dtau: Vec<DtauRow>,
 }
 
 #[derive(Deserialize)]
 struct Meta {
     eqssp_tol_rel: f64,
+    eqssp_ground_tol_rel: f64,
     dtau_tol_rel: f64,
+}
+
+#[derive(Deserialize)]
+struct EqSspGroundRow {
+    a: f64,
+    b: f64,
+    c: f64,
+    z0: f64,
+    h_s: f64,
+    h_r: f64,
+    d: f64,
+    sigma_kpa: f64,
+    band_index: usize,
+    xi: f64,
+    c0: f64,
 }
 
 #[derive(Deserialize)]
@@ -100,6 +118,58 @@ fn engine_calc_eq_ssp_matches_oracle_grid() {
     assert!(
         saw_up && saw_down,
         "grid must cover up- and down-refraction"
+    );
+}
+
+#[test]
+fn engine_calc_eq_ssp_ground_matches_oracle_by_band_index() {
+    let fx = load();
+    assert!(
+        fx.eqssp_ground.len() >= 16,
+        "eqssp_ground grid must have ≥ 16 rows"
+    );
+    let axis = FreqAxis::new();
+    let (mut saw_zero, mut saw_positive, mut saw_flat_hard) = (false, false, false);
+    for row in &fx.eqssp_ground {
+        // Compare by BAND INDEX (D-14): evaluate at the exact 1/12-oct centre.
+        let f = axis.centres[row.band_index];
+        let (xi, c0) =
+            calc_eq_ssp_ground(f, row.d, row.h_s, row.h_r, row.sigma_kpa, row.z0, row.a, row.b, row.c)
+                .unwrap();
+        if xi == 0.0 {
+            saw_zero = true;
+        }
+        if xi.abs() > 0.0 {
+            saw_positive = true;
+        }
+        if row.sigma_kpa >= 1.0e4 {
+            saw_flat_hard = true;
+        }
+        // ξ can be exactly 0 below fL / homogeneous — compare absolutely there.
+        let xi_err = if row.xi.abs() < 1e-12 {
+            (xi - row.xi).abs()
+        } else {
+            rel_err(xi, row.xi)
+        };
+        assert!(
+            xi_err <= fx.meta.eqssp_ground_tol_rel,
+            "ξ(f)[band {}] (σ={},A={},B={}): got {xi:.12e} want {:.12e} err {xi_err:.2e}",
+            row.band_index,
+            row.sigma_kpa,
+            row.a,
+            row.b,
+            row.xi
+        );
+        assert!(
+            rel_err(c0, row.c0) <= fx.meta.eqssp_ground_tol_rel,
+            "c₀(f)[band {}]: got {c0} want {}",
+            row.band_index,
+            row.c0
+        );
+    }
+    assert!(
+        saw_zero && saw_positive && saw_flat_hard,
+        "grid must cover below-fL (ξ=0), interpolated (ξ≠0), and hard-ground rows"
     );
 }
 
