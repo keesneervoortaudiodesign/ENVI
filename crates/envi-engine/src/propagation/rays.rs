@@ -211,9 +211,11 @@ pub fn straight_rays_over_segment(
 /// primitives (DirectRay Eqs. 29–44, ReflectedRay Eqs. 45–50, TravelTimeDiff
 /// Eqs. 51–53).
 ///
-/// In an upward-refraction shadow zone (`ξ < 0` and `d > 0.95·dSZ`) the
-/// reflected ray is not computed (Eq. 45 note) — the returned [`RayPair`] has
-/// `reflected = None` and `dtau = 0`; Sub-model 1's shadow branch handles it.
+/// In an upward-refraction shadow zone (`ξ < 0` and `d > dSZ`) the reflected ray
+/// is not computed (Eq. 45 note) — the returned [`RayPair`] has
+/// `reflected = None` and `dtau = 0`; Sub-model 1's shadow branch handles it. In
+/// the onset window `0.95·dSZ < d < dSZ` the receiver has NOT yet crossed the
+/// geometric shadow edge, so the coherent two-ray branch is retained (CR-01).
 ///
 /// # Errors
 ///
@@ -270,7 +272,13 @@ pub fn circular_rays(
     };
 
     // Upward-refraction shadow zone: no reflected ray (Sub-model 1 shadow branch).
-    if xi < 0.0 && direct.d_sz.is_finite() && d > 0.95 * direct.d_sz {
+    // The reflected ray is dropped only once the receiver has crossed the
+    // geometric shadow edge (d > dSZ). In the onset window 0.95·dSZ < d < dSZ the
+    // coherent two-ray branch still applies (its Δτ ramps to 0 via the Eq. 52 cap
+    // in `travel_time_diff`); dropping it earlier would hand a d ≤ dSZ geometry to
+    // `shadow_zone_shielding`, whose equivalent wedge (d_far = d − dSZ) is only
+    // defined past the edge — the CR-01 abort.
+    if xi < 0.0 && direct.d_sz.is_finite() && d > direct.d_sz {
         return Ok(RayPair {
             direct: direct_vars,
             reflected: None,
@@ -424,6 +432,42 @@ mod tests {
             pair.dtau.abs() < 1e-9,
             "shadow Δτ must be ~0, got {}",
             pair.dtau
+        );
+    }
+
+    // CR-01 regression: a receiver in the shadow-ONSET window (0.95·dSZ < d < dSZ)
+    // must RETAIN the coherent reflected ray. A mild upward gradient
+    // (ξ≈−7.5e-4, hS=0.5, hR=1.5) puts dSZ≈99.7 m; at d=97 m the receiver has NOT
+    // crossed the geometric shadow edge. Before the fix, `circular_rays` dropped
+    // the reflected ray at 0.95·dSZ, which then routed `terrain_effect` into
+    // `shadow_zone_shielding` — whose equivalent wedge (d_far = d − dSZ) is only
+    // defined past dSZ, so it hard-errored (DegenerateShadowZone) and aborted the
+    // whole 105-band evaluation on a physically valid geometry.
+    #[test]
+    fn shadow_onset_window_retains_reflected_ray() {
+        use crate::propagation::refraction::circular_ray::direct_ray;
+        let c0 = sound_speed_ms(15.0);
+        let (d, h_s, h_r, xi) = (97.0_f64, 0.5_f64, 1.5_f64, -7.5e-4_f64);
+        // Confirm the geometry genuinely sits in the onset window 0.95·dSZ < d < dSZ.
+        let d_sz = direct_ray(d, h_s, h_r, xi, c0).unwrap().d_sz;
+        assert!(
+            0.95 * d_sz < d && d < d_sz,
+            "geometry must be in the onset window: 0.95·dSZ={:.3} < d={d} < dSZ={:.3}",
+            0.95 * d_sz,
+            d_sz
+        );
+        let pair = circular_rays(d, h_s, h_r, xi, c0).unwrap();
+        assert!(
+            pair.reflected.is_some(),
+            "onset-window receiver (d < dSZ) must retain the reflected ray"
+        );
+        // Δτ stays finite and is ramped by the Eq. 52 cap (small but not forced 0).
+        assert!(pair.dtau.is_finite());
+        // Just past the geometric edge the reflected ray IS dropped (dtau = 0).
+        let past = circular_rays(d_sz + 1.0, h_s, h_r, xi, c0).unwrap();
+        assert!(
+            past.reflected.is_none() && past.dtau == 0.0,
+            "past the shadow edge (d > dSZ) the reflected ray must be dropped"
         );
     }
 

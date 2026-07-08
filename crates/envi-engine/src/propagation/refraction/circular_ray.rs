@@ -280,14 +280,17 @@ pub struct TravelTimeGeometry {
 }
 
 /// TravelTimeDiff Δτ (Eqs. 51–53) from the direct/reflected travel times, with
-/// the upward-refraction shadow-edge cap Δτ₀ (Eq. 52) and Δτ = 0 in the shadow
-/// zone (`d > 0.95·dSZ`).
+/// the upward-refraction shadow-edge cap Δτ₀ (Eq. 52) and Δτ = 0 past the
+/// geometric shadow edge (`d > dSZ`).
 #[must_use]
 pub fn travel_time_diff(tau_direct: f64, tau_reflected: f64, geom: &TravelTimeGeometry) -> f64 {
     let mut dtau = tau_reflected - tau_direct; // Eq. 51
     if geom.xi < 0.0 {
-        // Receiver in shadow zone ⇒ Δτ = 0 (§5.5.6).
-        if geom.d_sz.is_finite() && geom.d > 0.95 * geom.d_sz {
+        // Receiver past the geometric shadow edge ⇒ Δτ = 0 (§5.5.6). In the onset
+        // window (d ≤ dSZ) the Eq. 52 cap below ramps Δτ smoothly to 0 as d → dSZ;
+        // this threshold matches the reflected-ray drop in `circular_rays` so the
+        // onset window is handled consistently (CR-01).
+        if geom.d_sz.is_finite() && geom.d > geom.d_sz {
             return 0.0;
         }
         if geom.d_sz.is_finite() && geom.d_sz > 0.0 {

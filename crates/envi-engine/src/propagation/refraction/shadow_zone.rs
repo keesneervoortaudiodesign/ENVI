@@ -60,11 +60,18 @@ pub fn shadow_zone_shielding(
         || d <= 0.0
         || c0 <= 0.0
         || d_sz <= 0.0
-        || d_sz >= d
     {
         return Err(PropagationError::DegenerateShadowZone {
             detail: "non-finite or non-physical shadow-zone input",
         });
+    }
+    // Receiver has not yet crossed the geometric shadow edge (d ≤ dSZ): the
+    // equivalent-wedge geometry (d_far = d − dSZ) is undefined here and the
+    // coherent two-ray branch (with the Eq. 52 Δτ cap) still applies. Report zero
+    // shielding rather than erroring — the onset window is physical, not
+    // degenerate (CR-01).
+    if d_sz >= d {
+        return Ok(0.0);
     }
 
     // Eq. 385: ξSZ(f) frozen above 2000 Hz, log-interpolated 20 Hz → 2000 Hz.
@@ -164,10 +171,31 @@ mod tests {
         assert!(l_2k.is_finite() && l_4k.is_finite());
     }
 
+    // CR-01: a receiver before the geometric shadow edge (d ≤ dSZ) is the onset
+    // window, not a degenerate input — no shielding yet (Ok(0.0)), never an error.
+    #[test]
+    fn pre_shadow_edge_returns_zero_shielding() {
+        assert_eq!(
+            shadow_zone_shielding(1000.0, 300.0, 1.0, 1.5, -3e-3, C0, 400.0).unwrap(),
+            0.0
+        );
+        // Exactly at the edge (d_sz == d) is likewise not-yet-shadowed.
+        assert_eq!(
+            shadow_zone_shielding(1000.0, 300.0, 1.0, 1.5, -3e-3, C0, 300.0).unwrap(),
+            0.0
+        );
+    }
+
     #[test]
     fn non_physical_input_is_typed_error() {
+        // Genuinely non-physical input (non-finite / non-positive dSZ) stays a
+        // typed error, distinct from the pre-edge onset window above.
         assert!(matches!(
-            shadow_zone_shielding(1000.0, 300.0, 1.0, 1.5, -3e-3, C0, 400.0),
+            shadow_zone_shielding(1000.0, 300.0, 1.0, 1.5, -3e-3, C0, f64::NAN),
+            Err(PropagationError::DegenerateShadowZone { .. })
+        ));
+        assert!(matches!(
+            shadow_zone_shielding(1000.0, 300.0, 1.0, 1.5, -3e-3, C0, -5.0),
             Err(PropagationError::DegenerateShadowZone { .. })
         ));
     }
