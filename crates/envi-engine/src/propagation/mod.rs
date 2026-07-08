@@ -32,6 +32,7 @@ pub mod divergence;
 pub mod fresnel;
 pub mod ground;
 pub mod rays;
+pub mod refraction;
 pub mod special;
 pub mod terrain_effect;
 pub mod terrain_interpretation;
@@ -103,6 +104,28 @@ pub enum PropagationError {
         r_flat: f64,
         /// The frequency at which the non-flat branch was demanded, Hz.
         f_hz: f64,
+    },
+    /// The refracted reflection-point cubic (AV 1106/07 §5.5.5 Eq. 49) produced
+    /// no real root in the valid interval `(0, d)` — a degenerate refracted
+    /// reflection geometry (threat T-03-01-02). Never a silent fallback.
+    #[error("no real reflection-point root in (0, d) for the refracted cubic (Eq. 49)")]
+    NoReflectionRoot,
+    /// A log-lin sound-speed profile / equivalent-linear collapse (CalcEqSSP,
+    /// §5.5.2) produced a non-finite or non-physical result (non-positive c₀,
+    /// non-finite ξ, or a rejected input) at the weather → refraction boundary
+    /// (threat T-03-01-02). Never a NaN ξ that would poison every ray.
+    #[error("degenerate sound-speed profile: {detail}")]
+    DegenerateProfile {
+        /// Which profile input or intermediate was rejected.
+        detail: &'static str,
+    },
+    /// The upward-refraction shadow-zone equivalent-wedge geometry (§5.23.16,
+    /// Eqs. 384–388) was non-physical (non-finite `hSZ`, `dSZ ≤ 0`, or an
+    /// out-of-domain equivalent wedge) — a domain error, never a NaN.
+    #[error("degenerate shadow-zone geometry: {detail}")]
+    DegenerateShadowZone {
+        /// Which shadow-zone input or intermediate was rejected.
+        detail: &'static str,
     },
 }
 
