@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 2
-current_phase_name: Ground Effect & Diffraction
-status: phase-complete
-stopped_at: Phase 3 context gathered
-last_updated: "2026-07-08T11:13:13.631Z"
+current_phase: 3
+current_phase_name: Meteorology & Refraction
+status: executing
+stopped_at: 03-01 complete; 03-02 next
+last_updated: "2026-07-08T16:01:02.835Z"
 last_activity: 2026-07-08
-last_activity_desc: "Completed 02-05-PLAN.md: §5.21 dispatch + Eq. 332 + single conj boundary + two-channel transfer; capabilities flipped; five terrain cases oracle-pinned; finiteness sweep; README. All quality gates pass (build/test/clippy/fmt, engine deps unchanged, conj gate 0 in propagation/)"
+last_activity_desc: 03-01 refraction core complete (CalcEqSSP + circular rays + shadow zone; D-02 anchor bit-for-bit)
 progress:
-  total_phases: 4
+  total_phases: 11
   completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
-  percent: 50
+  total_plans: 11
+  completed_plans: 9
+  percent: 18
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** A numerically faithful Nord2000 engine — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain.
-**Current focus:** Phase 2 — Ground Effect & Diffraction
+**Current focus:** Phase 3 — Meteorology & Refraction
 
 ## Current Position
 
-Phase: 2 of 4 (Ground Effect & Diffraction) — COMPLETE
-Plan: 5 of 5 in current phase complete (02-01, 02-02, 02-03, 02-04, 02-05 done)
-Status: Wave 4 (terrain composition) complete — Phase 2 CLOSED. 02-05 wires everything end to end: terrain_interpretation (§5.21 primary/secondary edge finding, screen-shape reduction, equivalent-flat LSQ, r_scr1/r_scr2/r_scr12/r_flat transition params, Sub-model 3 typed hard-error stub); terrain_effect() Eq. 332 two-channel composition; the ONE documented conj() at transfer::nord_ratio_to_transfer (grep gate `\.conj()` over propagation/ = 0); band_levels_db_two_channel readout law L = L_W + 10·lg(|H_coh|² + |H_ff|²·P_incoh). Harness: Capability::{GroundEffect,Diffraction} implemented (FORCE road cases skip ONLY on emission-model — shrink asserted); CaseKind::Terrain + five oracle-pinned cases (flat SM1, mixed SM2, thin SM4, thick SM5, double SM6 + SM7) green at 0.1 dB (9 total Pass rows); gen_case_fixtures.py independent scipy oracle; finiteness sweep across all FORCE straight-road geometries × 105 bands (finite or typed NonFlatTerrain error, never NaN). ENG-02, ENG-03, ENG-07 complete. Phase 3 (refraction) is next.
-Last activity: 2026-07-08 — Completed 02-05-PLAN.md: §5.21 dispatch + Eq. 332 + single conj boundary + two-channel transfer; capabilities flipped; five terrain cases oracle-pinned; finiteness sweep; README. All quality gates pass (build/test/clippy/fmt, engine deps unchanged, conj gate 0 in propagation/)
+Phase: 3 (Meteorology & Refraction) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-07-08 — 03-01 refraction core complete (CalcEqSSP + circular rays + shadow zone; D-02 anchor bit-for-bit)
 
-Progress: [██████████] 100% (5/5 plans in phase 2 — PHASE COMPLETE)
+Progress: [███░░░░░░░] Phase 3 — 1/3 plans complete (03-01 refraction core)
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [██████████] 100% (5/5 plans in phase 2 — PHASE 
 | Phase 01 P02 | 17min | 3 tasks | 12 files |
 | Phase 01 P03 | 35min | 3 tasks | 14 files |
 | Phase 02 P01 | 55min | 3 tasks | 14 files |
+| Phase 3 P1 | 95min | 3 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T11:13:13.622Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-meteorology-refraction/03-CONTEXT.md
+Last session: 2026-07-08T16:01:02.829Z
+Stopped at: 03-01 complete; 03-02 next
+Resume file: None
