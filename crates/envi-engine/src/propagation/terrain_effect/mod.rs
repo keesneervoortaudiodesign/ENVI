@@ -32,6 +32,7 @@
 
 use num_complex::Complex;
 
+pub mod screen;
 pub mod submodel1;
 pub mod submodel2;
 
