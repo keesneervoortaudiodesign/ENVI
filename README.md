@@ -6,8 +6,12 @@ per-band, phase-preserving complex transfer values over terrain; a sibling
 harness validates it against the FORCE road-traffic test cases and committed
 independent oracles.
 
-This repository is the **Milestone 1 core engine** — no map, no UI, no live GIS
-ingestion yet (geometry comes from FORCE test-case files).
+The repository currently holds the **Milestone 1 core engine** — no map, no UI, no
+live GIS ingestion yet (geometry comes from FORCE test-case files). **Milestone 2
+— an interactive, NoizCalc-style web application around the engine — is now fully
+planned** (requirements + roadmap, phases 5–11); the engine (Milestone 1 Phases
+3–4) remains the current execution priority. See
+[Milestone 2](#milestone-2--interactive-calculation-ui-planned) below.
 
 ## Workspace layout
 
@@ -120,11 +124,61 @@ the frozen forward contract for that Phase-4 recalculation path.
 | 3 | Meteorology & refraction: log-lin A/B/C profile, equivalent-linear collapse (guarded ξ/Δτ), weather routes, turbulence coherence | ⏳ next |
 | 4 | Dense `H[s,r,f]` transfer tensor + filter/delay recalculation, directional multi-sub-source composition, full FORCE-suite pass + NoiseModelling cross-check | ⏳ |
 
-Beyond Milestone 1 (later milestones): live GIS ingestion (Copernicus DEM, ESA
-WorldCover, Overture buildings), open weather APIs (Open-Meteo / ERA5), the
-receiver-grid + isophone map output, the MapLibre/OpenStreetMap web frontend, and
-future DXF/SketchUp import and 2.5D BEM barrier corrections. See `.planning/` for
-the full project context and requirements.
+## Milestone 2 — Interactive Calculation UI (planned)
+
+A self-hosted web application wrapped around the engine, with the workflow modeled
+on **d&b NoizCalc** (single integrated app, **Nord2000-only**). At the end of this
+milestone a user can:
+
+1. **CRUD an ENVI model** — projects created / opened / saved (autosave) / deleted / duplicated (project-as-folder, scene + settings + cached tensors).
+2. **Get GIS data** — viewport import of terrain (Copernicus GLO-30 + national LiDAR DTM), ground cover (ESA WorldCover → impedance), and buildings (Overture/OSM) onto a triangulated Digital Ground Model, then check-and-complete editing.
+3. **Get weather data** — Open-Meteo import deriving the per-azimuth A/B/C meteorology (ERA5/CDS groundwork).
+4. **Manual weather what-if** — override wind (Beaufort + direction), downwind worst-case, temperature gradient, A/B/C; **named scenarios** with per-scenario cached tensors, instant switching, and **difference maps**.
+5. **Draw scene objects** — directional sources, walls, buildings, forests, ground-effect (damping/impedance) zones, elevation points/lines, receivers, calculation area.
+6. **Spectral results at points** — per-band readout (1/12-oct expert + 1/3-oct by band index), dB(A)/dB(C) totals, coherent/incoherent split, CSV export.
+7. **Noise map in dB(A) & dB(C)** — server-side isophone **fill polygons** (not a heatmap) with an editable color scale + legend.
+
+### New engine extensions (beyond stock Nord2000)
+
+- **ENG-09 — Forest attenuation.** The Nord2000 `A = d·a(f)` term (mean tree density, mean stem radius, `kp`, mean absorption) so drawn forests actually attenuate.
+- **ENG-10 — Semi-transparent partitions.** A **finite-transmission** screen/façade: the standard opaque-screen diffraction/reflection **plus** a straight-through transmission path (direction preserved) attenuated by a per-band **isolation spectrum** `R(f)` (amplitude ×`10^(−R(f)/20)`), combined as **phase-preserving complex pressure**. The opaque limit `R(f)→∞` reproduces the standard screen bit-for-bit. Buildings carry a **per-façade** `R(f)`. Isolation spectra are entered on the 1/12-octave grid, or as 1/1-/1/3-octave values linearly interpolated (in dB across band index) onto the grid.
+
+### Planned architecture (three new crates + a web frontend)
+
+| Piece | Role |
+|-------|------|
+| `envi-gis` | The single C-linked boundary: GDAL/PROJ + data acquisition (DEM COG `/vsicurl/` reads, WorldCover, Overture, Open-Meteo/ERA5) + geometry derivation (auto-UTM, DGM TIN, **DEM cut-profile** extraction, impedance segmentation, screening edges, CDT receiver grids, contouring). |
+| `envi-store` | serde DTO mirror of the engine scene types (keeps serde **out** of `envi-engine`), project-folder layout, **receiver-axis-chunked** tensor store. |
+| `envi-service` | axum HTTP API + job registry (SSE progress, cancellation) + the **recondition/recompute** recalc router; serves the built frontend as one deployable binary. |
+| `web/` | Vite + React, **MapLibre GL JS 5 + react-map-gl 8 + Terra Draw** scene editor, property panels, weather what-if, job status, spectra charts, isophone overlay. |
+
+`envi-engine` stays byte-identical (dependency quarantine preserved). The one
+load-bearing engine refactor is promoting the Scene→level solver out of
+`envi-harness` into `envi_engine::solver` (during Phase 4) so the FORCE suite
+validates the exact code the web app runs.
+
+### Roadmap — Milestone 2 (phases 5–11, appended non-destructively)
+
+| Phase | Scope | Engine gate |
+|-------|-------|-------------|
+| 5 | **Engine extensions** — forest (ENG-09) + semi-transparent partitions (ENG-10), phase-preserving, opaque-limit regression | needs Phase 2 (done) |
+| 6 | **Service foundation & persistence** — project store, one CRS boundary, band-index wire contract, recondition/recompute split, job state machine | parallel-safe |
+| 7 | **Frontend shell & scene editing** — MapLibre/Terra Draw editor for all objects incl. semi-transparent screens/buildings + isolation-spectrum editor | parallel-safe |
+| 8 | **GIS ingestion & DGM** — viewport import onto an editable DGM; offline compute path | parallel-safe |
+| 9 | **Path extraction & weather** — cut-profile (GRASS `r.profile` oracle), segmentation, screening edges, CDT grids; Open-Meteo → A/B/C | weather half gates on engine **Phase 3** |
+| 10 | **Calculation service** — submit/progress/abort + cost estimate; chunked, memory-bounded tensor store | hard gate engine **Phase 4** |
+| 11 | **Results & fast recalc** — spectra, isophone maps, interactive MAC conditioning, named what-if scenarios + diff maps, exports | hard gate engine **Phases 3–4** |
+
+Phases 5–8 are parallel-safe with the engine finish; the calculation/results
+phases wait on the engine's transfer tensor. **Deferred beyond Milestone 2:** L_den
+weather-class statistics, variable wall height, road/rail emission, DXF/SketchUp
+import, 2.5D BEM barrier corrections (Bempp), SOFA directivity.
+
+**Stack (all versions verified 2026-07-08):** axum 0.8 / tokio / rayon backend,
+`ndarray-npy` + `memmap2` tensor chunks, `gdal` 0.19 / `proj` 0.31 (quarantined)
++ pure-Rust `geoparquet` / `contour`, MapLibre GL JS 5 + react-map-gl 8 +
+Terra Draw + Vite 8 + React 19 frontend, Playwright for UAT. See `.planning/` for
+the full project context, requirements, research (`.planning/research/`), and roadmap.
 
 ## Licensing note
 
