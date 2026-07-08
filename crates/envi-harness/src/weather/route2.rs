@@ -68,8 +68,9 @@ pub fn route2_components(params: &PropagationParams) -> Result<WeatherComponents
     let zu = finite_or(params.zu_m, DEFAULT_ZU_M, "zu")?;
     // Anemometer height must be strictly positive (matches route3::reconstruct_
     // profiles). A non-positive zu makes ln(zu/z₀+1) ≤ 0 or NaN, which would
-    // silently flip the wind coefficient's sign or zero it (WR-02).
-    if !(zu > 0.0) {
+    // silently flip the wind coefficient's sign or zero it (WR-02). zu is finite
+    // (validated above), so the plain comparison is unambiguous — matching route3.
+    if zu <= 0.0 {
         return Err(CaseLoadError::NonFinite {
             context: "weather route 2".to_string(),
             what: "zu must be positive".to_string(),
