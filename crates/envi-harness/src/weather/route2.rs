@@ -78,6 +78,21 @@ pub fn route2_components(params: &PropagationParams) -> Result<WeatherComponents
     let dtdz = finite_or(params.dtdz, 0.0, "dt/dz")?;
     let su = finite_or(params.su_ms, 0.0, "su")?;
     let sdtdz = finite_or(params.sdtdz, 0.0, "sdt/dz")?;
+    // Standard deviations are non-negative by definition. A negative value is
+    // non-physical and would flow into A⁺ = A + 1.7·sA giving A⁺ < A (wrong
+    // upper-refraction profile) — reject rather than propagate garbage (IN-03).
+    if su < 0.0 {
+        return Err(CaseLoadError::NonFinite {
+            context: "weather route 2".to_string(),
+            what: "su (wind-speed std-dev) must be non-negative".to_string(),
+        });
+    }
+    if sdtdz < 0.0 {
+        return Err(CaseLoadError::NonFinite {
+            context: "weather route 2".to_string(),
+            what: "sdt/dz (temperature-gradient std-dev) must be non-negative".to_string(),
+        });
+    }
     let z0_raw = finite_or(params.z0_m, DEFAULT_Z0_M, "z0")?;
     let z0 = z0_raw.max(DEFAULT_Z0_M); // clamp ≥ 0.001 m (D-16)
 
@@ -288,6 +303,25 @@ mod tests {
                 "zu = {bad_zu} must be rejected"
             );
         }
+    }
+
+    // IN-03: negative met std-devs are non-physical and rejected with a typed
+    // error (they would otherwise give A⁺ < A in the upper-refraction profile).
+    #[test]
+    fn weather_route2_rejects_negative_std_devs() {
+        let mut p = met(5.0, 0.0, 0.0);
+        p.su_ms = Some(-0.1);
+        assert!(matches!(
+            route2(&p, 0.0),
+            Err(CaseLoadError::NonFinite { .. })
+        ));
+
+        let mut q = met(5.0, 0.0, 0.0);
+        q.sdtdz = Some(-0.01);
+        assert!(matches!(
+            route2(&q, 0.0),
+            Err(CaseLoadError::NonFinite { .. })
+        ));
     }
 
     // Absent optional fields are data, not an error: a bare params still routes.
