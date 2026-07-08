@@ -20,4 +20,5 @@ pub mod freq;
 pub mod geometry;
 pub mod propagation;
 pub mod scene;
+pub mod tensor;
 pub mod transfer;
