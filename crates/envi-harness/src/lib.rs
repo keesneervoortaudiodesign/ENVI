@@ -22,6 +22,8 @@ use envi_engine::propagation::{PropagationError, direct_path};
 use envi_engine::scene::{GroundSegment, TerrainProfile};
 use envi_engine::transfer::band_levels_db;
 
+pub mod facade;
+
 /// Result of running one case through the capability gate + engine + comparator.
 #[derive(Debug)]
 pub enum Outcome {

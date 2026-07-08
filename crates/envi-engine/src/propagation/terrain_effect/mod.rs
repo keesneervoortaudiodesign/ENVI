@@ -56,6 +56,7 @@ use crate::scene::TerrainProfile;
 
 pub mod screen;
 pub mod submodel1;
+pub mod submodel11;
 pub mod submodel2;
 pub mod submodel3;
 pub mod submodel7;
