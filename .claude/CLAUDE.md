@@ -40,11 +40,11 @@ Web-based, self-hosted **Nord2000** environmental sound-propagation engine, impl
 - `cargo test` — all tests pass (this includes the FORCE/analytic validation harness).
 - `#![deny(unsafe_code)]` on the pure-math engine crate. `unsafe` is allowed **only** at genuine FFI boundaries (`gdal`, `proj` C bindings), never in the acoustics/geometry logic.
 
-## GSD Workflow — Phase Completion gates
-This repo is driven by GSD (`/gsd-*`). At the end of EVERY GSD phase, before it is marked complete, **run all applicable gates** — mandatory, not optional. A phase is not "done" until each finding is fixed or explicitly recorded as an accepted risk:
-- **`/gsd-code-review <phase>`** — review the phase's changed files for bugs, security, and quality issues.
-- **`/gsd-secure <phase>`** — verify the phase's threat-model mitigations exist in the implemented code (produces SECURITY.md).
-- **`/gsd-verify <phase>`** — goal-backward verification that the shipped code delivers the phase's success criteria (produces VERIFICATION.md); the phase is not complete until its status is `passed` (or gaps are explicitly accepted).
+## GSD Workflow — Phase Completion gates (MANDATORY — always run, auto-fix)
+This repo is driven by GSD (`/gsd-*`). At the end of EVERY GSD phase, before it is marked complete, **ALWAYS run the gates below AND automatically fix the issues they surface** — do not skip them, do not merely record findings, do not stop to ask permission first. A phase is not "done" until these have run, every finding is **fixed** (only where a fix is genuinely wrong or infeasible may it be explicitly recorded as an accepted risk with rationale), and all quality gates are green again.
+- **ALWAYS `/gsd-code-review <phase> --fix`** — review the phase's changed files for bugs, security, and quality issues **and auto-apply the fixes** (spawns the fixer and re-tests). Run the review→fix loop (e.g. `--fix --auto`) until the review is clean or only accepted-risk findings remain; then re-run `cargo build/test/clippy/fmt` and confirm green, and commit the fixes.
+- **ALWAYS `/gsd-secure-phase <phase>`** — verify the phase's threat-model mitigations exist in the implemented code (produces SECURITY.md) **and fix any missing or insufficient mitigation it finds**, then re-verify until SECURITY.md is clean.
+- **`/gsd-verify <phase>`** — goal-backward verification that the shipped code delivers the phase's success criteria (produces VERIFICATION.md); the phase is not complete until its status is `passed` (or gaps are explicitly accepted). Run this AFTER the code-review/secure fixes so it verifies the fixed tree.
 - **Documentation consistency scan** — after the gates, grep the phase number across `.planning/` and reconcile every hit: `STATE.md` (frontmatter counts/percent/position + status table), `ROADMAP.md` (`**Plans:** N/N`, per-plan `[x]`, Progress table row), `REQUIREMENTS.md` traceability, and each phase artifact's `status:` frontmatter must all agree — no stale `In Progress`, no mismatched plan count, no verdict/status contradiction. (The GSD `phase complete` tool can mangle STATE.md frontmatter — re-verify by hand.)
 - **README** — any new feature or changed behaviour must be reflected in the repo `README.md` before the phase is "done".
 
