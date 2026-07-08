@@ -72,6 +72,22 @@ pub enum Period {
     Night,
 }
 
+/// Which day/evening/night hour split to use when combining into `L_den`.
+///
+/// The evening/night **penalties** (+5 / +10 dB) are fixed by the END; only the
+/// hour weights differ between national implementations (Pitfall 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HourScheme {
+    /// EU END / Directive 2002/49/EC default: day 12 h, evening 4 h, night 8 h.
+    #[default]
+    EndDefault,
+    /// Danish scheme (AV 1171/06 §2.2 Table 1): day 07–19 (12 h), evening 19–22
+    /// (**3 h**), night 22–07 (**9 h**). The FORCE `TestYearlyAverage` workbook
+    /// is Danish, so its `L_den` MUST use this split — NOT the EU 12/4/8 default
+    /// (Pitfall 4).
+    Danish,
+}
+
 impl Period {
     /// The three periods in the sheet's block order (day, evening, night).
     #[must_use]
@@ -79,14 +95,26 @@ impl Period {
         [Period::Day, Period::Evening, Period::Night]
     }
 
-    /// The `L_den` weighting (hours, penalty dB) for this period (EU END /
-    /// Directive 2002/49/EC: 12 h day +0, 4 h evening +5, 8 h night +10).
+    /// The `L_den` weighting (hours, penalty dB) for this period under the EU
+    /// END default (12 h day +0, 4 h evening +5, 8 h night +10). Kept as the
+    /// backward-compatible default; [`Self::weighting_scheme`] parameterizes it.
     #[must_use]
     pub const fn weighting(self) -> (f64, f64) {
-        match self {
-            Period::Day => (12.0, 0.0),
-            Period::Evening => (4.0, 5.0),
-            Period::Night => (8.0, 10.0),
+        self.weighting_scheme(HourScheme::EndDefault)
+    }
+
+    /// The `L_den` weighting (hours, penalty dB) for this period under `scheme`.
+    /// Only the hour weights vary between schemes; the +5 / +10 dB penalties are
+    /// END-fixed (Pitfall 4).
+    #[must_use]
+    pub const fn weighting_scheme(self, scheme: HourScheme) -> (f64, f64) {
+        match (scheme, self) {
+            (HourScheme::EndDefault, Period::Day) => (12.0, 0.0),
+            (HourScheme::EndDefault, Period::Evening) => (4.0, 5.0),
+            (HourScheme::EndDefault, Period::Night) => (8.0, 10.0),
+            (HourScheme::Danish, Period::Day) => (12.0, 0.0),
+            (HourScheme::Danish, Period::Evening) => (3.0, 5.0),
+            (HourScheme::Danish, Period::Night) => (9.0, 10.0),
         }
     }
 }
@@ -163,14 +191,32 @@ pub fn energy_weighted_over_classes(
     energy_weighted_level(levels, &probs)
 }
 
-/// Combine three period levels into `L_den` with the END penalties and hour
-/// weights: `L_den = 10·lg[(12·10^{Lday/10} + 4·10^{(Leve+5)/10} +
+/// Combine three period levels into `L_den` under the EU END default hour split
+/// (12/4/8): `L_den = 10·lg[(12·10^{Lday/10} + 4·10^{(Leve+5)/10} +
 /// 8·10^{(Lnight+10)/10}) / 24]`.
 ///
 /// # Errors
 ///
 /// [`CaseLoadError::NonFinite`] if any period level is non-finite.
 pub fn l_den(day: f64, evening: f64, night: f64) -> Result<f64, CaseLoadError> {
+    l_den_scheme(day, evening, night, HourScheme::EndDefault)
+}
+
+/// Combine three period levels into `L_den` under a chosen [`HourScheme`].
+///
+/// FORCE `TestYearlyAverage` is Danish ⇒ [`HourScheme::Danish`] (12/3/9), NOT
+/// the EU 12/4/8 default (Pitfall 4). The +5 / +10 dB evening/night penalties
+/// are END-fixed and identical across schemes; only the hour weights change.
+///
+/// # Errors
+///
+/// [`CaseLoadError::NonFinite`] if any period level is non-finite.
+pub fn l_den_scheme(
+    day: f64,
+    evening: f64,
+    night: f64,
+    scheme: HourScheme,
+) -> Result<f64, CaseLoadError> {
     let mut num = 0.0;
     let mut hours = 0.0;
     for (level, period) in [
@@ -184,7 +230,7 @@ pub fn l_den(day: f64, evening: f64, night: f64) -> Result<f64, CaseLoadError> {
                 what: format!("{period:?} level"),
             });
         }
-        let (h, penalty) = period.weighting();
+        let (h, penalty) = period.weighting_scheme(scheme);
         num += h * 10f64.powf((level + penalty) / 10.0);
         hours += h;
     }
@@ -439,6 +485,41 @@ mod tests {
             noisy_night > noisy_day,
             "the +10 dB night penalty must weight night energy more heavily"
         );
+    }
+
+    // Pitfall 4: the Danish 12/3/9 hour split must give a DIFFERENT L_den from
+    // the EU 12/4/8 default whenever the evening/night levels differ (FORCE
+    // TestYearlyAverage is Danish). A regression guarding against a silent revert
+    // to the EU default.
+    #[test]
+    fn danish_hours_differ_from_the_eu_default_l_den() {
+        // Distinct day/evening/night levels so the 4h→3h evening and 8h→9h night
+        // reweighting actually moves the combined level.
+        let (day, eve, night) = (60.0, 65.0, 55.0);
+        let eu = l_den_scheme(day, eve, night, HourScheme::EndDefault).unwrap();
+        let dk = l_den_scheme(day, eve, night, HourScheme::Danish).unwrap();
+        assert!(
+            (eu - dk).abs() > 1e-3,
+            "Danish 12/3/9 must differ from EU 12/4/8: eu={eu} dk={dk}"
+        );
+        // The default entry point is the EU split (backward compatible).
+        assert!((l_den(day, eve, night).unwrap() - eu).abs() < 1e-12);
+        // Hand value for the Danish split (12/3/9, +0/+5/+10):
+        let want_dk = 10.0
+            * ((12.0 * 10f64.powf(day / 10.0)
+                + 3.0 * 10f64.powf((eve + 5.0) / 10.0)
+                + 9.0 * 10f64.powf((night + 10.0) / 10.0))
+                / 24.0)
+                .log10();
+        assert!(
+            (dk - want_dk).abs() < 1e-9,
+            "Danish L_den: {dk} vs {want_dk}"
+        );
+        // The Danish weights sum to 24 h too.
+        let (hd, _) = Period::Day.weighting_scheme(HourScheme::Danish);
+        let (he, _) = Period::Evening.weighting_scheme(HourScheme::Danish);
+        let (hn, _) = Period::Night.weighting_scheme(HourScheme::Danish);
+        assert_eq!(hd + he + hn, 24.0);
     }
 
     #[test]

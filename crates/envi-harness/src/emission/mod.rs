@@ -229,6 +229,93 @@ impl RoadSource {
     }
 }
 
+/// One traffic class on a lane: a [`RoadSource`] carrying a fraction of the
+/// lane's total flow (an ENERGY/flow share in `[0, 1]`, need not pre-normalize).
+///
+/// Curved-road FORCE traffic is `90 % cat-1 @ 90 km/h + 10 % cat-2/3 @ 70 km/h`
+/// (EP 1335 Ch. 4); city-street is `100 % cat-1 @ 50 km/h`. Each class expands
+/// into its OWN sub-sources at its OWN heights (0.30 m light vs 0.75 m heavy),
+/// scaled by its flow share — categories are NEVER merged into a single "high"
+/// source because their physical heights differ.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrafficClass {
+    /// The vehicle-class road source (category, speed, surface, temperature).
+    pub source: RoadSource,
+    /// Flow share of the lane total (fraction, `> 0`).
+    pub fraction: f64,
+}
+
+/// The along-road source-line offsets (m) for a road section of half-length
+/// `half_len_m` sampled at `spacing_m`, symmetric about the perpendicular
+/// foot (`y = 0`): `…, −spacing, 0, +spacing, …` within `±half_len_m`.
+///
+/// Curved-road spacing is 10/25/50 m and city-street 2/20 m (EP 1335 Ch. 4–5);
+/// the discrete source points replace the 179-point 1° pass-by discretization
+/// used for the (laterally-invariant) straight road.
+///
+/// Returns an empty vec for a non-finite / non-positive `spacing_m` or
+/// `half_len_m` (a degenerate section contributes nothing — the caller treats
+/// the empty set as "no in-range sources").
+#[must_use]
+pub fn source_line_offsets(half_len_m: f64, spacing_m: f64) -> Vec<f64> {
+    if !(spacing_m.is_finite() && spacing_m > 0.0 && half_len_m.is_finite() && half_len_m >= 0.0) {
+        return Vec::new();
+    }
+    let n = (half_len_m / spacing_m).floor() as i64;
+    (-n..=n).map(|k| k as f64 * spacing_m).collect()
+}
+
+/// The city-street source cutoff (EP 1335 Ch. 5): a source point is included
+/// only while its source→receiver distance is within `factor ×` the shortest
+/// source→receiver distance on the lane (`factor = 20`).
+///
+/// Returns `true` when `d_source ≤ factor · d_shortest` (both finite, positive).
+#[must_use]
+pub fn within_distance_cutoff(d_source: f64, d_shortest: f64, factor: f64) -> bool {
+    d_source.is_finite()
+        && d_shortest.is_finite()
+        && d_source > 0.0
+        && d_shortest > 0.0
+        && d_source <= factor * d_shortest
+}
+
+/// The city-street 20×-shortest-distance cutoff factor (EP 1335 Ch. 5).
+pub const CITY_CUTOFF_FACTOR: f64 = 20.0;
+
+/// Expand a multi-class lane into the union of every class's directional
+/// sub-sources at a single source-line point, each scaled by its flow share.
+///
+/// For every [`TrafficClass`] the two Nord2000 sub-sources are expanded via
+/// [`RoadSource::expand`] and their `L_W` spectra shifted by `10·lg(fraction)`
+/// (the energy/flow share) — so two classes at the same level combine
+/// incoherently in the readout exactly as their shares dictate. Categories keep
+/// their own heights (light 0.30 m, heavy 0.75 m).
+#[must_use]
+pub fn expand_traffic(
+    classes: &[TrafficClass],
+    lane_centre_xy: [f64; 2],
+    toward_receiver_xy: [f64; 2],
+    ground_z: f64,
+) -> Vec<RoadSubSource> {
+    let mut out = Vec::with_capacity(classes.len() * 2);
+    for class in classes {
+        if !(class.fraction.is_finite() && class.fraction > 0.0) {
+            continue;
+        }
+        let shift = 10.0 * class.fraction.log10();
+        for mut sub in class
+            .source
+            .expand(lane_centre_xy, toward_receiver_xy, ground_z)
+        {
+            let shifted: [f64; N_BANDS] =
+                std::array::from_fn(|i| sub.sub_source.spectrum.as_slice()[i] + shift);
+            sub.sub_source.spectrum = BandSpectrum::from_values(shifted);
+            out.push(sub);
+        }
+    }
+    out
+}
+
 /// Incoherent energy sum of per-band levels, dB: `10·lg Σ 10^{L/10}`.
 ///
 /// Two identical co-located sub-sources combine to `+10·lg 2 ≈ +3.01 dB`
@@ -381,6 +468,106 @@ mod tests {
     #[test]
     fn provenance_is_assumed() {
         assert_eq!(cat1().provenance(), Provenance::Assumed);
+    }
+
+    #[test]
+    fn source_line_offsets_are_symmetric_and_spaced() {
+        // half-length 100 m at 25 m spacing ⇒ −100 … +100 in 25 m steps (9 pts).
+        let offs = source_line_offsets(100.0, 25.0);
+        assert_eq!(offs.len(), 9);
+        assert!((offs[0] + 100.0).abs() < 1e-12);
+        assert!((offs[4]).abs() < 1e-12); // centre point at y = 0
+        assert!((offs[8] - 100.0).abs() < 1e-12);
+        // Symmetry about 0.
+        for k in 0..offs.len() {
+            assert!((offs[k] + offs[offs.len() - 1 - k]).abs() < 1e-12);
+        }
+        // Degenerate spacing ⇒ empty (never a panic / infinite loop).
+        assert!(source_line_offsets(100.0, 0.0).is_empty());
+        assert!(source_line_offsets(100.0, f64::NAN).is_empty());
+    }
+
+    #[test]
+    fn city_cutoff_keeps_near_and_drops_far_sources() {
+        let d_shortest = 30.0;
+        assert!(within_distance_cutoff(30.0, d_shortest, CITY_CUTOFF_FACTOR));
+        assert!(within_distance_cutoff(
+            20.0 * 30.0,
+            d_shortest,
+            CITY_CUTOFF_FACTOR
+        ));
+        // Just beyond 20× is dropped.
+        assert!(!within_distance_cutoff(
+            20.0 * 30.0 + 1e-6,
+            d_shortest,
+            CITY_CUTOFF_FACTOR
+        ));
+        assert!(!within_distance_cutoff(
+            -1.0,
+            d_shortest,
+            CITY_CUTOFF_FACTOR
+        ));
+    }
+
+    #[test]
+    fn multiclass_expands_each_category_at_its_own_height_scaled_by_share() {
+        // Curved-road mix: 90 % cat-1 @ 90 + 10 % cat-3 @ 70.
+        let classes = [
+            TrafficClass {
+                source: RoadSource {
+                    category: RoadCategory::Light,
+                    speed_kmh: 90.0,
+                    surface: RoadSurface::Dac12,
+                    temperature_c: 15.0,
+                },
+                fraction: 0.9,
+            },
+            TrafficClass {
+                source: RoadSource {
+                    category: RoadCategory::Heavy,
+                    speed_kmh: 70.0,
+                    surface: RoadSurface::Dac12,
+                    temperature_c: 15.0,
+                },
+                fraction: 0.1,
+            },
+        ];
+        let subs = expand_traffic(&classes, [2.5, 0.0], [1.0, 0.0], 0.0);
+        assert_eq!(subs.len(), 4, "two classes × two heights");
+        // Light high source at 0.30 m, heavy high source at 0.75 m.
+        assert!((subs[1].sub_source.position[2] - 0.30).abs() < 1e-12);
+        assert!((subs[3].sub_source.position[2] - 0.75).abs() < 1e-12);
+
+        // The 90 % share is a −10·lg(1/0.9) ≈ −0.458 dB shift vs the unshared
+        // single-class expansion.
+        let single = RoadSource {
+            category: RoadCategory::Light,
+            speed_kmh: 90.0,
+            surface: RoadSurface::Dac12,
+            temperature_c: 15.0,
+        }
+        .expand([2.5, 0.0], [1.0, 0.0], 0.0);
+        let want_shift = 10.0 * 0.9_f64.log10();
+        for f in 0..N_BANDS {
+            assert!(
+                (subs[0].sub_source.spectrum.as_slice()[f]
+                    - single[0].sub_source.spectrum.as_slice()[f]
+                    - want_shift)
+                    .abs()
+                    < 1e-9
+            );
+        }
+        // A zero/negative fraction contributes nothing (never a −inf spectrum).
+        let none = expand_traffic(
+            &[TrafficClass {
+                source: classes[0].source,
+                fraction: 0.0,
+            }],
+            [2.5, 0.0],
+            [1.0, 0.0],
+            0.0,
+        );
+        assert!(none.is_empty());
     }
 
     #[test]

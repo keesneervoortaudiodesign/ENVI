@@ -167,6 +167,24 @@ pub enum CaseLoadError {
         /// What was wrong.
         message: String,
     },
+    /// A required section header (e.g. `"Road centreline"`, `"Receivers"`) on a
+    /// `Coordinates` sheet was not found.
+    #[error("sheet {sheet:?}: coordinate section {section:?} not found")]
+    MissingSection {
+        /// Worksheet name.
+        sheet: String,
+        /// The missing section label.
+        section: String,
+    },
+    /// A curved/city geometry construction failed (e.g. a cut-plane profile that
+    /// could not be built from the terrain contour lines).
+    #[error("{context}: geometry error: {message}")]
+    Geometry {
+        /// Sheet or file the geometry came from.
+        context: String,
+        /// What went wrong.
+        message: String,
+    },
 }
 
 /// Provenance of the reference values a case is compared against.
@@ -296,6 +314,55 @@ pub struct TerrainRow {
     pub flow_resistivity_kns_m4: f64,
     /// Terrain roughness, m (class N = 0).
     pub roughness_m: f64,
+}
+
+/// A 3-D coordinate `[x, y, z]` (m) from a curved/city `Coordinates` sheet.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Coord3 {
+    /// Easting / cut-plane X (m).
+    pub x: f64,
+    /// Northing / along-road Y (m).
+    pub y: f64,
+    /// Elevation Z (m).
+    pub z: f64,
+}
+
+/// One terrain contour line (iso-elevation polyline) from the curved-road
+/// `Coordinates` sheet: a constant elevation `z` and its `(x, y)` vertices.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Contour {
+    /// The contour's constant elevation, m.
+    pub elevation_z: f64,
+    /// The polyline vertices `(x, y)` (m), in sheet order.
+    pub xy: Vec<[f64; 2]>,
+}
+
+/// The parsed curved-road `Coordinates` sheet: the road centre line, the thin /
+/// thick screen polylines and the thick-screen base, plus the terrain contour
+/// lines the cut-plane profile builder interpolates (EP 1335 Ch. 4).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CurvedCoordinates {
+    /// Road centre-line vertices `[x, y, z]`.
+    pub centreline: Vec<Coord3>,
+    /// Thin-screen polyline `[x, y, z]` (empty if none).
+    pub thin_screen: Vec<Coord3>,
+    /// Thick-screen (building) polyline `[x, y, z]` (empty if none).
+    pub thick_screen: Vec<Coord3>,
+    /// Thick-screen ground base polyline `[x, y, z]` (empty if none).
+    pub thick_screen_base: Vec<Coord3>,
+    /// Terrain contour lines used to build per-source-point cut-plane profiles.
+    pub contours: Vec<Contour>,
+}
+
+/// The parsed city-street `Coordinates` sheet: building footprints (each a
+/// closed polygon of `(x, y)` vertices) and the receiver positions (EP 1335
+/// Ch. 5). Heights come from the per-case sheets (façade receiver heights).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CityCoordinates {
+    /// Building footprints (each a polygon of `(x, y)` vertices, m).
+    pub buildings: Vec<Vec<[f64; 2]>>,
+    /// Receiver positions `(x, y)` (m).
+    pub receivers: Vec<[f64; 2]>,
 }
 
 /// One row of the 27-band FORCE reference spectrum table.
@@ -522,50 +589,29 @@ pub fn discover(refs_dir: &Path, cases_dir: &Path) -> Discovery {
         );
     }
 
-    // 3. Remaining FORCE workbooks: counted but not parsed until Phases 3-4;
-    //    each present workbook surfaces as one Skipped placeholder case.
-    for (file, group, kind, label) in [
-        (
-            "TestCurvedRoad.xls",
-            "curved_road",
-            CaseKind::ForceCurvedRoad,
-            "Curved Road",
-        ),
-        (
-            "TestCityStreet.xls",
-            "city_street",
-            CaseKind::ForceCityStreet,
-            "City Street",
-        ),
-        (
-            "TestYearlyAverage.xls",
-            "yearly_average",
-            CaseKind::ForceYearlyAverage,
-            "Yearly Average",
-        ),
-    ] {
+    // 3. Curved / city / yearly FORCE workbooks — fully parsed into one case per
+    //    numeric sheet (plan 04-04, replacing the one-placeholder-per-workbook of
+    //    Phases 1-3). Missing refs degrade silently (the straight-road note above
+    //    already points at refs/fetch.sh); a malformed workbook becomes a single
+    //    per-workbook load failure rather than aborting discovery.
+    type WorkbookLoader = fn(&Path) -> Result<Vec<DiscoveredCase>, CaseLoadError>;
+    let workbooks: [(&str, &str, WorkbookLoader); 3] = [
+        ("TestCurvedRoad.xls", "curved_road", xls::load_curved_road),
+        ("TestCityStreet.xls", "city_street", xls::load_city_street),
+        ("TestYearlyAverage.xls", "yearly_average", xls::load_yearly),
+    ];
+    for (file, group, loader) in workbooks {
         let path = refs_dir.join(file);
         if !path.is_file() {
             continue;
         }
-        let id = format!("{group}::workbook");
-        discovery.cases.push(DiscoveredCase {
-            id: id.clone(),
-            case: Ok(CaseDefinition {
-                id,
-                name: format!("FORCE {label} workbook (placeholder)"),
-                kind,
-                reference_version: ReferenceVersion::Force2009,
-                description: format!("{file} present — layout parsing lands in Phases 3-4"),
-                source_position: None,
-                source_spectrum: SourceSpectrum::default(),
-                receiver_position: None,
-                propagation: PropagationParams::default(),
-                terrain_profile: Vec::new(),
-                reference_spectrum: None,
-                expected: None,
+        match confine(refs_dir, &path).and_then(|safe| loader(&safe)) {
+            Ok(mut cases) => discovery.cases.append(&mut cases),
+            Err(e) => discovery.cases.push(DiscoveredCase {
+                id: format!("{group}::workbook"),
+                case: Err(e),
             }),
-        });
+        }
     }
 
     discovery
