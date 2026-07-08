@@ -160,7 +160,7 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Mapped during roadmap creation (2026-07-07). See `.planning/ROADMAP.md`.
+Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08). See `.planning/ROADMAP.md`.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -194,15 +194,60 @@ Mapped during roadmap creation (2026-07-07). See `.planning/ROADMAP.md`.
 | VAL-01 | Phase 1 | Complete |
 | VAL-02 | Phase 4 | Pending |
 | VAL-03 | Phase 4 | Pending |
+| ENG-09 | Phase 5 | Pending |
+| ENG-10 | Phase 5 | Pending |
+| SCN-01 | Phase 7 | Pending |
+| SCN-02 | Phase 7 | Pending |
+| SCN-03 | Phase 7 | Pending |
+| SCN-04 | Phase 7 | Pending |
+| DATA-01 | Phase 8 | Pending |
+| DATA-02 | Phase 8 | Pending |
+| DATA-03 | Phase 8 | Pending |
+| DATA-04 | Phase 8 | Pending |
+| GEOX-01 | Phase 9 | Pending |
+| GEOX-02 | Phase 9 | Pending |
+| GEOX-03 | Phase 9 | Pending |
+| GEOX-04 | Phase 6 | Pending |
+| METX-01 | Phase 9 | Pending |
+| METX-02 | Phase 9 | Pending |
+| METX-03 | Phase 11 | Pending |
+| METX-04 | Phase 11 | Pending |
+| GRID-01 | Phase 9 | Pending |
+| GRID-02 | Phase 10 | Pending |
+| GRID-04 | Phase 11 | Pending |
+| GRID-05 | Phase 11 | Pending |
+| WEB-01 | Phase 7 | Pending |
+| WEB-02 | Phase 7 | Pending |
+| WEB-03 | Phase 7 | Pending |
+| WEB-04 | Phase 7 | Pending |
+| WEB-05 | Phase 11 | Pending |
+| WEB-06 | Phase 11 | Pending |
+| WEB-07 | Phase 10 | Pending |
+| WEB-08 | Phase 7 | Pending |
+| WEB-09 | Phase 7 | Pending |
+| WEB-10 | Phase 7 | Pending |
+| WEB-11 | Phase 11 | Pending |
+| WEB-12 | Phase 11 | Pending |
+| SVC-01 | Phase 6 | Pending |
+| SVC-02 | Phase 10 | Pending |
+| SVC-03 | Phase 6 | Pending |
+| SVC-04 | Phase 6 | Pending |
+| SVC-05 | Phase 6 | Pending |
+| SVC-06 | Phase 11 | Pending |
+| SVC-07 | Phase 6 | Pending |
 
 **Coverage:**
 
 - v1 requirements: 30 total (ENG 8, OUT 6, MET 6, SRC 4, GEO 3, VAL 3)
 - Mapped to phases: 30/30 ✓
 - Unmapped: 0 ✓
+- Milestone 2 (v2.0) requirements: 41 total (ENG 2, SCN 4, DATA 4, GEOX 4, METX 4, GRID 4, WEB 12, SVC 7)
+- Mapped to phases: 41/41 ✓ (Phases 5–11; each requirement exactly one phase)
+- Unmapped: 0 ✓ — GRID-03 and FUT-01..05 deferred beyond Milestone 2 by design (intentionally not mapped)
 
-**Milestone 2 (v2.0) requirements** are listed above (ENG-09/10, SCN, DATA, GEOX, METX, GRID, WEB, SVC). Their phase mapping is filled in by the Milestone-2 roadmap (phases 5+); the table above covers Milestone 1 (phases 1–4).
+Note on SVC-06: the `recondition`/`recompute` API split and hash-keyed tensor identity are *designed* in Phase 6 (contract-tested against a stub tensor, before any UI binds to it) and *realized* end-to-end in Phase 11 where the real MAC path exists — the requirement maps to Phase 11, where it becomes user-observable.
 
 ---
 *Requirements defined: 2026-07-07 (Milestone 1)*
 *Last updated: 2026-07-08 — Milestone 2 (v2.0 Interactive Calculation UI) requirements defined, incl. semi-transparent partitions (ENG-10) + forest term (ENG-09)*
+*Traceability updated: 2026-07-08 — Milestone 2 requirements mapped to Phases 5–11 (41/41)*

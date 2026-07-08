@@ -113,6 +113,128 @@ Plans:
 - [ ] 04-02: Directional sub-sources — spherical directivity balloons, multi-sub-source composition into the tensor
 - [ ] 04-03: Full FORCE suite pass + NoiseModelling cross-validation of shared sub-effects; milestone acceptance
 
+## Milestone 2: Interactive Calculation UI
+
+Milestone 2 wraps the validated engine in a NoizCalc-style (TI 386 ch. 3–4) self-hosted web application — draw a scene on an OSM/terrain map, import open GIS + weather data, run a calculation job, and read back receiver spectra and dB(A)/dB(C) isophone maps — as a single integrated app, Nord2000-only. Two new engine extensions (forest attenuation ENG-09, semi-transparent partitions ENG-10) land first in a dedicated engine phase so the scene objects and UI that expose them are never silently inert. This milestone is planned ahead non-destructively: engine Phases 3–4 remain the immediate execution priority. Phases 6–8 (and Phase 9's geometry half) are engine-independent and parallel-safe with the engine finish; Phase 9's weather half gates on engine Phase 3; Phases 10–11 hard-gate on engine Phase 4's promoted solver + tensor contract.
+
+Architecture per `.planning/research/ARCHITECTURE.md`: three new crates (`envi-gis` — the only C-linked crate; `envi-store` — serde DTO mirror + project folder + chunked tensor store; `envi-service` — axum HTTP + jobs + recalc router) plus a `web/` npm workspace, around the untouched `envi-engine` quarantine. GRID-03 (L_den weather-class combination) and the FUT group (DXF/SketchUp import, BEM corrections, SOFA directivity) are deferred beyond Milestone 2 and intentionally unmapped.
+
+## Milestone 2 Phases
+
+- [ ] **Phase 5: Engine Extensions — Forest & Semi-Transparent Partitions** - Nord2000 forest attenuation A = d·a(f) and finite-transmission partitions via per-band isolation spectra R(f), phase-preserving, with the opaque limit regression-pinned to the standard screen
+- [ ] **Phase 6: Service Foundation & Persistence** - `envi-store` + `envi-service` skeleton: project-folder CRUD, single CRS boundary, band-index wire contract, recondition/recompute API split, job state machine, GDAL/PROJ Windows provisioning + startup self-check
+- [ ] **Phase 7: Frontend Shell & Scene Editing** - MapLibre/Terra Draw scene editor for all object kinds — including semi-transparent screens/buildings with the isolation-spectrum editor, forests, and elevation editing — with draw-time validation
+- [ ] **Phase 8: GIS Ingestion & DGM** - Viewport import of GLO-30/LiDAR terrain, WorldCover ground cover, and Overture/OSM buildings onto a triangulated DGM; local-cache compute path; check-and-complete editability
+- [ ] **Phase 9: Path Extraction & Weather** - DEM cut-profile extractor (GRASS oracle), impedance segmentation, screening edges, CDT receiver grids; Open-Meteo import → per-azimuth A/B/C; ERA5 groundwork
+- [ ] **Phase 10: Calculation Service** - Chunked tensor store + job runner wiring the promoted engine solver: submit/progress/abort with pre-run cost estimate, hash-keyed manifests, memory-bounded large grids
+- [ ] **Phase 11: Results & Fast Recalc** - Receiver spectra, isophone noise maps with editable color scale, interactive source conditioning via the tensor MAC, named weather scenarios + difference maps, exports
+
+## Milestone 2 Phase Details
+
+### Phase 5: Engine Extensions — Forest & Semi-Transparent Partitions
+
+**Goal**: Drawn forests actually attenuate and semi-transparent screens/façades actually transmit — the two new Nord2000-faithful acoustics exist in the engine, phase-preserving under the two-channel contract, and regression-safe against the validated opaque engine
+**Depends on**: Milestone-1 Phase 2 (complete — diffraction/ground machinery and the Eq. 332 composition). Coordination flag: the extended composition must ship inside engine Phase 4's promoted `envi_engine::solver` (one solve path, two callers); Phase 5 must land before Phase 10 can compute these objects and before Phase 7's semi-transparent/forest UI is meaningful
+**Requirements**: ENG-09, ENG-10
+**Success Criteria** (what must be TRUE):
+
+  1. A propagation path crossing a forest region of through-path length `d` is attenuated by Nord2000's `A = d·a(f)` (from mean tree density, mean stem radius, factor kp, mean absorption coefficient), evaluated at the 1/12-octave points and matching an analytic anchor/oracle within stated tolerance
+  2. A semi-transparent screen contributes a straight-through transmission path — ray direction preserved — attenuated by `10^(−R(f)/20)`, combined with the diffracted and reflected contributions as complex pressure with phase intact; the `H_coh`/`P_incoh` two-channel contract holds (`F→1 ⇒ P_incoh→0` stays bit-exact with transmission enabled)
+  3. The opaque limit `R(f)→∞` reproduces the standard opaque-screen result bit-for-bit — a permanent regression test in the harness
+  4. A building with per-façade isolation spectra applies the crossed façade's `R(f)` to the transmission path through that façade
+
+**Plans**: TBD
+
+### Phase 6: Service Foundation & Persistence
+
+**Goal**: A self-hosted service skeleton exists with the milestone's non-retrofittable contracts locked — project persistence, one CRS boundary, the band-index wire format, the recondition/recompute API split, and the job state machine — before any UI binds to them
+**Depends on**: Nothing in Milestone 2 (engine types only — fully parallel-safe with engine Phases 3–4). First plan absorbs GDAL/PROJ Windows provisioning before any feature work
+**Requirements**: SVC-01, SVC-03, SVC-04, SVC-05, SVC-07, GEOX-04
+**Success Criteria** (what must be TRUE):
+
+  1. User can create, open, save (autosave), duplicate, and delete a project with metadata and reopen-last; a project is a folder (scene JSON + settings + manifest, chunked tensor layout reserved) that survives service restart and round-trips scene GET/PUT
+  2. One deployable axum binary serves the API and the built frontend bundle, binds localhost by default, and refuses to start unless the GDAL/PROJ self-check passes (versions logged, `proj.db`/`GDAL_DATA` resolved, one in-memory reprojection) — verified on a clean Windows machine, not just the dev shell
+  3. Exactly one reprojection boundary exists: GeoJSON WGS84 on the wire, an auto-picked UTM CRS pinned per project at creation, newtyped `LonLat`/`SceneXY`, a landmark round-trip test accurate to the meter, and loud rejection of degree-magnitude scene coordinates
+  4. The API contract structurally separates `recondition` (conditioning-only → tensor MAC) from `recompute` (scene/terrain/ground/met → propagation), with tensor identity keyed by content hash and a mismatched-hash MAC request rejected (contract-tested against a stub tensor; realized end-to-end in Phase 11) — and all spectra cross the wire as dense arrays keyed by band index with the 105-point 1/12-octave axis served once at a meta endpoint, no client-side acoustic math
+  5. The job registry exposes the Queued/Running/Done/Failed/Cancelled state machine with SSE progress: a stub job can be submitted, observed live, and cancelled
+
+**Plans**: TBD
+
+### Phase 7: Frontend Shell & Scene Editing
+
+**Goal**: Users can draw and edit the complete NoizCalc-style scene on an OSM basemap — including ENVI's semi-transparent screens/buildings and forests — with the scene persisted through the Phase-6 API and validated at draw time
+**Depends on**: Phase 6 (API + persistence). Phase 5 (semi-transparent/forest object semantics — SCN/WEB objects must never be silently inert). Engine-independent otherwise — parallel-safe with engine Phases 3–4. Research flag: Terra Draw ⇄ react-map-gl lifecycle spike (instance-in-ref, `style.load` re-hydration, StrictMode) before feature plans
+**Requirements**: WEB-01, WEB-02, WEB-03, WEB-04, WEB-08, WEB-09, WEB-10, SCN-01, SCN-02, SCN-03, SCN-04
+**Success Criteria** (what must be TRUE):
+
+  1. On a MapLibre OSM/vector basemap, user can place and edit every scene object kind: directional sources (spectrum + SPL-at-reference-point calibration), receiver points, the calculation area, buildings, walls, ground-effect zones (impedance A–H + roughness N/S/M/L), forests (mean tree density / stem radius / height), and elevation points/lines that re-triangulate the DGM — with last-object property inheritance
+  2. Partially crossing ground-effect polygons are rejected at draw time (containment allowed, innermost wins), and validation messages click-to-select and zoom to the offending object
+  3. User can mark a screen semi-transparent and assign it an isolation spectrum, and assign per-façade isolation spectra on a building; the spectrum editor accepts direct 1/12-octave entry or 1/1- / 1/3-octave input linearly interpolated onto the 105-point grid, with octave and third-octave centres landing exactly on their band indices
+  4. The drawn scene survives a basemap switch, a page reload, and a project close/re-open — Terra Draw re-hydrates from the store on `style.load`, and the persisted scene is what comes back
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 8: GIS Ingestion & DGM
+
+**Goal**: The NoizCalc "Import" moment — users pull real-world terrain, ground cover, and buildings for the viewport onto a triangulated ground model, and everything imported is an ordinary editable object ("check and complete")
+**Depends on**: Phase 6 (job model, CRS boundary, GDAL provisioning), Phase 7 (imported features editable in the scene editor). Engine-independent — parallel-safe with engine Phases 3–4
+**Requirements**: DATA-01, DATA-02, DATA-03, DATA-04
+**Success Criteria** (what must be TRUE):
+
+  1. A viewport import job fetches Copernicus GLO-30 (national LiDAR DTM preferred where available, GLO-30 flagged as a surface model when used), ESA WorldCover, and Overture/OSM buildings, and materializes them as editable scene objects on a DGM TIN — with live progress and clear failure states
+  2. All fetched data is cached on disk per project (DATA-04); the compute path reads only the local cache — verified by running with the network off — and `/vsicurl/` is touched only at ingestion time
+  3. The WorldCover class → Nordtest σ/impedance mapping is a reviewed data table with a unit test asserting every row, and an impedance debug overlay shows the effective ground class everywhere on the map
+  4. Buildings missing height data get heights via the documented fallback chain (measured → height tag → levels×3+1.5 → user default) with per-feature provenance (source + license + retrieval date), and base elevations are sampled from footprint-boundary ground, never DSM-under-building
+  5. The map shows attribution for OSM/Overture/ESA WorldCover/Copernicus data
+
+**Plans**: TBD
+
+### Phase 9: Path Extraction & Weather
+
+**Goal**: The GIS-to-engine geometry pipeline exists — cut profiles, impedance segmentation, screening edges, and receiver grids feed real-world `PropagationPath`s — and real weather flows in from Open-Meteo to drive the per-azimuth A/B/C meteorology
+**Depends on**: Phase 8 (cached GIS data + DGM). The geometry half (GEOX-01..03, GRID-01) needs only engine scene types — parallel-safe; the weather half (METX-01/02 A/B/C derivation) gates on engine Phase 3 (MET-02/06). Coordination flag: the `PropagationPath` struct defined here must be agreed early with engine Phase 4's `solver` signature — it is the one type both sides touch
+**Requirements**: GEOX-01, GEOX-02, GEOX-03, GRID-01, METX-01, METX-02
+**Success Criteria** (what must be TRUE):
+
+  1. The DEM cut-profile extracted along a source→receiver line matches the GRASS `r.profile` oracle within stated tolerance on real DEM data
+  2. Ground impedance is segmented along the profile with drawn > imported > default priority, and screening edges are derived from building/wall/barrier geometry along the path (rstar corridor query)
+  3. A building-aware constrained-Delaunay receiver grid generates inside the calculation area (plus discrete receiver points), respecting building footprints
+  4. Weather import fetches Open-Meteo once per (site, time window), caches it with the project, and derives per-azimuth A/B/C from the multi-level profile; subsequent what-if edits issue zero API calls (verified by network log), and the weighted call cost is logged per fetch
+  5. ERA5/CDS groundwork retrieves reanalysis as an async job and derives wind×stability weather-class occurrence statistics (Obukhov length) — full L_den combination stays deferred with GRID-03
+
+**Plans**: TBD
+
+### Phase 10: Calculation Service
+
+**Goal**: A user can run a real Nord2000 calculation end-to-end — submit from the UI with a cost estimate, watch progress, abort cleanly — with the transfer tensor streamed to a chunked on-disk store inside a stated memory budget
+**Depends on**: **Hard gate: engine Milestone-1 Phase 4** (promoted `envi_engine::solver` + chunk-streaming `TensorSink`/readout signatures — if Phase 4 ships these private to the harness, this phase forces a second refactor of freshly validated code). Also Phase 5 (extensions computed in the solve), Phase 9 (real `PropagationPath`s). Research flag: chunked tensor store format (chunk size, manifest schema, mmap patterns)
+**Requirements**: SVC-02, GRID-02, WEB-07
+**Success Criteria** (what must be TRUE):
+
+  1. User submits a calculation from the UI and sees a pre-run cost estimate (receiver count, tensor bytes, time estimate) before Run; guardrails warn on grid spacings that explode cost (halving spacing quadruples it)
+  2. A running job reports live progress and can be aborted — cancellation takes effect at chunk boundaries, the job lands in Cancelled, and the service stays healthy; failed jobs land in Failed(reason)
+  3. The grid solve runs rayon-parallel over receiver-axis chunks streamed to the on-disk tensor store — a large-grid run (~100k receivers) completes within the stated memory budget, RSS bounded by workers × chunk size
+  4. The calc manifest records content hashes (scene geometry, met, receiver set, engine version, band axis) so every stored tensor's identity is verifiable, and a scene containing forests and semi-transparent screens/façades computes through ENG-09/10 with their effects visible in the results
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 11: Results & Fast Recalc
+
+**Goal**: The payoff — spectral readout at receivers, dB(A)/dB(C) isophone noise maps, the flagship interactive source conditioning over the cached tensor, and named weather what-if scenarios with difference maps
+**Depends on**: **Hard gates: engine Milestone-1 Phases 3–4** (refraction math + tensor/MAC). Phase 10 (cached tensors + job runner). Research flag: `contour` crate benchmark on 100k+-cell rasters early (gdal-sys `GDALContourGenerateEx` is the documented escape hatch)
+**Requirements**: SVC-06, WEB-05, WEB-06, WEB-11, WEB-12, METX-03, METX-04, GRID-04, GRID-05
+**Success Criteria** (what must be TRUE):
+
+  1. A receiver point's spectrum panel shows per-band levels (1/12-octave expert view + 1/3-octave display aggregated by band index), dB(A)/dB(C) totals with an instant toggle (both weightings precomputed server-side at the exact grid centres), and the coherent/incoherent split — the frontend performs zero acoustic arithmetic
+  2. Changing a source's gain/filter/delay recomputes results interactively via the streaming tensor MAC; the MAC ≡ full-recompute equivalence test passes; a MAC request against a mismatched tensor hash is rejected — never silently served — and the UI shows a results-stale badge the moment the scene diverges from the cached tensor
+  3. The noise map renders as server-side isophone fill polygons (no heatmap layer) with an editable color scale where legend breaks ≡ contour breaks ≡ class colors and the weighting label comes from result metadata; editing the scale re-contours the cached level grid without re-running propagation
+  4. Weather what-if works end-to-end: manual overrides (T/RH/p, Beaufort wind + direction, downwind worst-case toggle, temperature gradient, per-azimuth A/B/C) recompute as a scenario; named scenarios switch instantly via per-scenario cached tensors; difference maps render between two scenarios
+  5. Results export as GeoTIFF/GeoJSON and spectra as CSV, carrying band index + exact frequency columns and data attribution metadata
+
+**Plans**: TBD
+**UI hint**: yes
+
 ## Requirement Coverage
 
 | Phase | Requirements | Count |
@@ -121,13 +243,24 @@ Plans:
 | 2 | ENG-02, ENG-03, ENG-07 | 3 |
 | 3 | ENG-05, ENG-06, ENG-08, MET-01..06 | 9 |
 | 4 | OUT-01..06, SRC-02, SRC-03, SRC-04, VAL-02, VAL-03 | 11 |
+| 5 | ENG-09, ENG-10 | 2 |
+| 6 | SVC-01, SVC-03, SVC-04, SVC-05, SVC-07, GEOX-04 | 6 |
+| 7 | WEB-01..04, WEB-08, WEB-09, WEB-10, SCN-01..04 | 11 |
+| 8 | DATA-01..04 | 4 |
+| 9 | GEOX-01, GEOX-02, GEOX-03, GRID-01, METX-01, METX-02 | 6 |
+| 10 | SVC-02, GRID-02, WEB-07 | 3 |
+| 11 | SVC-06, WEB-05, WEB-06, WEB-11, WEB-12, METX-03, METX-04, GRID-04, GRID-05 | 9 |
 
 **Coverage check:** 30/30 v1 requirements mapped (ENG 8, OUT 6, MET 6, SRC 4, GEO 3, VAL 3). No orphans, no duplicates. v2 groups (DATA, GEOX, METX, GRID, WEB, SVC, FUT) deferred by design.
+
+**Milestone 2 coverage check:** 41/41 Milestone-2 requirements mapped (ENG 2, SCN 4, DATA 4, GEOX 4, METX 4, GRID 4, WEB 12, SVC 7). No orphans, no duplicates. GRID-03 (L_den weather-class combination) and FUT-01..05 are deferred beyond Milestone 2 by design and intentionally unmapped.
 
 ## Progress
 
 **Execution Order:**
 Phases execute in numeric order: 1 → 2 → 3 → 4
+
+Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 needs only completed engine Phase 2 (coordinate with Phase 4's solver promotion); Phases 6–8 and Phase 9's geometry half are engine-independent and parallel-safe with engine Phases 3–4; Phase 9's weather half gates on engine Phase 3; Phases 10–11 hard-gate on engine Phase 4.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -135,6 +268,14 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 2. Ground Effect & Diffraction | 5/5 | Complete | 2026-07-08 |
 | 3. Meteorology & Refraction | 0/3 | Not started | - |
 | 4. Transfer Tensor, Directional Sources & Full Validation | 0/3 | Not started | - |
+| 5. Engine Extensions — Forest & Semi-Transparent Partitions | 0/? | Not started | - |
+| 6. Service Foundation & Persistence | 0/? | Not started | - |
+| 7. Frontend Shell & Scene Editing | 0/? | Not started | - |
+| 8. GIS Ingestion & DGM | 0/? | Not started | - |
+| 9. Path Extraction & Weather | 0/? | Not started | - |
+| 10. Calculation Service | 0/? | Not started | - |
+| 11. Results & Fast Recalc | 0/? | Not started | - |
 
 ---
 *Roadmap created: 2026-07-07 — Milestone 1 (validated core Nord2000 engine)*
+*Milestone 2 phases appended: 2026-07-08 — Interactive Calculation UI (Phases 5–11; engine Phases 3–4 remain the execution priority)*
