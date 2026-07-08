@@ -34,11 +34,15 @@ pub mod eqssp;
 pub mod profile;
 pub mod shadow_zone;
 
-/// A log-lin sound-speed profile `c(z) = A·ln(z/z₀+1) + B·z + C` (Eq. 2).
+/// A log-lin sound-speed profile `c(z) = A·ln(z/z₀+1) + B·z + C` (Eq. 2), plus
+/// the fluctuation std-devs `sA`/`sB` feeding the upper-refraction profile
+/// `A⁺ = A + 1.7·sA`, `B⁺ = B + 1.7·sB` (Eq. 10).
 ///
 /// The weather-route output the engine's refraction entry point consumes.
 /// `a`/`b`/`c` are the log/linear/ground coefficients (m/s, s⁻¹, m/s);
-/// `z0` is the roughness length, m (clamped ≥ 0.001 m at use).
+/// `s_a`/`s_b` are the fluctuating-refraction standard deviations of `A`/`B`
+/// (0 ⇒ no fluctuation ⇒ the FΔν coherence factor is exactly 1); `z0` is the
+/// roughness length, m (clamped ≥ 0.001 m at use).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SoundSpeedProfile {
     /// Coefficient of the logarithmic part `A`, m/s.
@@ -47,19 +51,27 @@ pub struct SoundSpeedProfile {
     pub b: f64,
     /// Ground sound speed `C = Coft(t₀)`, m/s.
     pub c: f64,
+    /// Std-dev of `A` (fluctuating refraction), m/s — feeds `A⁺ = A + 1.7·sA`
+    /// (Eq. 10). `0` ⇒ non-fluctuating ⇒ `FΔν = 1` bit-exact.
+    pub s_a: f64,
+    /// Std-dev of `B` (fluctuating refraction), s⁻¹ — feeds `B⁺ = B + 1.7·sB`
+    /// (Eq. 10). `0` ⇒ non-fluctuating ⇒ `FΔν = 1` bit-exact.
+    pub s_b: f64,
     /// Roughness length `z₀`, m (clamped ≥ 0.001 m).
     pub z0: f64,
 }
 
 impl SoundSpeedProfile {
-    /// A homogeneous profile (`A=B=0`) with ground sound speed `c` — the
-    /// `|ξ|<1e-6` limit that routes through the straight-ray path.
+    /// A homogeneous profile (`A=B=0`, no fluctuation) with ground sound speed
+    /// `c` — the `|ξ|<1e-6` limit that routes through the straight-ray path.
     #[must_use]
     pub fn homogeneous(c: f64) -> Self {
         Self {
             a: 0.0,
             b: 0.0,
             c,
+            s_a: 0.0,
+            s_b: 0.0,
             z0: profile::Z0_MIN_M,
         }
     }

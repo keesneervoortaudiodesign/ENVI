@@ -72,6 +72,32 @@ pub fn coherence_ff(f_hz: f64, dtau: f64) -> f64 {
     }
 }
 
+/// The fluctuating-refraction coherence factor `FΔν` (AV 1106/07 Eq. 112).
+///
+/// `x = 2π·f·|Δτ⁺ − Δτ|`, where `Δτ` is the interference travel-time difference
+/// under the mean profile `(A, B)` and `Δτ⁺` the one under the upper-refraction
+/// profile `A⁺ = A + 1.7·sA`, `B⁺ = B + 1.7·sB` (Eq. 10). `FΔν = 1` at `x = 0`
+/// (`Δτ⁺ = Δτ` ⇒ no fluctuation ⇒ `P_incoh → 0` bit-exact), `sin(x)/x` for
+/// `0 < x ≤ π`, and `0` beyond.
+///
+/// # Pitfall 5 (RESEARCH): the argument carries a full `2π`
+///
+/// Unlike [`coherence_ff`] (Eq. 111, the 1/3-octave band-averaging sinc whose
+/// argument is `0.23·π·f·Δτ`), the fluctuating-refraction argument is
+/// `2π·f·(Δτ⁺−Δτ)` — there is **no `0.23` factor**. Copying `coherence_ff`'s
+/// constant here would be wrong.
+#[must_use]
+pub fn coherence_f_delta_nu(f_hz: f64, dtau: f64, dtau_plus: f64) -> f64 {
+    let x = (TAU * f_hz * (dtau_plus - dtau)).abs();
+    if x <= 1e-15 {
+        1.0
+    } else if x <= std::f64::consts::PI {
+        x.sin() / x
+    } else {
+        0.0
+    }
+}
+
 /// The coherence coefficient `F = Ff · FΔν · Fc · Fr · Fs` (AV 1106/07 Eq. 110).
 ///
 /// - `dtau` — interference time difference `Δτ` (from [`super::rays`]).
@@ -189,6 +215,86 @@ mod tests {
         assert!(
             hi < coherence_ff(1000.0, dtau),
             "Fc must reduce F at high f"
+        );
+    }
+
+    // FΔν Test 1: Δτ⁺ = Δτ ⇒ FΔν = 1.0 bit-exact at every frequency (the
+    // sA=sB=0 non-fluctuating regime ⇒ P_incoh → 0 exactly).
+    #[test]
+    fn f_delta_nu_is_one_bit_exact_when_dtau_plus_equals_dtau() {
+        for &f in &[25.0, 63.0, 250.0, 646.7, 1000.0, 4000.0, 10000.0] {
+            for &dtau in &[0.0, 1.0e-6, 4.519_660_952e-5, 1.0e-3] {
+                assert_eq!(
+                    coherence_f_delta_nu(f, dtau, dtau),
+                    1.0,
+                    "FΔν must be exactly 1.0 when Δτ⁺=Δτ (f={f}, Δτ={dtau})"
+                );
+            }
+        }
+    }
+
+    // FΔν Test 2: the argument is 2π·f·(Δτ⁺−Δτ), NOT 0.23π (Pitfall 5). Pin the
+    // exact sinc value at x = 1: choose Δτ⁺−Δτ so 2π·f·Δ = 1 ⇒ FΔν = sin(1)/1.
+    #[test]
+    fn f_delta_nu_uses_the_two_pi_argument_not_0_23_pi() {
+        let f = 1000.0;
+        let delta = 1.0 / (TAU * f); // ⇒ x = 2π·f·delta = 1 rad exactly
+        let got = coherence_f_delta_nu(f, 0.0, delta);
+        assert!(
+            (got - 1.0_f64.sin()).abs() < 1e-12,
+            "FΔν(x=1) must be sin(1)/1 = {}, got {got}",
+            1.0_f64.sin()
+        );
+        // The 0.23π sinc at the same Δτ would give sin(0.23)/0.23 — proving the
+        // constant is genuinely 2π here, not the band-averaging 0.23π.
+        assert!(
+            (got - coherence_ff(f, delta)).abs() > 0.1,
+            "FΔν (2π arg) must differ markedly from the 0.23π Ff sinc"
+        );
+    }
+
+    // FΔν Test 3: monotone non-increasing in |Δτ⁺−Δτ| across [0, π], strictly
+    // < 1 once the fluctuation bites, and exactly 0 beyond x = π (property test,
+    // no fixed-value oracle — the turbulence std-devs are AV Assumptions, D-11).
+    #[test]
+    fn f_delta_nu_monotone_and_cuts_off_past_pi() {
+        let f = 1000.0;
+        // Sweep Δτ⁺−Δτ so x = 2π·f·Δ runs 0 → π.
+        let mut prev = f64::INFINITY;
+        let mut saw_strictly_below_one = false;
+        for k in 0..=20 {
+            let x = std::f64::consts::PI * (k as f64) / 20.0;
+            let delta = x / (TAU * f);
+            let ft = coherence_f_delta_nu(f, 0.0, delta);
+            assert!(ft <= 1.0 + 1e-15, "FΔν ≤ 1 (x={x})");
+            assert!(ft <= prev + 1e-12, "FΔν must be non-increasing (x={x})");
+            if ft < 1.0 - 1e-9 {
+                saw_strictly_below_one = true;
+            }
+            prev = ft;
+        }
+        assert!(
+            saw_strictly_below_one,
+            "FΔν must drop below 1 as the fluctuation grows"
+        );
+        // Past x = π ⇒ exactly 0.
+        let delta_big = (std::f64::consts::PI * 1.5) / (TAU * f);
+        assert_eq!(
+            coherence_f_delta_nu(f, 0.0, delta_big),
+            0.0,
+            "FΔν must cut off to 0 beyond x = π"
+        );
+    }
+
+    // FΔν Test 4: symmetric in the sign of (Δτ⁺−Δτ) (the |·| in the argument).
+    #[test]
+    fn f_delta_nu_is_symmetric_in_the_difference_sign() {
+        let f = 800.0;
+        let d = 2.0e-4;
+        assert_eq!(
+            coherence_f_delta_nu(f, 0.0, d),
+            coherence_f_delta_nu(f, d, 0.0),
+            "FΔν must depend only on |Δτ⁺−Δτ|"
         );
     }
 

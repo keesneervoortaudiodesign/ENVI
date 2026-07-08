@@ -44,7 +44,7 @@ use num_complex::Complex;
 
 use crate::freq::FreqAxis;
 use crate::propagation::PropagationError;
-use crate::propagation::coherence::CoherenceInputs;
+use crate::propagation::coherence::{CoherenceInputs, coherence_f_delta_nu};
 use crate::propagation::rays::{circular_rays, straight_rays};
 use crate::propagation::refraction::SoundSpeedProfile;
 use crate::propagation::refraction::circular_ray::direct_ray;
@@ -214,6 +214,11 @@ struct RefractionState {
     xi: f64,
     c0_ray: f64,
     d_sz: f64,
+    /// Interference travel-time difference `Δτ⁺` under the upper-refraction
+    /// profile `A⁺ = A + 1.7·sA`, `B⁺ = B + 1.7·sB` (Eq. 10). Frequency-
+    /// independent geometry; equals the mean-profile `Δτ` bit-for-bit when
+    /// `sA=sB=0`, so the FΔν factor (Eq. 112) is then exactly 1.
+    dtau_plus: f64,
 }
 
 /// The flat-ground channel (Sub-model 1 for a single surface type, Sub-model 2
@@ -293,7 +298,20 @@ impl FlatChannel {
                 } else {
                     f64::INFINITY
                 };
-                Some(RefractionState { xi, c0_ray, d_sz })
+                // Upper-refraction profile A⁺=A+1.7·sA, B⁺=B+1.7·sB (Eq. 10) →
+                // ξ⁺ → Δτ⁺ for the FΔν factor (Eq. 112). When sA=sB=0 the plus
+                // profile equals the mean profile, so ξ⁺=ξ, c₀⁺=c₀ and Δτ⁺=Δτ
+                // bit-for-bit (⇒ FΔν=1, the non-fluctuating regression guard).
+                let a_plus = p.a + 1.7 * p.s_a;
+                let b_plus = p.b + 1.7 * p.s_b;
+                let (xi_plus, c0_plus) = calc_eq_ssp(h_s, h_r, p.z0, a_plus, b_plus, p.c)?;
+                let dtau_plus = circular_rays(d, h_s, h_r, xi_plus, c0_plus)?.dtau;
+                Some(RefractionState {
+                    xi,
+                    c0_ray,
+                    d_sz,
+                    dtau_plus,
+                })
             }
             None => None,
         };
@@ -324,12 +342,19 @@ impl FlatChannel {
                 } else {
                     None
                 };
+                // FΔν (Eq. 112) injected through the CoherenceInputs seam: the
+                // decoherence from the mean-vs-plus travel-time difference. The
+                // incoming `f_delta_nu` (default 1.0) is multiplied, never
+                // overwritten; when sA=sB=0 ⇒ Δτ⁺=Δτ ⇒ factor 1.0 bit-exact so
+                // this stays identical to the non-fluctuating refraction path.
+                let f_delta_nu = coh.f_delta_nu * coherence_f_delta_nu(f, rays.dtau, rs.dtau_plus);
+                let coh_ft = CoherenceInputs { f_delta_nu, ..*coh };
                 submodel1::eval(
                     f,
                     &rays,
                     self.strips[0].sigma_kpa,
                     self.strips[0].roughness_r,
-                    coh,
+                    &coh_ft,
                     None,
                     shadow_l_sz,
                 )
@@ -704,6 +729,19 @@ mod terrain_effect_tests {
             a,
             b,
             c: C0,
+            s_a: 0.0,
+            s_b: 0.0,
+            z0: 0.01,
+        }
+    }
+
+    fn fluctuating_profile(a: f64, b: f64, s_a: f64, s_b: f64) -> SoundSpeedProfile {
+        SoundSpeedProfile {
+            a,
+            b,
+            c: C0,
+            s_a,
+            s_b,
             z0: 0.01,
         }
     }
@@ -764,6 +802,100 @@ mod terrain_effect_tests {
             "upward-refraction shadow must lose vs homogeneous: up {:.2} vs base {:.2}",
             mean(&up.delta_l_db),
             mean(&base.delta_l_db)
+        );
+    }
+
+    // FΔν wiring (Eq. 112): with sA=sB=0 the fluctuating-refraction factor is
+    // exactly 1, so a refracted case is bit-for-bit identical whether or not the
+    // profile carries (zero) fluctuation std-devs — the non-fluctuating guard.
+    #[test]
+    fn f_delta_nu_zero_fluctuation_is_bit_identical() {
+        let (fp, src, rcv) = flat_sigma200();
+        let coh = zero_turb();
+        let axis = FreqAxis::new();
+        let base =
+            terrain_effect(&fp, src, rcv, C0, &coh, &axis, Some(&profile(1.0, 0.05))).unwrap();
+        let with_zero_std = terrain_effect(
+            &fp,
+            src,
+            rcv,
+            C0,
+            &coh,
+            &axis,
+            Some(&fluctuating_profile(1.0, 0.05, 0.0, 0.0)),
+        )
+        .unwrap();
+        for i in 0..N_BANDS {
+            assert_eq!(
+                base.delta_l_db[i], with_zero_std.delta_l_db[i],
+                "band {i}: sA=sB=0 must be bit-identical to the non-fluctuating path"
+            );
+        }
+    }
+
+    // FΔν direction (D-11/D-12): fluctuating refraction decoheres the coherent
+    // two-ray cancellation, so the deepest interference dip becomes SHALLOWER
+    // (less negative) than the non-fluctuating baseline — the coherent cross term
+    // is weakened and the incoherent floor rises. Compared by BAND INDEX (D-14).
+    #[test]
+    fn f_delta_nu_fluctuation_fills_the_dip() {
+        // Turbulence on (nonzero Cv²/CT²) so P_incoh is a live channel.
+        let coh = CoherenceInputs {
+            cv2: 0.12,
+            ct2: 0.008,
+            ..zero_turb()
+        };
+        let axis = FreqAxis::new();
+        let (fp, src, rcv) = flat_sigma200();
+        let base =
+            terrain_effect(&fp, src, rcv, C0, &coh, &axis, Some(&profile(1.0, 0.05))).unwrap();
+        let fluct = terrain_effect(
+            &fp,
+            src,
+            rcv,
+            C0,
+            &coh,
+            &axis,
+            // Sizeable fluctuation std-devs ⇒ Δτ⁺ ≠ Δτ ⇒ FΔν < 1.
+            Some(&fluctuating_profile(1.0, 0.05, 0.6, 0.03)),
+        )
+        .unwrap();
+
+        // The deepest COHERENT null (min |h_coh_factor|²) is where the two-ray
+        // cancellation is strongest; there decoherence (FΔν<1) provably raises
+        // the level — both the coherent cross term and the incoherent floor grow.
+        let dip = base
+            .h_coh_factor
+            .iter()
+            .enumerate()
+            .min_by(|a, b| a.1.norm_sqr().partial_cmp(&b.1.norm_sqr()).unwrap())
+            .unwrap()
+            .0;
+        assert!(
+            fluct.delta_l_db[dip] > base.delta_l_db[dip] + 0.1,
+            "fluctuating refraction must fill the dip: fluct {:.3} vs base {:.3} (band {dip})",
+            fluct.delta_l_db[dip],
+            base.delta_l_db[dip]
+        );
+        // And the fluctuating spectrum genuinely differs across many bands.
+        let changed = (0..N_BANDS)
+            .filter(|&i| (fluct.delta_l_db[i] - base.delta_l_db[i]).abs() > 1e-9)
+            .count();
+        assert!(
+            changed > N_BANDS / 4,
+            "FΔν must move a substantial share of bands (got {changed})"
+        );
+        // Everything stays finite.
+        assert!(
+            fluct
+                .delta_l_db
+                .iter()
+                .zip(&fluct.h_coh_factor)
+                .zip(&fluct.p_incoh)
+                .all(|((d, h), p)| d.is_finite()
+                    && h.re.is_finite()
+                    && h.im.is_finite()
+                    && p.is_finite())
         );
     }
 
