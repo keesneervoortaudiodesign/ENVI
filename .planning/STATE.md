@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 3
 current_phase_name: Meteorology & Refraction
 status: executing
-stopped_at: 03-01 complete; 03-02 next
-last_updated: "2026-07-08T16:01:02.835Z"
+stopped_at: 03-02 complete; 03-03 next
+last_updated: "2026-07-08T16:34:06.472Z"
 last_activity: 2026-07-08
-last_activity_desc: 03-01 refraction core complete (CalcEqSSP + circular rays + shadow zone; D-02 anchor bit-for-bit)
+last_activity_desc: 03-02 complete (CalcEqSSPGround soft-ground fL/fH + weather Route 2 per-azimuth A + reflection before/after split)
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 10
   percent: 18
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 3 (Meteorology & Refraction) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
-Last activity: 2026-07-08 — 03-01 refraction core complete (CalcEqSSP + circular rays + shadow zone; D-02 anchor bit-for-bit)
+Last activity: 2026-07-08 — 03-02 complete (CalcEqSSPGround soft-ground fL/fH + weather Route 2 per-azimuth A + reflection before/after split)
 
-Progress: [███░░░░░░░] Phase 3 — 1/3 plans complete (03-01 refraction core)
+Progress: [███████░░░] Phase 3 — 2/3 plans complete (03-01 refraction core, 03-02 soft-ground + weather routes)
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [███░░░░░░░] Phase 3 — 1/3 plans complete (03-01
 | Phase 01 P03 | 35min | 3 tasks | 14 files |
 | Phase 02 P01 | 55min | 3 tasks | 14 files |
 | Phase 3 P1 | 95min | 3 tasks | 21 files |
+| Phase 3 P02 | 34min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,10 @@ Recent decisions affecting current work:
 - [Phase 2, 02-01, Rule 1]: research w(7+1j) anchor (0.019924+0.139158j) is a transcription error — true wofz(7+1j)=0.011630+0.079732j (asymptote-confirmed); engine matches scipy, not the mistyped anchor
 - [Phase 2, 02-01, Rule 3]: ground_impedance returns Result (σ≤0 typed error, T-02-01) and CoherenceInputs gained d_m (Fc needs distance) — both documented interface-block extensions
 - [Phase 2, 02-01]: committed scipy oracle (tools/nord2000_oracle) generates ground_w_qhat.toml fixtures (sha256 provenance); Rust tests run without Python. Oracle w-tolerance 3e-6 (three-pole near-border intrinsic error ~2.5e-6, not a bug)
+- [Phase ?]: [Phase 3, 03-02] Eq. 26 fL middle branch = (43−3·Δc₁₀)/40 with knots at Δc₁₀=1 and 5, resolved by C⁰-continuity (pdftotext dropped the minus sign)
+- [Phase ?]: [Phase 3, 03-02] calc_eq_ssp_ground takes σ (sigma_kpa) not a precomputed Ẑ_G — phase_diff_freq owns the Delany–Bazley impedance and needs σ to sweep the 1/3-oct bracket
+- [Phase ?]: [Phase 3, 03-02] Route-2 A/B scaling constants are [ASSUMED] (validated by direction property tests only, no false FORCE numeric pass); B factor C/(2·(T₀+273.15)) is the exact Coft derivative; locked pending 03-03 Open-Q1
+- [Phase ?]: [Phase 3, 03-02] Nord2000 nonzero-turbulence default added as a turbulence_or_nord2000_default accessor seam, NOT wired into build_terrain_inputs, so the frozen zero-turbulence terrain oracle fixtures stay untouched
 
 ### Pending Todos
 
@@ -109,6 +114,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T16:01:02.829Z
+Last session: 2026-07-08T16:33:18.660Z
 Stopped at: 03-01 complete; 03-02 next
 Resume file: None

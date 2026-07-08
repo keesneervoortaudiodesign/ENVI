@@ -14,7 +14,7 @@
 - [x] **ENG-03**: Compute screen/barrier diffraction for single and multiple edges
 - [x] **ENG-04**: Compute air absorption per ISO 9613-1 from temperature, humidity, pressure
 - [x] **ENG-05**: Compute refraction via the equivalent-linear sound-speed profile (circular-ray ξ, Δτ) with guarded numerics (f64, ξ singularity clamps, Δτ cancellation-safe reformulation)
-- [ ] **ENG-06**: Compute reflection paths with separate before/after profile coefficients (A₁/B₁, A₂/B₂)
+- [x] **ENG-06**: Compute reflection paths with separate before/after profile coefficients (A₁/B₁, A₂/B₂)
 - [x] **ENG-07**: Combine direct + reflected + diffracted contributions as complex pressure, retaining Δτ interference phase
 - [ ] **ENG-08**: Apply the fluctuating-refraction coherence coefficient F_τ (turbulence C_v², C_T²) to blend coherent/partial-coherent contributions
 
@@ -30,9 +30,9 @@
 ### Meteorology — sound-speed profile (MET)
 
 - [x] **MET-01**: Evaluate the log-lin profile c(z) = A·ln(z/z₀+1) + B·z + C with z₀ clamped ≥ 0.001 m
-- [ ] **MET-02**: Derive A per source→receiver azimuth (wind term u·cos φ) and B from temperature/stability (inversion → B>0); precompute the isotropic temperature part once, add projected wind per bearing
+- [x] **MET-02**: Derive A per source→receiver azimuth (wind term u·cos φ) and B from temperature/stability (inversion → B>0); precompute the isotropic temperature part once, add projected wind per bearing
 - [x] **MET-03**: Collapse the log-lin profile to an equivalent-linear profile (CalcEqSSP), averaging ∂c/∂z between source height h_S and receiver height h_R
-- [ ] **MET-04**: Apply the frequency-dependent ground variant (CalcEqSSPGround) with f_L/f_H log-interpolation, integrated with the 1/12-octave evaluation
+- [x] **MET-04**: Apply the frequency-dependent ground variant (CalcEqSSPGround) with f_L/f_H log-interpolation, integrated with the 1/12-octave evaluation
 - [ ] **MET-05**: Support Route 1 weather-class input — a table of (A,B) pairs with occurrence probabilities — for L_den energy-weighted combination
 - [ ] **MET-06**: Support Route 3 — reconstruct u(z), T(z) from surface met via Monin–Obukhov similarity (cloud cover as stability proxy) and least-squares fit A,B,C
 
@@ -169,7 +169,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | ENG-03 | Phase 2 | Complete |
 | ENG-04 | Phase 1 | Complete (01-03) |
 | ENG-05 | Phase 3 | Complete |
-| ENG-06 | Phase 3 | Pending |
+| ENG-06 | Phase 3 | Complete |
 | ENG-07 | Phase 2 | Complete |
 | ENG-08 | Phase 3 | Pending |
 | OUT-01 | Phase 4 | Pending |
@@ -179,9 +179,9 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | OUT-05 | Phase 4 | Pending |
 | OUT-06 | Phase 4 | Pending |
 | MET-01 | Phase 3 | Complete |
-| MET-02 | Phase 3 | Pending |
+| MET-02 | Phase 3 | Complete |
 | MET-03 | Phase 3 | Complete |
-| MET-04 | Phase 3 | Pending |
+| MET-04 | Phase 3 | Complete |
 | MET-05 | Phase 3 | Pending |
 | MET-06 | Phase 3 | Pending |
 | SRC-01 | Phase 1 | Complete (01-03) |

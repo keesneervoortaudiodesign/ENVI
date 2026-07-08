@@ -83,12 +83,12 @@ Plans:
   4. Reflection paths compute with separate before/after profile coefficients (A₁/B₁, A₂/B₂), and a Route 1 weather-class table (A,B pairs with probabilities) produces an energy-weighted L_den-style combination; Route 3 reconstructs u(z), T(z) from surface met via Monin–Obukhov and least-squares fits A, B, C
   5. The fluctuating-refraction coherence coefficient F_τ (from C_v², C_T²) blends coherent and partially coherent contributions, changing results in the expected direction on turbulent cases
 
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 
 - [x] 03-01-PLAN.md
-- [ ] 03-02-PLAN.md
+- [x] 03-02-PLAN.md
 - [ ] 03-03-PLAN.md
 
 **Wave 1**
@@ -97,7 +97,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-02: CalcEqSSPGround frequency-dependent variant + reflection-path A₁/B₁/A₂/B₂ + per-azimuth A derivation
+- [x] 03-02: CalcEqSSPGround frequency-dependent variant + reflection-path A₁/B₁/A₂/B₂ + per-azimuth A derivation
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
