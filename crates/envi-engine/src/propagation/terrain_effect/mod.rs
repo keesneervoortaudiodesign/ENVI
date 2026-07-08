@@ -138,14 +138,18 @@ pub struct TerrainEffect {
 /// `refraction = Some(profile)` swaps the flat-channel `straight_rays` for
 /// `circular_rays` with `(ξ, c₀)` from CalcEqSSP; `|ξ|<1e-6` keeps the result
 /// bit-for-bit the homogeneous Phase-2 path (D-02). `None` is the homogeneous
-/// atmosphere (every Phase-2 caller). Only the single-surface (Sub-model 1)
-/// path is refracted here; segmented + refraction awaits CalcEqSSPGround (03-02).
+/// atmosphere (every Phase-2 caller). Only the single-surface (Sub-model 1) path
+/// is refracted here; a refraction profile over **segmented** ground is a typed
+/// [`PropagationError::SegmentedRefractionNotImplemented`] error (never a silent
+/// homogeneous result), awaiting the `calc_eq_ssp_ground` wiring (WR-01).
 ///
 /// # Errors
 ///
 /// [`PropagationError::NonFlatTerrainNotImplemented`] if the no-screen branch
-/// demands Sub-model 3 (`r_flat < 1` with weight); other
-/// [`PropagationError`]s propagate from the sub-models on degenerate geometry.
+/// demands Sub-model 3 (`r_flat < 1` with weight);
+/// [`PropagationError::SegmentedRefractionNotImplemented`] if a weather profile
+/// is supplied over segmented ground; other [`PropagationError`]s propagate from
+/// the sub-models on degenerate geometry.
 pub fn terrain_effect(
     profile: &TerrainProfile,
     src: [f64; 3],
@@ -371,6 +375,26 @@ impl FlatChannel {
                 )
             }
         } else {
+            // Segmented ground + an active weather profile cannot yet be
+            // refracted: Sub-model 2 uses `straight_rays` and does NOT consume
+            // `self.refraction`. Surface this honestly as a typed error rather
+            // than silently returning a homogeneous result (WR-01) — mirroring the
+            // `NonFlatTerrainNotImplemented` contract. The frequency-dependent
+            // `calc_eq_ssp_ground` collapse (§5.5.3) is the ready building block
+            // for wiring segmented refraction in a later plan.
+            if self.refraction.is_some() {
+                let mut types: Vec<(u64, u64)> = self
+                    .strips
+                    .iter()
+                    .map(|s| (s.sigma_kpa.to_bits(), s.roughness_r.to_bits()))
+                    .collect();
+                types.sort_unstable();
+                types.dedup();
+                return Err(PropagationError::SegmentedRefractionNotImplemented {
+                    n_types: types.len(),
+                    f_hz: f,
+                });
+            }
             let geom = submodel2::FlatGeometry {
                 d: self.d,
                 h_s: self.h_s,
@@ -802,6 +826,43 @@ mod terrain_effect_tests {
             "upward-refraction shadow must lose vs homogeneous: up {:.2} vs base {:.2}",
             mean(&up.delta_l_db),
             mean(&base.delta_l_db)
+        );
+    }
+
+    // WR-01: a refraction profile over SEGMENTED ground (>1 surface type) is a
+    // typed hard error, never a silent homogeneous result. The same segmented
+    // profile with `None` (homogeneous) still evaluates fine.
+    #[test]
+    fn segmented_refraction_is_a_typed_error_not_silent() {
+        let axis = FreqAxis::new();
+        let coh = zero_turb();
+        // Flat ground, two surface types (σ=200 then σ=20) ⇒ Sub-model 2 path.
+        let seg_profile = TerrainProfile::new(
+            vec![[0.0, 0.0], [50.0, 0.0], [100.0, 0.0]],
+            vec![seg(200.0), seg(20.0)],
+        )
+        .unwrap();
+        let src = [0.0, 0.0, 0.5];
+        let rcv = [100.0, 0.0, 1.5];
+        // Homogeneous (None) still works — the limitation is refraction-specific.
+        assert!(terrain_effect(&seg_profile, src, rcv, C0, &coh, &axis, None).is_ok());
+        // With a weather profile it is a typed error, not a silent discard.
+        let err = terrain_effect(
+            &seg_profile,
+            src,
+            rcv,
+            C0,
+            &coh,
+            &axis,
+            Some(&profile(1.0, 0.05)),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                PropagationError::SegmentedRefractionNotImplemented { n_types: 2, .. }
+            ),
+            "segmented refraction must be a typed error, got {err:?}"
         );
     }
 

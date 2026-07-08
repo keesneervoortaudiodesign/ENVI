@@ -127,6 +127,24 @@ pub enum PropagationError {
         /// Which shadow-zone input or intermediate was rejected.
         detail: &'static str,
     },
+    /// A refraction profile was supplied over **segmented** ground (more than one
+    /// surface type), which routes through Sub-model 2's `straight_rays` and so
+    /// cannot yet consume the weather profile. The frequency-dependent segmented
+    /// collapse `calc_eq_ssp_ground` (§5.5.3) exists and is oracle-tested but is
+    /// not yet wired into the pipeline. Rather than silently discard the profile
+    /// and return a homogeneous result (which could flip a case to a false pass),
+    /// this is a hard error by design, mirroring
+    /// [`Self::NonFlatTerrainNotImplemented`] (WR-01).
+    #[error(
+        "segmented-ground refraction (Sub-model 2 + weather profile, §5.5.3) is \
+         not implemented: {n_types} surface types at {f_hz} Hz"
+    )]
+    SegmentedRefractionNotImplemented {
+        /// The number of distinct surface types on the segmented path.
+        n_types: usize,
+        /// The frequency at which the segmented-refraction branch was demanded, Hz.
+        f_hz: f64,
+    },
 }
 
 /// Speed of sound in air, `c = Coft(t) = 20.05·√(t + 273.15)` (AV 1106/07
