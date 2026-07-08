@@ -66,6 +66,15 @@ pub fn route2_components(params: &PropagationParams) -> Result<WeatherComponents
     let t0 = finite_or(params.t0_c, DEFAULT_T0_C, "t0")?;
     let u = finite_or(params.u_ms, 0.0, "u")?;
     let zu = finite_or(params.zu_m, DEFAULT_ZU_M, "zu")?;
+    // Anemometer height must be strictly positive (matches route3::reconstruct_
+    // profiles). A non-positive zu makes ln(zu/z₀+1) ≤ 0 or NaN, which would
+    // silently flip the wind coefficient's sign or zero it (WR-02).
+    if !(zu > 0.0) {
+        return Err(CaseLoadError::NonFinite {
+            context: "weather route 2".to_string(),
+            what: "zu must be positive".to_string(),
+        });
+    }
     let dtdz = finite_or(params.dtdz, 0.0, "dt/dz")?;
     let su = finite_or(params.su_ms, 0.0, "su")?;
     let sdtdz = finite_or(params.sdtdz, 0.0, "sdt/dz")?;
@@ -265,6 +274,20 @@ mod tests {
             route2(&q, 0.0),
             Err(CaseLoadError::NonFinite { .. })
         ));
+    }
+
+    // WR-02: a non-positive anemometer height is rejected with a typed error
+    // (never a silently sign-flipped or zeroed wind coefficient), matching route3.
+    #[test]
+    fn weather_route2_rejects_non_positive_zu() {
+        for bad_zu in [0.0, -0.0005, -10.0] {
+            let mut p = met(5.0, 0.0, 0.0);
+            p.zu_m = Some(bad_zu);
+            assert!(
+                matches!(route2(&p, 0.0), Err(CaseLoadError::NonFinite { .. })),
+                "zu = {bad_zu} must be rejected"
+            );
+        }
     }
 
     // Absent optional fields are data, not an error: a bare params still routes.
