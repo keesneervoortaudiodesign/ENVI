@@ -6,14 +6,14 @@ current_phase: 4
 current_phase_name: Transfer Tensor, Directional Sources & Full Validation
 status: in-progress
 stopped_at: 04-01 complete (tensor + solver + MAC bit-exact + 256 MiB budget); 04-02 next
-last_updated: "2026-07-08T21:30:00.000Z"
+last_updated: "2026-07-08T20:25:57.879Z"
 last_activity: 2026-07-08
-last_activity_desc: "04-01 complete (TensorPair + TensorSink/InMemorySink/CountingSink + chunked solver + compose_gain; MAC ≡ recompute bit-for-bit; 100k-receiver solve under 256 MiB; OUT-01..06)"
+last_activity_desc: 04-01 complete (dense complex transfer tensor + chunked solver + bit-exact MAC conditioning + 256 MiB streaming budget; OUT-01..06)
 progress:
   total_phases: 11
   completed_phases: 3
   total_plans: 16
-  completed_plans: 12
+  completed_plans: 13
   percent: 27
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 4 (Transfer Tensor, Directional Sources & Full Validation) — IN PROGRESS
-Plan: 1 of 5 complete (04-01 tensor + solver + MAC)
+Plan: 2 of 5 complete (04-01 tensor + solver + MAC)
 Status: 04-01 complete — 04-02 (directional sources + emission model) next
 Last activity: 2026-07-08 — 04-01 complete (dense complex transfer tensor + chunked solver + bit-exact MAC conditioning + 256 MiB streaming budget; OUT-01..06)
 
@@ -62,6 +62,7 @@ Progress: [██░░░░░░░░] Phase 4 — 1/5 plans complete (04-01
 | Phase 3 P1 | 95min | 3 tasks | 21 files |
 | Phase 3 P02 | 34min | 3 tasks | 8 files |
 | Phase 4 P01 | 55min | 3 tasks | 6 files |
+| Phase 04 P05 | 35min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T21:30:00.000Z
+Last session: 2026-07-08T20:25:33.282Z
 Stopped at: 04-01 complete (tensor + solver + MAC); 04-02 next
 Resume file: None

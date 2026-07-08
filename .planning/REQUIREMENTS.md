@@ -53,7 +53,7 @@
 
 - [x] **VAL-01**: Stand up a test harness that loads and runs the FORCE road-traffic test cases (built *before* propagation code)
 - [ ] **VAL-02**: Engine reproduces the FORCE test-case reference results within the standard's tolerance
-- [ ] **VAL-03**: Cross-validate shared sub-effects (divergence, ISO 9613-1 air absorption, screen geometry) against NoiseModelling's CNOSSOS output
+- [x] **VAL-03**: Cross-validate shared sub-effects (divergence, ISO 9613-1 air absorption, screen geometry) against NoiseModelling's CNOSSOS output
 
 ## Milestone 2 Requirements (v2.0 — Interactive Calculation UI)
 
@@ -193,7 +193,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | GEO-03 | Phase 1 | Complete |
 | VAL-01 | Phase 1 | Complete |
 | VAL-02 | Phase 4 | Pending |
-| VAL-03 | Phase 4 | Pending |
+| VAL-03 | Phase 4 | Complete |
 | ENG-09 | Phase 5 | Pending |
 | ENG-10 | Phase 5 | Pending |
 | SCN-01 | Phase 7 | Pending |
