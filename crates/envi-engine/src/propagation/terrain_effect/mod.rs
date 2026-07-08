@@ -29,12 +29,23 @@
 //! this module family collapses complex pressure to magnitude/energy along the
 //! chain — that separation is what makes ENG-07 (phase-preserving combination)
 //! and ENG-02 (segmented soft↔hard ground) correct.
+//!
+//! # Sub-model 7 (turbulence scattering) is energy-only
+//!
+//! [`submodel7::submodel7_delta_l`] returns a real `f64` (dB). Eq. 332's screen
+//! compositions (`ΔL₄+ΔL₇,₁`, `ΔL₅+ΔL₇,₂`, `ΔL₆+ΔL₇`, assembled in plan 02-05)
+//! add the ΔL₇ scattered **energy** into the `p_incoh`/level side of the model
+//! (`10·lg(10^{ΔL_scr/10}+10^{ΔL₇/10})`, [`submodel7::combine_scatter`]) — it
+//! **never** touches [`GroundResult::h_coh_factor`]. Because Sub-model 7 is typed
+//! to `f64`, it is *structurally* incapable of corrupting the coherent phase
+//! channel (user-locked contract; threat T-02-13).
 
 use num_complex::Complex;
 
 pub mod screen;
 pub mod submodel1;
 pub mod submodel2;
+pub mod submodel7;
 
 /// Two-channel result of any terrain-effect sub-model, normalized relative to
 /// the free-field direct path `p̂₀`.

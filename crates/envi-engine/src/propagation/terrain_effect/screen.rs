@@ -466,12 +466,15 @@ fn screen_factor(
 ///
 /// `force_f = Some(v)` overrides every coherence coefficient (test hook:
 /// `Some(1.0)` ⇒ fully coherent, `p_incoh == 0`).
+/// Returns the two-channel [`GroundResult`] **and** the ground product
+/// `G_eff = ∏∏ |p̂_{G,i1,i2}|^{2·w′_i1 w′_i2} = p_G²` (Eq. 188 / 272), which the
+/// Sub-model 7 `C_SR` correction floors at 1.
 fn run_four_path(
     f_hz: f64,
     cfg: &ScreenConfig,
     kernel: &dyn DiffractionKernel,
     force_f: Option<f64>,
-) -> Result<GroundResult, PropagationError> {
+) -> Result<(GroundResult, f64), PropagationError> {
     let c0 = cfg.coh.c0;
     let s = cfg.source;
     let r = cfg.receiver;
@@ -575,7 +578,7 @@ fn run_four_path(
 
     if !any {
         // No reflecting combination contributes: the bare screen factor.
-        return Ok(GroundResult::from_channels(p_scr, 0.0));
+        return Ok((GroundResult::from_channels(p_scr, 0.0), 1.0));
     }
 
     let cc_eff = cc_eff_ln.exp();
@@ -586,7 +589,7 @@ fn run_four_path(
     let h_coh = Complex::from_polar(scr_mag * cc_eff.sqrt(), scr_arg + phase_acc);
     // p_incoh = |p̂_SCR|²·(G_eff − CC_eff) ≥ 0 (weighted GM is monotone).
     let p_incoh = scr_mag * scr_mag * (g_eff - cc_eff).max(0.0);
-    Ok(GroundResult::from_channels(h_coh, p_incoh))
+    Ok((GroundResult::from_channels(h_coh, p_incoh), g_eff))
 }
 
 /// The diffracting edge closest to the receiver (used as the "screen top" for
@@ -625,7 +628,26 @@ pub(crate) fn submodel4_eval(
         z_r: cfg.z_face_receiver,
         c0: cfg.coh.c0,
     };
-    run_four_path(f_hz, cfg, &kernel, force_f)
+    Ok(run_four_path(f_hz, cfg, &kernel, force_f)?.0)
+}
+
+/// The Sub-model 7 ground-effect correction `C_SR` (AV 1106/07 Eq. 272): the
+/// ground part of Eq. 188 (`p_G² = G_eff`) floored downward at 1.
+///
+/// # Errors
+///
+/// [`PropagationError`] for degenerate screen/strip geometry or invalid σ.
+pub fn submodel4_c_sr(f_hz: f64, cfg: &ScreenConfig) -> Result<f64, PropagationError> {
+    let kernel = PwedgeKernel {
+        w1: cfg.screen[0],
+        t: cfg.screen[1],
+        w2: cfg.screen[2],
+        z_s: cfg.z_face_source,
+        z_r: cfg.z_face_receiver,
+        c0: cfg.coh.c0,
+    };
+    let (_, g_eff) = run_four_path(f_hz, cfg, &kernel, None)?;
+    Ok(g_eff.max(1.0))
 }
 
 /// Sub-model 4 with a caller-supplied kernel (test hook for transparent kernels).
@@ -636,7 +658,7 @@ pub(crate) fn submodel4_with_kernel(
     kernel: &dyn DiffractionKernel,
     force_f: Option<f64>,
 ) -> Result<GroundResult, PropagationError> {
-    run_four_path(f_hz, cfg, kernel, force_f)
+    Ok(run_four_path(f_hz, cfg, kernel, force_f)?.0)
 }
 
 /// Sub-model 5 — one thick screen, two edges (AV 1106/07 §5.14, Eqs. 189–221).
@@ -656,7 +678,7 @@ pub fn submodel5(f_hz: f64, cfg: &ScreenConfig) -> Result<GroundResult, Propagat
         z_r: cfg.z_face_receiver,
         c0: cfg.coh.c0,
     };
-    run_four_path(f_hz, cfg, &kernel, None)
+    Ok(run_four_path(f_hz, cfg, &kernel, None)?.0)
 }
 
 /// Sub-model 6 — two screens (AV 1106/07 §5.15, Eqs. 222–270). The eight-ray
