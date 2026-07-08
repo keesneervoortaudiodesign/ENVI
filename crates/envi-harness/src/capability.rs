@@ -71,10 +71,12 @@ pub fn required_capabilities(case: &CaseDefinition) -> BTreeSet<Capability> {
             }
         }
         CaseKind::Refraction => {
-            // The refraction engine core is built (plan 03-01), but wiring the
-            // case's weather profile into `terrain_effect` is plans 03-02/03-03.
-            // Gate on Refraction (unimplemented at the case level) so these stay
-            // `Skipped`, never a false `Pass` (D-03), until that wiring lands.
+            // `Capability::Refraction` is now implemented (see
+            // `implemented_capabilities`), so the capability gate no longer fires
+            // for these cases. They stay `Skipped` because `run_case` dispatch
+            // returns Skipped("no committed numeric reference") — never a false
+            // `Pass` (D-03). The required set is declared for completeness/
+            // traceability, not to force the skip.
             required.insert(Capability::GroundEffect);
             required.insert(Capability::Refraction);
         }
