@@ -383,7 +383,11 @@ mod tests {
         let xis: Vec<f64> = axis
             .centres
             .iter()
-            .map(|&f| calc_eq_ssp_ground(f, d, h_s, h_r, SOFT_SIGMA_KPA, z0, a, b, c).unwrap().0)
+            .map(|&f| {
+                calc_eq_ssp_ground(f, d, h_s, h_r, SOFT_SIGMA_KPA, z0, a, b, c)
+                    .unwrap()
+                    .0
+            })
             .collect();
 
         // Bottom band sits below fL ⇒ ξ = 0. (fH can exceed 10 kHz for this
@@ -434,8 +438,8 @@ mod tests {
         let f_low = crate::freq::FreqAxis::new().centres[0];
         let soft = calc_eq_ssp_ground(f_low, d, h_s, h_r, SOFT_GROUND_SIGMA_KPA - 1.0, z0, a, b, c)
             .unwrap();
-        let hard = calc_eq_ssp_ground(f_low, d, h_s, h_r, SOFT_GROUND_SIGMA_KPA, z0, a, b, c)
-            .unwrap();
+        let hard =
+            calc_eq_ssp_ground(f_low, d, h_s, h_r, SOFT_GROUND_SIGMA_KPA, z0, a, b, c).unwrap();
         assert_eq!(soft.0, 0.0, "soft ground below fL ⇒ ξ = 0");
         assert!(hard.0 > 0.0, "hard ground ⇒ full frequency-independent ξ");
     }
