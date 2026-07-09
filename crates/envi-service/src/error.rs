@@ -43,27 +43,28 @@ pub enum ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        // The 409 tensor-hash-mismatch body is the frozen SC4 contract shape and
-        // is served verbatim, NOT wrapped in the { error, detail } envelope.
-        if let ApiError::Conflict { body } = self {
-            return (StatusCode::CONFLICT, Json(body)).into_response();
-        }
-        let (status, code, detail) = match self {
-            ApiError::NotFound => (StatusCode::NOT_FOUND, "not_found", Value::Null),
+        let (status, body) = match self {
+            // The 409 tensor-hash-mismatch body is the frozen SC4 contract shape
+            // and is served VERBATIM at the top level, NOT wrapped in the
+            // { error, detail } envelope.
+            ApiError::Conflict { body } => (StatusCode::CONFLICT, body),
+            ApiError::NotFound => (
+                StatusCode::NOT_FOUND,
+                json!({ "error": "not_found", "detail": Value::Null }),
+            ),
             ApiError::BadRequest { detail } => (
                 StatusCode::BAD_REQUEST,
-                "bad_request",
-                Value::String(detail),
+                json!({ "error": "bad_request", "detail": detail }),
             ),
+            // MED-1: the generic "internal error" detail is already set at the
+            // From<StoreError> boundary (which logs the full error via
+            // tracing::error!), so a filesystem path never reaches this body.
             ApiError::Internal { detail } => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "internal",
-                Value::String(detail),
+                json!({ "error": "internal", "detail": detail }),
             ),
-            // Handled above; unreachable here.
-            ApiError::Conflict { .. } => unreachable!("Conflict handled above"),
         };
-        (status, Json(json!({ "error": code, "detail": detail }))).into_response()
+        (status, Json(body)).into_response()
     }
 }
 
