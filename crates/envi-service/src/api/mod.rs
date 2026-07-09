@@ -21,12 +21,14 @@
 //! return structured JSON, never the HTML shell.
 
 pub mod meta;
+pub mod projects;
+pub mod scene;
 
 use std::path::Path;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::routing::get;
+use axum::routing::{get, post};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::error::ApiError;
@@ -34,11 +36,27 @@ use crate::state::AppState;
 
 /// Build the `/api/v1` sub-router (state-generic; mounted by [`app`]).
 ///
-/// All routes use axum 0.8 brace path syntax. The router carries its own 404
-/// fallback so unmatched `/api/v1/*` paths return JSON, not the SPA HTML.
+/// All routes use axum 0.8 brace path syntax. `/projects/last` is registered
+/// before `/projects/{id}` so the literal `last` segment is never captured as a
+/// uuid param (matchit prioritizes static segments, but the ordering is explicit
+/// for clarity). The router carries its own 404 fallback so unmatched
+/// `/api/v1/*` paths return JSON, not the SPA HTML.
 pub fn api_router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/meta/freq-axis", get(meta::freq_axis))
+        .route("/projects", get(projects::list).post(projects::create))
+        .route("/projects/last", get(projects::last))
+        .route(
+            "/projects/{id}",
+            get(projects::get)
+                .put(projects::update)
+                .delete(projects::delete),
+        )
+        .route("/projects/{id}/duplicate", post(projects::duplicate))
+        .route(
+            "/projects/{id}/scene",
+            get(scene::get_scene).put(scene::put_scene),
+        )
         .fallback(api_fallback)
 }
 
