@@ -43,6 +43,11 @@ impl ProjectCrs {
                 lat: p.lat_deg,
             });
         }
+        // UTM is undefined outside [-80, 84]° latitude (LOW-1) — reject before
+        // proj4rs silently distorts near the poles.
+        if !(crate::crs::UTM_LAT_MIN..=crate::crs::UTM_LAT_MAX).contains(&p.lat_deg) {
+            return Err(GeoError::LatitudeOutsideUtm { lat: p.lat_deg });
+        }
         // proj4rs longlat is RADIANS — converted here and ONLY here (Pitfall 1).
         let mut pt = (p.lon_deg.to_radians(), p.lat_deg.to_radians(), 0.0);
         proj4rs::transform::transform(&self.wgs84, &self.proj, &mut pt).map_err(proj_err)?;
@@ -154,6 +159,16 @@ mod tests {
         assert!(
             matches!(nan, Err(GeoError::NonFinite { .. })),
             "got {nan:?}"
+        );
+
+        // Geographically valid but outside the UTM domain -> loud rejection (LOW-1).
+        let polar = crs.to_utm(LonLat {
+            lon_deg: 4.9,
+            lat_deg: 86.0,
+        });
+        assert!(
+            matches!(polar, Err(GeoError::LatitudeOutsideUtm { .. })),
+            "got {polar:?}"
         );
     }
 

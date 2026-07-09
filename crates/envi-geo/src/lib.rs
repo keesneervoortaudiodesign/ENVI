@@ -73,6 +73,18 @@ pub enum GeoError {
         /// Offending latitude, degrees.
         lat: f64,
     },
+    /// A latitude fell outside the UTM domain (`lat` not in `[-80, 84]`). UTM /
+    /// `etmerc` is undefined toward the poles (that band is UPS territory), where
+    /// the projection silently produces increasingly distorted eastings/northings
+    /// with no error. Rejected loudly rather than projected to garbage (LOW-1;
+    /// consistent with the SC3 degree-magnitude loud-rejection style).
+    #[error(
+        "latitude {lat}° is outside the UTM domain (valid band is [-80, 84]; polar UPS is out of scope)"
+    )]
+    LatitudeOutsideUtm {
+        /// Offending latitude, degrees.
+        lat: f64,
+    },
     /// A `SceneXY` had degree-magnitude components (`|x| <= 360` AND
     /// `|y| <= 90`) — almost certainly WGS84 degrees mislabeled as scene meters.
     /// Loudly rejected rather than silently reprojected to garbage (SC3).

@@ -22,6 +22,12 @@ use crate::{GeoError, LonLat};
 /// — converted in [`transform`](crate::transform) and ONLY there).
 const WGS84_PROJ: &str = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs";
 
+/// Southern edge of the UTM domain, degrees. Below this (toward the South Pole)
+/// UTM is undefined (UPS territory) — see [`GeoError::LatitudeOutsideUtm`].
+pub(crate) const UTM_LAT_MIN: f64 = -80.0;
+/// Northern edge of the UTM domain, degrees. Above this UTM is undefined (UPS).
+pub(crate) const UTM_LAT_MAX: f64 = 84.0;
+
 /// Auto-select the UTM zone for a WGS84 lon/lat (GEOX-04: pinned at project
 /// creation, never re-derived per request).
 ///
@@ -45,6 +51,11 @@ pub fn utm_zone_for(p: LonLat) -> Result<u8, GeoError> {
             lon: p.lon_deg,
             lat: p.lat_deg,
         });
+    }
+    // UTM is only defined in [-80, 84]° latitude; beyond that is UPS territory
+    // where etmerc distorts silently (LOW-1). Reject loudly.
+    if !(UTM_LAT_MIN..=UTM_LAT_MAX).contains(&p.lat_deg) {
+        return Err(GeoError::LatitudeOutsideUtm { lat: p.lat_deg });
     }
     // Plain formula; clamp folds the lon = +180 edge back into zone 60.
     let zone = ((p.lon_deg + 180.0) / 6.0).floor() as i32 + 1;
@@ -233,6 +244,38 @@ mod tests {
         assert!(
             matches!(hi_lat, Err(GeoError::LonLatOutOfRange { .. })),
             "got {hi_lat:?}"
+        );
+    }
+
+    #[test]
+    fn zone_selection_rejects_latitude_outside_utm_band() {
+        // In-range latitude (91) is caught by the range check; a latitude that is
+        // valid geographically but outside UTM's [-80, 84] band is rejected with
+        // the dedicated typed error (LOW-1).
+        let too_far_north = utm_zone_for(LonLat {
+            lon_deg: 15.0,
+            lat_deg: 85.0,
+        });
+        assert!(
+            matches!(too_far_north, Err(GeoError::LatitudeOutsideUtm { .. })),
+            "got {too_far_north:?}"
+        );
+        let too_far_south = utm_zone_for(LonLat {
+            lon_deg: 15.0,
+            lat_deg: -81.0,
+        });
+        assert!(
+            matches!(too_far_south, Err(GeoError::LatitudeOutsideUtm { .. })),
+            "got {too_far_south:?}"
+        );
+        // The band edges themselves are still accepted.
+        assert!(
+            utm_zone_for(LonLat {
+                lon_deg: 15.0,
+                lat_deg: 84.0
+            })
+            .is_ok(),
+            "84° N is the inclusive UTM edge"
         );
     }
 
