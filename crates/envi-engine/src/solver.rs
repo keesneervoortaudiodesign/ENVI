@@ -9,9 +9,14 @@
 //! 1. PathGeometry::direct(src, rcv) → direct_path(&atmos, axis) → H_ff(f)
 //! 2. terrain_effect(profile, src, rcv, coh.c0, coh, axis, weather)
 //!      → { h_coh_factor(f), p_incoh(f) }
-//! 3. H_coh[s,r,f]      = H_ff · nord_ratio_to_transfer(h_coh_factor) · 10^{ΔL/20}
-//! 4. P_incoh_abs[s,r,f] = |H_ff|² · p_incoh · 10^{ΔL/10}
+//! 3. H_coh[s,r,f]      = H_ff · nord_ratio_to_transfer(h_coh_factor) · 10^{ΔL/20} · 10^{ΔL_s/20}
+//! 4. P_incoh_abs[s,r,f] = |H_ff|² · p_incoh · 10^{ΔL/10} · 10^{ΔL_s/10}
 //! ```
+//!
+//! The optional forest excess attenuation `ΔL_s ≤ 0` (Sub-Model 10,
+//! [`crate::forest`]) is a **per-path** property applied on the post-conj side
+//! alongside directivity — a real magnitude factor on BOTH channels
+//! (`arg(H_coh)` untouched), never a `propagation/` operator.
 //!
 //! `nord_ratio_to_transfer` (the ONE convention conjugation) lives in
 //! `transfer.rs`; the solver runs entirely on the ENVI-convention (post-conj)
@@ -26,6 +31,7 @@
 use ndarray::{Array3, s};
 use num_complex::Complex;
 
+use crate::forest::{ForestCrossing, forest_delta_l};
 use crate::freq::{FreqAxis, N_BANDS};
 use crate::geometry::PathGeometry;
 use crate::propagation::air_absorption::Atmosphere;
@@ -77,6 +83,18 @@ pub struct SolveJob<'a> {
     /// `P_incoh_abs` stays magnitude-only (incoherent energy). `None` leaves
     /// `arg(H_coh)` untouched (bit-identical to the magnitude-only path).
     pub directivity_phase_rad: Option<[f64; N_BANDS]>,
+    /// Optional forest (scattering-zone) crossing on this path. When `Some`, the
+    /// solver evaluates the Sub-Model 10 excess attenuation `ΔL_s ≤ 0` dB
+    /// ([`forest_delta_l`]) per band and applies it as a real magnitude factor —
+    /// `10^{ΔL_s/20}` on `H_coh` (`arg` untouched) and `10^{ΔL_s/10}` on
+    /// `P_incoh_abs` — a **per-path** property applied post-conj, exactly like
+    /// `directivity_gain_db` and never inside `propagation/` (D-03/D-04). The
+    /// crossing carries a single pre-computed scalar length `d_m` (`R_sc`); the
+    /// rubber-band geometry extraction over obstacles (Figure 29) and
+    /// multiple/heterogeneous crossings are Phase-9 upstream concerns. `None`
+    /// leaves every output bit unchanged (pinned by the `solve_baseline`
+    /// regression).
+    pub forest: Option<ForestCrossing>,
 }
 
 /// Fill a paired tensor by streaming receiver-axis chunks into `sink`.
@@ -202,6 +220,16 @@ fn solve_pair(job: &SolveJob<'_>) -> Result<(Vec<Complex<f64>>, Vec<f64>), Propa
             let (s, c) = phase[i].sin_cos();
             hc *= Complex::new(c, s);
         }
+        // Optional forest excess attenuation (Sub-Model 10, D-03/D-04): a real
+        // per-band dB factor on BOTH channels — 10^{ΔL_s/20} on the coherent
+        // transfer (arg untouched) and 10^{ΔL_s/10} on the incoherent energy.
+        // ΔL_s ≤ 0, so this only attenuates; a real scale of an exact-zero
+        // P_incoh stays exactly zero (F→1 ⇒ P_incoh→0 preserved).
+        if let Some(fc) = job.forest.as_ref() {
+            let dls = forest_delta_l(job.axis.centres[i], fc, job.coh.c0);
+            hc *= 10f64.powf(dls / 20.0);
+            pa *= 10f64.powf(dls / 10.0);
+        }
         h_coh.push(hc);
         p_abs.push(pa);
     }
@@ -265,6 +293,7 @@ mod tests {
             weather: None,
             directivity_gain_db: None,
             directivity_phase_rad: None,
+            forest: None,
         };
         let mut sink = InMemorySink::new(1, 1);
         solve([job], 1, 1, &mut sink).unwrap();
@@ -317,6 +346,7 @@ mod tests {
                         weather: None,
                         directivity_gain_db: None,
                         directivity_phase_rad: None,
+                        forest: None,
                     });
                 }
             }
@@ -357,6 +387,7 @@ mod tests {
             weather: None,
             directivity_gain_db: None,
             directivity_phase_rad: None,
+            forest: None,
         };
         let mut plain = InMemorySink::new(1, 1);
         solve([base], 1, 1, &mut plain).unwrap();
@@ -408,6 +439,7 @@ mod tests {
             weather: None,
             directivity_gain_db: None,
             directivity_phase_rad: None,
+            forest: None,
         };
         let mut plain = InMemorySink::new(1, 1);
         solve([base], 1, 1, &mut plain).unwrap();
@@ -444,6 +476,130 @@ mod tests {
         }
     }
 
+    /// F6: a forest crossing scales `|H_coh|` by exactly `10^{ΔL_s/20}` (arg
+    /// unchanged) and `P_incoh_abs` by `10^{ΔL_s/10}`, per band — a real
+    /// two-channel magnitude factor, `ΔL_s` recomputed in-test.
+    #[test]
+    fn forest_scales_magnitude_two_channels_leaving_phase_unchanged() {
+        use crate::forest::{ForestCrossing, forest_delta_l};
+        let profile = flat_profile();
+        let axis = FreqAxis::new();
+        let a = atmos();
+        let c = coh();
+        let src = [2.5, 0.0, 0.5];
+        let rcv = [100.0, 0.0, 1.5];
+        let base = SolveJob {
+            sub_source: 0,
+            receiver: 0,
+            profile: &profile,
+            src,
+            rcv,
+            atmosphere: &a,
+            coh: &c,
+            axis: &axis,
+            weather: None,
+            directivity_gain_db: None,
+            directivity_phase_rad: None,
+            forest: None,
+        };
+        let mut plain = InMemorySink::new(1, 1);
+        solve([base], 1, 1, &mut plain).unwrap();
+
+        // A crossing that attenuates across the mid/high bands (ka in range).
+        let fc = ForestCrossing::new(80.0, 0.4, 0.12, 0.2, 12.0).unwrap();
+        let forested = SolveJob {
+            forest: Some(fc),
+            ..base
+        };
+        let mut with_forest = InMemorySink::new(1, 1);
+        solve([forested], 1, 1, &mut with_forest).unwrap();
+
+        let mut saw_attenuation = false;
+        for f in 0..N_BANDS {
+            let dls = forest_delta_l(axis.centres[f], &fc, c.c0);
+            let mag = 10f64.powf(dls / 20.0);
+            let ener = 10f64.powf(dls / 10.0);
+            let h0 = plain.tensor().h_coh[[0, 0, f]];
+            let h1 = with_forest.tensor().h_coh[[0, 0, f]];
+            // arg unchanged (ΔL_s ≥ 0 ⇒ mag > 0, a positive real factor).
+            assert!(
+                (h1.arg() - h0.arg()).abs() < 1e-12,
+                "band {f}: forest must not change arg(H_coh)"
+            );
+            assert!(
+                (h1.norm() - h0.norm() * mag).abs() <= 1e-12 * (1.0 + h0.norm()),
+                "band {f}: |H_coh| must scale by 10^(ΔL_s/20)"
+            );
+            let q0 = plain.tensor().p_incoh_abs[[0, 0, f]];
+            let q1 = with_forest.tensor().p_incoh_abs[[0, 0, f]];
+            assert!(
+                (q1 - q0 * ener).abs() <= 1e-12 * (1.0 + q0),
+                "band {f}: P_incoh_abs must scale by 10^(ΔL_s/10)"
+            );
+            if dls < -0.001 {
+                saw_attenuation = true;
+            }
+        }
+        assert!(
+            saw_attenuation,
+            "the test crossing must attenuate some bands (else it is vacuous)"
+        );
+    }
+
+    /// F7: `F→1 ⇒ P_incoh→0` stays bit-exact with forest enabled. A source on
+    /// the ground gives `Δτ = 0 ⇒ F = 1 ⇒ P_incoh = 0` exactly; a real forest
+    /// scale of an exact `0.0` stays exact `0.0` (bit-for-bit).
+    #[test]
+    fn forest_preserves_exact_zero_incoherent_channel() {
+        use crate::forest::ForestCrossing;
+        let profile = flat_profile();
+        let axis = FreqAxis::new();
+        let a = atmos();
+        let c = coh();
+        // Source on the ground (h_s = 0) ⇒ Δτ = 0 ⇒ F = 1 ⇒ p_incoh = 0.
+        let src = [2.5, 0.0, 0.0];
+        let rcv = [100.0, 0.0, 1.5];
+        let base = SolveJob {
+            sub_source: 0,
+            receiver: 0,
+            profile: &profile,
+            src,
+            rcv,
+            atmosphere: &a,
+            coh: &c,
+            axis: &axis,
+            weather: None,
+            directivity_gain_db: None,
+            directivity_phase_rad: None,
+            forest: None,
+        };
+        let mut plain = InMemorySink::new(1, 1);
+        solve([base], 1, 1, &mut plain).unwrap();
+        // Sanity: the zero-turbulence geometry really does give exact-zero P.
+        for f in 0..N_BANDS {
+            assert_eq!(
+                plain.tensor().p_incoh_abs[[0, 0, f]].to_bits(),
+                0.0f64.to_bits(),
+                "band {f}: baseline geometry must give exact-zero P_incoh"
+            );
+        }
+
+        let fc = ForestCrossing::new(80.0, 0.4, 0.12, 0.2, 12.0).unwrap();
+        let forested = SolveJob {
+            forest: Some(fc),
+            ..base
+        };
+        let mut with_forest = InMemorySink::new(1, 1);
+        solve([forested], 1, 1, &mut with_forest).unwrap();
+        for f in 0..N_BANDS {
+            assert_eq!(
+                with_forest.tensor().p_incoh_abs[[0, 0, f]].to_bits(),
+                0.0f64.to_bits(),
+                "band {f}: forest must keep P_incoh exactly zero (F→1 contract)"
+            );
+        }
+    }
+
     #[test]
     fn degenerate_geometry_is_a_typed_error_not_a_panic() {
         let profile = flat_profile();
@@ -463,6 +619,7 @@ mod tests {
             weather: None,
             directivity_gain_db: None,
             directivity_phase_rad: None,
+            forest: None,
         };
         let mut sink = InMemorySink::new(1, 1);
         assert!(matches!(
@@ -489,6 +646,7 @@ mod tests {
             weather: None,
             directivity_gain_db: None,
             directivity_phase_rad: None,
+            forest: None,
         };
         let mut sink = InMemorySink::new(1, 1);
         assert!(matches!(
