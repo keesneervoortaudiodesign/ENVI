@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 4
 current_phase_name: Transfer Tensor, Directional Sources & Full Validation
 status: complete
-stopped_at: 04-04 complete (SM11 reflection effect + oracle + image-source façade paths + curved/city/yearly Coordinates loaders + contour→profile builder + multi-class emission + Danish 12/3/9 L_den + Open-Q3 forest = accepted gap; honest Skip on unobtainable coefficients). Phase 4 COMPLETE (5/5 plans).
-last_updated: "2026-07-08T22:47:35.283Z"
+stopped_at: Phase 4 COMPLETE (5/5 plans) + all 5 completion gates closed (code-review/simplify/secure/verify/doc-consistency). Road-emission coefficients now CITED (Table A.1, committed report) but INTERMEDIATE — over-predict FORCE by ~2.3 dBA, so VAL-02 numeric Pass is deferred (external blocker, definitive Dec-2006 set needed); cases stay honest Skips (D-03).
+last_updated: "2026-07-09T00:00:00.000Z"
 last_activity: 2026-07-09
-last_activity_desc: 04-04 complete (last plan of Phase 4) — Sub-model 11 + façade image-source paths + curved/city/yearly loaders + Danish L_den; all in-scope FORCE road cases wired but honestly Skipped on the unobtainable Jonasson SP 2006:12 coefficients (D-03), forest Skipped per Open-Q3 option (b)
+last_activity_desc: Phase 4 closed — Table A.1 emission coefficients integrated (PROVENANCE=Cited) + measured vs FORCE (~2.3 dBA over, emission_force_delta); 5 completion gates run (04-REVIEW/SECURITY/VERIFICATION); complex directional phase shipped. VAL-02 numeric Pass deferred on the intermediate-coefficient external blocker.
 progress:
   total_phases: 11
   completed_phases: 4
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 4 (Transfer Tensor, Directional Sources & Full Validation) — COMPLETE
 Plan: 5 of 5 complete (04-01, 04-02, 04-03, 04-04, 04-05)
-Status: 04-04 complete — Phase 4 done. All in-scope FORCE road cases (straight/curved/city/yearly) wired end-to-end; overall numeric Pass honestly gated on the unobtainable Jonasson coefficients (D-03); forest cases Skipped per Open-Q3 option (b). Milestone-1 acceptance gate met in its honest form.
-Last activity: 2026-07-09 — 04-04 complete (SM11 reflection effect + façade image-source paths + curved/city/yearly loaders + contour→profile builder + multi-class emission + Danish L_den)
+Status: Phase 4 COMPLETE (5/5 plans) + all 5 completion gates closed. FORCE road cases wired end-to-end; emission coefficients CITED (Table A.1) but intermediate → overall numeric Pass deferred on the external coefficient blocker (~2.3 dBA, VAL-02 partial-accepted); forest cases Skipped (Open-Q3 b). Complex directional phase shipped (beyond stock Nord2000).
+Last activity: 2026-07-09 — Phase 4 closed: Table A.1 integration + FORCE emission delta measured + 5 gates (REVIEW/SECURITY/VERIFICATION + simplify + doc-consistency)
 
 Progress: [██████████] Phase 4 — 5/5 plans complete (04-01 ✅, 04-02 ✅, 04-03 ✅, 04-04 ✅, 04-05 ✅)
 

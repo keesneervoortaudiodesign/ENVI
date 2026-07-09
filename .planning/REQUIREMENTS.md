@@ -52,7 +52,7 @@
 ### Validation (VAL)
 
 - [x] **VAL-01**: Stand up a test harness that loads and runs the FORCE road-traffic test cases (built *before* propagation code)
-- [x] **VAL-02**: Engine reproduces the FORCE test-case reference results within the standard's tolerance
+- [~] **VAL-02**: Engine reproduces the FORCE test-case reference results within the standard's tolerance — *chain complete, numeric Pass deferred (external blocker).* The full road chain (emission → tensor → SM1/2/3/11 → refraction → Ch.6 comparator) is wired and the emission coefficients are CITED (Table A.1); but the only publicly-available (intermediate DK Nord 2005) set over-predicts FORCE by ~2.3 dBA, so cases stay honest Skips pending the definitive Dec-2006 coefficients (see 04-VERIFICATION.md).
 - [x] **VAL-03**: Cross-validate shared sub-effects (divergence, ISO 9613-1 air absorption, screen geometry) against NoiseModelling's CNOSSOS output
 
 ## Milestone 2 Requirements (v2.0 — Interactive Calculation UI)
@@ -192,7 +192,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | GEO-02 | Phase 1 | Complete |
 | GEO-03 | Phase 1 | Complete |
 | VAL-01 | Phase 1 | Complete |
-| VAL-02 | Phase 4 | Complete |
+| VAL-02 | Phase 4 | Chain complete; numeric Pass deferred (external coefficient blocker) |
 | VAL-03 | Phase 4 | Complete |
 | ENG-09 | Phase 5 | Pending |
 | ENG-10 | Phase 5 | Pending |

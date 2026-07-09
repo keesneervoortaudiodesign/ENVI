@@ -60,7 +60,9 @@ the magnitude-only path. Engine seam: `DirectivityBalloon::eval_phase` /
 | **Ground effect** (segmented impedance, spherical-wave Q̂) | ✅ implemented | 2 |
 | **Screen / barrier diffraction** (single / thick / double) | ✅ implemented | 2 |
 | **Meteorological refraction** (wind + temperature gradients, turbulence coherence) | ✅ implemented | 3 |
-| Nord2000 road emission model (Jonasson, pass-by integration) | ⏳ Phase 4 | 4 |
+| Nord2000 road emission model (Jonasson Table A.1, pass-by integration) | ✅ implemented (coeffs cited/intermediate) | 4 |
+| Transfer tensor `H[s,r,f]` + MAC conditioning + directional balloons (complex phase) | ✅ implemented | 4 |
+| FORCE road-traffic numeric Pass (VAL-02) | ⏳ deferred — external coefficient blocker (~2.3 dBA) | 4 |
 
 ### Phase 2 — ground effect & diffraction
 
@@ -136,10 +138,18 @@ road case gates end-to-end before Phase 4. Phase 2 is validated at the
    and **every evaluated quantity is finite across all 62 FORCE straight-road
    geometries × 105 bands** (ROADMAP success criterion 3).
 
-FORCE road cases remain `Skipped(requires: emission-model)` — the skip-reason
-list has *shrunk* now that ground effect, diffraction, and (Phase 3)
-refraction are implemented; the wind/gradient cases no longer require
-`refraction`, only the Phase-4 emission model.
+**FORCE road-case status (post-Phase-4).** The full road chain — emission →
+tensor → ground/screen (SM1/2/3/11) → refraction → Ch.6 comparator — is wired,
+and the road-emission coefficients are now **CITED** (Table A.1 from the committed
+Jonasson source-modelling report, verified against the page image). The overall
+numeric FORCE Pass is, however, **deferred on an external blocker**: that Table
+A.1 is the report's *intermediate* DK Nord 2005 set and over-predicts the FORCE
+free-field emission by a measured **~2.3 dBA** (`emission_force_delta` report-only
+test), outside the Ch.6 1 dB tolerance. Per the honest-green rule the cases stay
+`Skipped` with the measured-gap reason — never a false Pass — pending the
+definitive Dec-2006 coefficient set. Forest cases (121–124) stay
+`Skipped(requires: forest-scattering)` (ENG-09, Milestone 2). The propagation
+physics is validated in-crate by the oracle/anchor/property ladder above.
 
 ## Building & running
 
