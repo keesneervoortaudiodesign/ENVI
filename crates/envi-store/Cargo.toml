@@ -1,0 +1,25 @@
+[package]
+name = "envi-store"
+description = "ENVI persistence layer — serde DTO mirror + project-as-folder flat-file storage (the serde quarantine seam; engine stays serde-free)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# Boundary rule (D-05, Anti-Pattern 1): this crate is the serde quarantine seam.
+# Engine scene types are TWINNED here as serde DTOs, never serde-derived in
+# envi-engine (the `cargo tree -p envi-engine` gate must stay ndarray +
+# num-complex + thiserror). Reprojection goes through envi-geo ONLY (GEOX-04);
+# this crate never calls proj4rs directly and adds no C-linked crate.
+[dependencies]
+envi-engine = { path = "../envi-engine" }
+envi-geo = { path = "../envi-geo" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+geojson = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+tempfile = "3"
+blake3 = "1"
+thiserror = "2"
+
+[dev-dependencies]
+approx = "0.5"
