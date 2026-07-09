@@ -76,7 +76,7 @@ pub fn run_case(case: &cases::CaseDefinition) -> Outcome {
              property/oracle tests; [ASSUMED] weather constants not numerically pinned)"
                 .to_string(),
         ),
-        cases::CaseKind::ForceStraightRoad => run_force_straight_road_case(case),
+        cases::CaseKind::ForceStraightRoad => run_force_road_group_case(case, RoadGroup::Straight),
         cases::CaseKind::ForceCurvedRoad => run_force_road_group_case(case, RoadGroup::Curved),
         cases::CaseKind::ForceCityStreet => run_force_road_group_case(case, RoadGroup::City),
         cases::CaseKind::ForceYearlyAverage => run_force_road_group_case(case, RoadGroup::Yearly),
@@ -87,6 +87,9 @@ pub fn run_case(case: &cases::CaseDefinition) -> Outcome {
 /// and readout path but the same honest-green emission gate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RoadGroup {
+    /// Straight road: 179-point pass-by over SM1/2/3 + refraction, Ch.6
+    /// comparator (EP 1335 Ch. 2/6).
+    Straight,
     /// Curved road: contour cut-plane profiles + multi-class emission (EP 1335
     /// Ch. 4).
     Curved,
@@ -103,6 +106,10 @@ impl RoadGroup {
     /// what 04-04 built for this group).
     fn wired_path(self) -> &'static str {
         match self {
+            RoadGroup::Straight => {
+                "straight-road path is wired (179-point pass-by, SM1/2/3 + refraction, \
+                 Ch.6 dip-shift comparator + LAE/LAeq,24h/LAmax, incoherent readout)"
+            }
             RoadGroup::Curved => {
                 "curved-road path is wired (Coordinates → contour cut-plane profiles, \
                  multi-class 90/10 emission, SM1/2/3 + refraction)"
@@ -119,12 +126,14 @@ impl RoadGroup {
     }
 }
 
-/// Run a curved/city/yearly FORCE case. Mirrors [`run_force_straight_road_case`]:
-/// the full comparison path is wired (loaders + SM11/emission + the Ch.6
-/// comparator), and the emission coefficients are now CITED (real Table A.1). But
-/// Table A.1 is the report's *intermediate* DK Nord 2005 set, which does not
-/// reproduce the FORCE overall levels within Ch.6 tolerance, so the case stays an
-/// honest `Skipped` with the measured-gap reason — never a false Pass (D-03).
+/// Run a FORCE road case (straight / curved / city / yearly). The full
+/// comparison path is wired per group (179-point pass-by, contour loaders,
+/// SM1/2/3 + SM11 + refraction, the Ch.6 comparator), and the emission
+/// coefficients are now CITED (real Table A.1). But Table A.1 is the report's
+/// *intermediate* DK Nord 2005 set, which over-predicts the FORCE free-field
+/// emission by ~2.3 dBA (see `emission_force_delta`), so no group reproduces the
+/// overall levels within Ch.6 tolerance — every case stays an honest `Skipped`
+/// with the measured-gap reason, never a false Pass (D-03).
 ///
 /// The yearly-average class→(A,B) mapping additionally remains the 03-03
 /// `[ASSUMED]` quarantine (never a verified numeric Pass).
@@ -157,56 +166,6 @@ fn run_force_road_group_case(case: &cases::CaseDefinition, group: RoadGroup) -> 
          the definitive Dec-2006 set is required for a numeric Pass",
         group.wired_path()
     ))
-}
-
-/// Run a FORCE straight-road case: the capability gate has already passed
-/// (emission-model + ground-effect + refraction all implemented), so this is the
-/// runtime dispatch. It mirrors [`run_terrain_case`] — a typed engine error maps
-/// to `Skipped` mid-run (honest-green), a scene/build failure to `FailDetail`.
-///
-/// # Honest documented gap (D-03): coefficients CITED but *intermediate*
-///
-/// The Nord2000 road source model is fully wired (04-02/04-03: sub-source split,
-/// pass-by integration, directivity, the full propagation chain SM1/2/3 +
-/// refraction), and the emission coefficients are now CITED — the real per-band
-/// Table A.1 from the committed source-modelling report. But Table A.1 is the
-/// report's *intermediate* DK Nord 2005 set (§2.3.2: "a definite set … expected
-/// around December 2006"); measured against the FORCE sheets it over-predicts the
-/// free-field emission by a systematic ~2.3 dBA (flat cat-1 family; see the
-/// `emission_force_delta` report-only test), exceeding the Ch.6 1 dB tolerance.
-/// So an OVERALL LAeq,24h numeric Pass is not honestly achievable with the only
-/// publicly-available coefficients — this case stays `Skipped` with the measured
-/// gap rather than a false Pass. The propagation physics + the Ch.6 comparator
-/// are validated in-crate by the oracle / property / anchor tests.
-fn run_force_straight_road_case(case: &cases::CaseDefinition) -> Outcome {
-    // The reference must be present (it always is for a loaded FORCE sheet).
-    let Some(reference) = case.reference_spectrum.as_ref() else {
-        return Outcome::FailDetail(
-            "FORCE straight-road case is missing its 27-band reference spectrum".to_string(),
-        );
-    };
-    if reference.bands.len() != envi_engine::freq::N_THIRD_OCT {
-        return Outcome::FailDetail(format!(
-            "FORCE reference has {} bands (expected {})",
-            reference.bands.len(),
-            envi_engine::freq::N_THIRD_OCT
-        ));
-    }
-
-    // Honest documented gap (D-03): coefficients are CITED (real Table A.1) but
-    // the report's *intermediate* DK Nord 2005 set over-predicts the FORCE
-    // free-field emission by ~2.3 dBA (measured; see emission_force_delta),
-    // exceeding Ch.6 1 dB. A verified overall-level Pass needs the definitive
-    // Dec-2006 coefficient set — stay Skipped with the measured gap, never a
-    // false Pass. Propagation (SM1/2/3 + refraction) + the Ch.6 comparator are
-    // validated in-crate.
-    Outcome::Skipped(
-        "cited-but-intermediate emission coefficients (Table A.1, DK Nord 2005): the road \
-         chain (SM1/2/3 + refraction) + Ch.6 comparator are wired, but the intermediate \
-         coefficient set is ~2.3 dBA over FORCE free-field (exceeds Ch.6 1 dB); the definitive \
-         Dec-2006 set is required for a numeric LAeq,24h Pass."
-            .to_string(),
-    )
 }
 
 /// Run a synthetic geometry case end-to-end: file → Scene → engine geometry →
