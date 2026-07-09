@@ -19,7 +19,13 @@ planned** (requirements + roadmap, phases 5–11); the engine (Milestone 1 Phase
 |-------|------|
 | `envi-engine` | Pure-math Nord2000 core: `#![deny(unsafe_code)]`, `f64`/`Complex<f64>` only, **no I/O**. Deps: `ndarray`, `num-complex`, `thiserror`. |
 | `envi-harness` | All I/O: FORCE `.xls` parsing, synthetic TOML cases, capability gating, reference comparison, reporting. |
+| `envi-geo` | The one pure-Rust CRS reprojection seam (GEOX-04): WGS84 ↔ project-local UTM via `proj4rs` (no C toolchain). `LonLat`/`SceneXY` newtypes. |
+| `envi-store` | serde DTO mirror (keeps serde **out** of `envi-engine`) + project-as-folder flat-file persistence + the frozen tensor-identity hash (conditioning excluded, D-07). |
+| `envi-service` | The single deployable **axum** binary: `/api/v1` + the `web/dist` bundle, localhost-bound, refuse-to-start CRS self-check, job/SSE state machine, recondition/recompute split. Thin HTTP layer — no acoustics. |
 | `tools/nord2000_oracle` | Committed, independent Python (`scipy.special.wofz`) reference implementation that generates the pinned fixture curves. **Not** a build dependency. |
+
+See [`crates/README.md`](crates/README.md) for each crate's boundary rule, entry
+points, the dependency-direction diagram, and the engine quarantine gates.
 
 ## The output contract (user-mandated)
 
@@ -211,6 +217,28 @@ generated TOML is committed, so this is operator-driven, not a build step):
 ```sh
 cd tools/nord2000_oracle && python gen_case_fixtures.py
 ```
+
+### Run the service
+
+The `envi-service` binary is the single self-hosted deployable — one axum process
+serves both the `/api/v1` JSON/GeoJSON API and the `web/dist` frontend bundle:
+
+```sh
+cargo run -p envi-service
+# then browse http://127.0.0.1:8080/  (placeholder shell; the real MapLibre/React
+# frontend arrives in Phase 7)
+```
+
+It binds `127.0.0.1:8080` by default and **refuses to start** unless the D-08
+pure-Rust CRS self-check passes (a WGS84→UTM→WGS84 landmark round-trip within
+1 m; the GDAL/PROJ self-check is deferred to Phase 8 with the C dependency).
+Environment overrides:
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `ENVI_BIND` | `127.0.0.1:8080` | Listen address (a non-loopback bind logs a prominent no-auth warning). |
+| `ENVI_PROJECTS_DIR` | `./projects` | The project-folder store root. |
+| `ENVI_WEB_DIST` | `web/dist` | The static frontend bundle served with SPA fallback. |
 
 ## Why phase-preserving? (the fast-recalc tensor)
 
