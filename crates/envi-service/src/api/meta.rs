@@ -6,10 +6,18 @@
 //! array keyed by band **index**, never nominal Hz. Serialization happens HERE
 //! because serde never enters `envi-engine` (D-05).
 
+use std::sync::LazyLock;
+
 use axum::Json;
 use serde::Serialize;
 
 use envi_engine::freq::{FREQ_AXIS, N_BANDS, N_THIRD_OCT, NOMINAL_THIRD_OCT};
+
+/// The freq-axis DTO is fully derived from immutable `envi_engine::freq`
+/// constants, so it is built exactly once (three heap allocations) at first use
+/// and served from this shared instance on every request. Still read from the
+/// engine constants at init — never hardcoded (Pitfall 9).
+static FREQ_AXIS_DTO: LazyLock<FreqAxisDto> = LazyLock::new(FreqAxisDto::from_engine);
 
 /// The frequency-axis wire payload, built at runtime from the engine constants.
 ///
@@ -41,7 +49,7 @@ impl FreqAxisDto {
     }
 }
 
-/// Handler: serve the frequency axis as JSON.
+/// Handler: serve the memoized frequency axis as JSON.
 pub async fn freq_axis() -> Json<FreqAxisDto> {
-    Json(FreqAxisDto::from_engine())
+    Json(FREQ_AXIS_DTO.clone())
 }
