@@ -681,7 +681,7 @@ axum::serve(listener, app).await?;
 | A5 | tower-http 0.7.0 is fully compatible with axum 0.8.9 (both http 1.x / tower 0.5) | Standard Stack | LOW — changelog confirms tower 0.5 since 0.6.0 and no http major bump in 0.7.0; a `cargo build` in the first plan task verifies conclusively; fallback pin `tower-http = "0.6"` |
 | A6 | The Dam Square landmark UTM values need no committed absolute anchor — round-trip + pyproj oracle fixture suffice | Validation Architecture | LOW — the oracle fixture (house pattern) IS the absolute anchor once generated with pyproj |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does `recompute` need a request body at all in Phase 6?**
    - What we know: D-07 freezes the *split* + DTOs; the real dirty-diff router is Phase 10/11. The stub just spawns the SC5 job and mints a new `tensor_hash`.
