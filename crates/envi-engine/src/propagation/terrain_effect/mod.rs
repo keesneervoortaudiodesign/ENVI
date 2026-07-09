@@ -39,6 +39,21 @@
 //! **never** touches [`GroundResult::h_coh_factor`]. Because Sub-model 7 is typed
 //! to `f64`, it is *structurally* incapable of corrupting the coherent phase
 //! channel (user-locked contract; threat T-02-13).
+//!
+//! # Semi-transparent partitions (plan 05-03, ENG-10 + the D-06 extension)
+//!
+//! An optional `isolation: Option<&IsolationSpectrum>` threads a partition's
+//! sound reduction index `R(f)` into the screen branch as a complex
+//! **minimum-phase** transmission filter `T(f)` ([`crate::propagation::transmission`],
+//! native `e^{−jωt}`, pre-conj — D-05). The filter is built ONCE before the band
+//! loop and its per-band value is added to the screen branch's coherent factor at
+//! [`screen_channel`] (the single §5.13–5.15 assembly point) — the coherent
+//! channel ONLY (`p_incoh`/SM7 untouched; Pitfall 6). Opaque is the structural
+//! `None` state, bit-for-bit identical to the pre-extension opaque screen (D-10);
+//! `isolation` over flat terrain is a typed
+//! [`PropagationError::IsolationWithoutScreen`]. See [`terrain_effect`] for the
+//! full contract (the `r_scr1` marginal-zone interplay and the `R → 0` model
+//! property).
 
 use num_complex::Complex;
 

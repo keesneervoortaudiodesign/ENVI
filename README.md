@@ -63,6 +63,8 @@ the magnitude-only path. Engine seam: `DirectivityBalloon::eval_phase` /
 | Nord2000 road emission model (Jonasson Table A.1, pass-by integration) | ✅ implemented (coeffs cited/intermediate) | 4 |
 | Transfer tensor `H[s,r,f]` + MAC conditioning + directional balloons (complex phase) | ✅ implemented | 4 |
 | FORCE road-traffic numeric Pass (VAL-02) | ⏳ deferred — external coefficient blocker (~2.3 dBA) | 4 |
+| **Forest excess attenuation** (Sub-Model 10, Eqs. 288–291) | ✅ implemented | 5 |
+| **Semi-transparent partitions** (min-phase transmission `T(f)`, opaque = `None`) | ✅ implemented | 5 |
 
 ### Phase 2 — ground effect & diffraction
 
@@ -121,6 +123,46 @@ the magnitude-only path. Engine seam: `DirectivityBalloon::eval_phase` /
   Segmented-ground and screened refraction are typed `NotImplemented` errors
   (deferred to Phase 4), never a silent partial result.
 
+### Phase 5 — engine extensions (forest & semi-transparent partitions)
+
+- **Forest excess attenuation (ENG-09).** Nord2000 **Sub-Model 10** scattering-zone
+  excess attenuation `ΔL_s` (AV 1106/07 §5.19, Eqs. 288–291, Tables 8/9) from mean
+  tree density, mean stem radius, average tree height, and mean absorption:
+  `nQ` (Eq. 290), `T` (Eq. 289), `k_f` (Table 8), `A_e` (Table 9 tensor-product
+  PCHIP), `ΔL_s = Max(1.25·k_f·T·A_e, −15)` (Eq. 291) — exactly `0` below
+  `ka = 0.7`. The **−15 dB floor** and the `T`-saturation ARE Nord2000's own
+  distance bounding (so the ISO 9613-2 10/20/200 m regimes are correctly out of
+  scope). Applied **solver-side** as a per-band real dB factor on **both** channels
+  (`10^{ΔL_s/20}` on `H_coh` with `arg` untouched, `10^{ΔL_s/10}` on `P_incoh`),
+  post-conj — never a `propagation/` operator. The Eq. 288 `Fs` coherence factor is
+  a **documented deferral** (see the phase `deferred-items.md`).
+- **Semi-transparent partitions (ENG-10, ENVI extension).** A partition's isolation
+  spectrum `R(f)` becomes a complex **minimum-phase** transmission filter
+  `T(f) = 10^(−R/20)·e^{jφ_min}`, `φ_min = −H{ln|T|}` reconstructed via an
+  even-mirror real-cepstrum fold over the 105-point band axis (a hand-rolled
+  208-point DFT — no FFT crate). This is a documented extension **beyond stock
+  Nord2000's real energy loss**: a passive partition is a minimum-phase system, so
+  its transmitted phase follows its amplitude (the same discipline as the Phase-4
+  directional complex phase). A flat `R` gives `φ ≡ 0`, bit-compatible with a pure
+  attenuation. `T` is threaded **inside `propagation/`** (native `e^{−jωt}`,
+  pre-conj, D-05) and added to the screen branch's coherent factor at the single
+  `screen_channel` composition point (covering Sub-models 4/5/6) — the
+  straight-through leakage relative to `p̂₀` is exactly `T(f)`, pinned end-to-end.
+  It joins the **coherent channel only** — never `P_incoh` (the min-phase filter is
+  deterministic, never decorrelated by `F`).
+- **Opaque = `None`, bit-for-bit (D-10).** Opaque is the **structural absence** of a
+  spectrum (`isolation: None`), NOT a large-`R` sentinel — the transmission term and
+  the min-phase computation are never constructed on the `None` path, so the opaque
+  screen result is reproduced **bit-for-bit** (a permanent committed regression,
+  `opaque_regression.rs`). An isolation spectrum over flat terrain (no partition on
+  the path) is a **typed error** (`IsolationWithoutScreen`), never a silent no-op.
+  The `R → 0` corner is a documented **model property**, not a bug: `R ≡ 0` restores
+  the direct field plus the diffracted residue (inherent to the locked additive
+  composition, benign for physical partitions — never renormalized).
+- **Per-façade reuse (D-11).** A building façade's `R(f)` rides the same seam: the
+  engine applies whichever crossed partition's spectrum the job carries; façade
+  selection and multi-partition composition are upstream Phase-7/9 concerns.
+
 ### Validation approach
 
 Per-band FORCE reference values embed the Phase 4 emission model, so no FORCE
@@ -148,8 +190,12 @@ free-field emission by a measured **~2.3 dBA** (`emission_force_delta` report-on
 test), outside the Ch.6 1 dB tolerance. Per the honest-green rule the cases stay
 `Skipped` with the measured-gap reason — never a false Pass — pending the
 definitive Dec-2006 coefficient set. Forest cases (121–124) stay
-`Skipped(requires: forest-scattering)` (ENG-09, Milestone 2). The propagation
-physics is validated in-crate by the oracle/anchor/property ladder above.
+`Skipped(requires: forest-scattering)`: the Sub-Model 10 excess-attenuation math
+now exists (ENG-09, Phase 5) and is validated in-crate against a committed scipy
+oracle, but the road-case `ForestCrossing` geometry extraction (rubber-band path
+over the forest, Fig. 29) is a **Phase-9** upstream concern — so the FORCE forest
+cases remain capability-gated, never a false Pass (D-12). The propagation physics
+is validated in-crate by the oracle/anchor/property ladder above.
 
 ## Building & running
 
