@@ -86,9 +86,15 @@ impl From<StoreError> for ApiError {
             | StoreError::Engine { .. } => ApiError::BadRequest {
                 detail: e.to_string(),
             },
+            // These variants embed absolute filesystem paths (and, for
+            // PathEscape, the canonicalized store-root layout) in their `Display`.
+            // Log the full detail server-side, but return a GENERIC client-facing
+            // message so 500 bodies never leak server paths or internal error text
+            // (MED-1 information-disclosure fix).
             StoreError::Io { .. } | StoreError::Json { .. } | StoreError::PathEscape { .. } => {
+                tracing::error!(error = %e, "internal storage error");
                 ApiError::Internal {
-                    detail: e.to_string(),
+                    detail: "internal error".to_string(),
                 }
             }
         }
