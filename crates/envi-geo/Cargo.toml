@@ -1,0 +1,18 @@
+[package]
+name = "envi-geo"
+description = "ENVI CRS boundary — the ONE reprojection seam (GEOX-04); no other crate may call proj4rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# Boundary rule (D-01/D-03, 06-RESEARCH): pure-Rust CRS seam. proj4rs + thiserror
+# ONLY at runtime — zero C toolchain (no gdal/proj/proj-sys), zero I/O, and NO
+# serde in the runtime graph. serde/toml/approx are dev-only for the oracle test.
+[dependencies]
+proj4rs = "0.1.10"
+thiserror = "2"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+approx = "0.5"
