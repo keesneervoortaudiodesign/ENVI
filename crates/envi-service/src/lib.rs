@@ -22,8 +22,9 @@
 //! # Layout
 //!
 //! - [`selfcheck`] — the D-08 refuse-to-start CRS round-trip.
-//! - [`state`] — [`state::AppState`] (the `Arc`-shared store handle).
+//! - [`state`] — [`state::AppState`] (store handle + job/calc registries).
 //! - [`error`] — [`error::ApiError`] -> `IntoResponse` (status + structured JSON).
+//! - [`jobs`] — the SC5 job state machine (registry + dedicated worker thread).
 //! - [`api`] — the `/api/v1` router (axum 0.8 brace-syntax paths) + handlers.
 //!
 //! # House rules
@@ -35,5 +36,6 @@
 
 pub mod api;
 pub mod error;
+pub mod jobs;
 pub mod selfcheck;
 pub mod state;

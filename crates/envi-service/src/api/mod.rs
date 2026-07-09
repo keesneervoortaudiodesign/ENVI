@@ -20,6 +20,7 @@
 //! namespace has its OWN 404 fallback ([`api_fallback`]) so unknown API paths
 //! return structured JSON, never the HTML shell.
 
+pub mod jobs;
 pub mod meta;
 pub mod projects;
 pub mod scene;
@@ -57,6 +58,8 @@ pub fn api_router() -> Router<Arc<AppState>> {
             "/projects/{id}/scene",
             get(scene::get_scene).put(scene::put_scene),
         )
+        .route("/jobs/{id}", get(jobs::get_job).delete(jobs::cancel_job))
+        .route("/jobs/{id}/events", get(jobs::job_events))
         .fallback(api_fallback)
 }
 
