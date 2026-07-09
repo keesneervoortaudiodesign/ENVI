@@ -23,12 +23,13 @@
 #![deny(unsafe_code)]
 
 pub mod crs;
-// `pub mod transform;` is added in Task 2 (transform.rs — to_utm/to_wgs84).
+pub mod transform;
 
 use thiserror::Error;
 
 // Re-export the public surface so callers use `envi_geo::ProjectCrs` etc.
-// without submodule paths.
+// without submodule paths. `to_utm` / `to_wgs84` are inherent methods on
+// `ProjectCrs` (defined in `transform`), reachable through this re-export.
 pub use crs::{ProjectCrs, utm_zone_for};
 
 /// WGS84 geographic coordinate, in **degrees**. The ONLY wire-facing coordinate
@@ -63,7 +64,9 @@ pub struct SceneXY {
 #[derive(Debug, Error, PartialEq)]
 pub enum GeoError {
     /// A lon/lat fell outside `[-180, 180]` x `[-90, 90]`.
-    #[error("lon/lat out of range: got ({lon}, {lat}), expected lon in [-180, 180], lat in [-90, 90]")]
+    #[error(
+        "lon/lat out of range: got ({lon}, {lat}), expected lon in [-180, 180], lat in [-90, 90]"
+    )]
     LonLatOutOfRange {
         /// Offending longitude, degrees.
         lon: f64,
