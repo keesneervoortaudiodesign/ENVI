@@ -121,9 +121,10 @@ impl RoadGroup {
 
 /// Run a curved/city/yearly FORCE case. Mirrors [`run_force_straight_road_case`]:
 /// the full comparison path is wired (loaders + SM11/emission + the Ch.6
-/// comparator), but an OVERALL numeric Pass depends on the unobtainable Jonasson
-/// SP 2006:12 emission coefficients, so the case stays `Skipped` behind the
-/// `provenance == Assumed` gate — never a false Pass (D-03, honest-green).
+/// comparator), and the emission coefficients are now CITED (real Table A.1). But
+/// Table A.1 is the report's *intermediate* DK Nord 2005 set, which does not
+/// reproduce the FORCE overall levels within Ch.6 tolerance, so the case stays an
+/// honest `Skipped` with the measured-gap reason — never a false Pass (D-03).
 ///
 /// The yearly-average class→(A,B) mapping additionally remains the 03-03
 /// `[ASSUMED]` quarantine (never a verified numeric Pass).
@@ -141,28 +142,20 @@ fn run_force_road_group_case(case: &cases::CaseDefinition, group: RoadGroup) -> 
         ));
     }
 
-    // Honest-green gate: the road emission model is wired but its rolling/
-    // propulsion coefficients are [ASSUMED] (SP 2006:12 not obtained), so an
-    // overall numeric Pass would be false. Stay Skipped with the shrunken reason.
-    if matches!(
-        emission::coefficients::PROVENANCE,
-        emission::Provenance::Assumed
-    ) {
-        return Outcome::Skipped(format!(
-            "requires: verified emission coefficients (Jonasson SP 2006:12); {} — but the \
-             rolling/propulsion coefficients are [ASSUMED], so an overall numeric Pass would \
-             be false. The geometry/reflection/L_den physics is validated in-crate.",
-            group.wired_path()
-        ));
-    }
-
-    // Reached only with verified coefficients: build the group's pass-by (curved
-    // multi-class over contour profiles / city façade reflections / yearly
-    // per-class Danish-hours L_den), integrate the overall level, and compare via
-    // the Ch.6 incoherent-readout comparator (Annex A — never coherent). Left as
-    // the numeric-green entry point for the coefficient-verification plan.
+    // Honest documented gap (D-03): the emission coefficients are CITED (real
+    // Table A.1, committed source-modelling report), and this group's path is
+    // fully wired. But Table A.1 is the *intermediate* DK Nord 2005 set — it
+    // over-predicts the FORCE free-field emission by a systematic ~2.3 dBA
+    // (measured on the flat cat-1 family; see emission_force_delta), exceeding the
+    // Ch.6 1 dB tolerance. The definitive Dec-2006 coefficient set (or full
+    // reference-condition calibration) is required for a numeric Pass, so the case
+    // stays an honest Skip — never a false Pass. The geometry/reflection/L_den
+    // physics is validated in-crate.
     Outcome::Skipped(format!(
-        "FORCE {group:?} numeric comparison pending verified emission coefficients"
+        "cited-but-intermediate emission coefficients (Table A.1, DK Nord 2005): {} — but the \
+         intermediate coefficient set is ~2.3 dBA over FORCE free-field (exceeds Ch.6 1 dB); \
+         the definitive Dec-2006 set is required for a numeric Pass",
+        group.wired_path()
     ))
 }
 
@@ -171,18 +164,20 @@ fn run_force_road_group_case(case: &cases::CaseDefinition, group: RoadGroup) -> 
 /// runtime dispatch. It mirrors [`run_terrain_case`] — a typed engine error maps
 /// to `Skipped` mid-run (honest-green), a scene/build failure to `FailDetail`.
 ///
-/// # Honest-green (D-03): the Jonasson emission coefficients are `[ASSUMED]`
+/// # Honest documented gap (D-03): coefficients CITED but *intermediate*
 ///
 /// The Nord2000 road source model is fully wired (04-02/04-03: sub-source split,
 /// pass-by integration, directivity, the full propagation chain SM1/2/3 +
-/// refraction), and the free-field `LE − dL` shape is anchored. But the absolute
-/// rolling/propulsion sound-power coefficients (Jonasson SP 2006:12) could not be
-/// obtained — they are `[ASSUMED]` fits (04-02). An OVERALL LAeq,24h / LAE /
-/// LAmax numeric Pass therefore depends on unobtainable coefficients, so this
-/// case stays `Skipped` with an honest, SHRUNKEN reason rather than a false Pass.
-/// The propagation physics it exercises (terrain effect, refraction, the Ch.6
-/// comparator + A-weighting conversions) is validated in-crate by the oracle /
-/// property / anchor tests.
+/// refraction), and the emission coefficients are now CITED — the real per-band
+/// Table A.1 from the committed source-modelling report. But Table A.1 is the
+/// report's *intermediate* DK Nord 2005 set (§2.3.2: "a definite set … expected
+/// around December 2006"); measured against the FORCE sheets it over-predicts the
+/// free-field emission by a systematic ~2.3 dBA (flat cat-1 family; see the
+/// `emission_force_delta` report-only test), exceeding the Ch.6 1 dB tolerance.
+/// So an OVERALL LAeq,24h numeric Pass is not honestly achievable with the only
+/// publicly-available coefficients — this case stays `Skipped` with the measured
+/// gap rather than a false Pass. The propagation physics + the Ch.6 comparator
+/// are validated in-crate by the oracle / property / anchor tests.
 fn run_force_straight_road_case(case: &cases::CaseDefinition) -> Outcome {
     // The reference must be present (it always is for a loaded FORCE sheet).
     let Some(reference) = case.reference_spectrum.as_ref() else {
@@ -198,28 +193,19 @@ fn run_force_straight_road_case(case: &cases::CaseDefinition) -> Outcome {
         ));
     }
 
-    // The road emission model is implemented but its coefficients are [ASSUMED]
-    // (SP 2006:12 not obtained). A verified overall-level numeric Pass is not
-    // honestly achievable — stay Skipped with the shrunken reason (never a false
-    // Pass, D-03). This is the `provenance == Assumed` gate.
-    if matches!(
-        emission::coefficients::PROVENANCE,
-        emission::Provenance::Assumed
-    ) {
-        return Outcome::Skipped(
-            "requires: verified emission coefficients (Jonasson SP 2006:12); the road \
-             emission model is wired but its rolling/propulsion coefficients are [ASSUMED], \
-             so an overall LAeq,24h numeric Pass would be false. Propagation (SM1/2/3 + \
-             refraction) + the Ch.6 comparator are validated in-crate."
-                .to_string(),
-        );
-    }
-
-    // Reached only once verified coefficients are in hand: build the road pass-by,
-    // integrate LE / LAeq,24h / LAmax, and compare via the Ch.6 dip-shift rule.
-    // (Left as the numeric-green entry point for the coefficient-verification plan.)
+    // Honest documented gap (D-03): coefficients are CITED (real Table A.1) but
+    // the report's *intermediate* DK Nord 2005 set over-predicts the FORCE
+    // free-field emission by ~2.3 dBA (measured; see emission_force_delta),
+    // exceeding Ch.6 1 dB. A verified overall-level Pass needs the definitive
+    // Dec-2006 coefficient set — stay Skipped with the measured gap, never a
+    // false Pass. Propagation (SM1/2/3 + refraction) + the Ch.6 comparator are
+    // validated in-crate.
     Outcome::Skipped(
-        "FORCE straight-road numeric comparison pending verified emission coefficients".to_string(),
+        "cited-but-intermediate emission coefficients (Table A.1, DK Nord 2005): the road \
+         chain (SM1/2/3 + refraction) + Ch.6 comparator are wired, but the intermediate \
+         coefficient set is ~2.3 dBA over FORCE free-field (exceeds Ch.6 1 dB); the definitive \
+         Dec-2006 set is required for a numeric LAeq,24h Pass."
+            .to_string(),
     )
 }
 
