@@ -17,6 +17,7 @@
 #![deny(unsafe_code)]
 
 pub mod directivity;
+pub mod forest;
 pub mod freq;
 pub mod geometry;
 pub mod propagation;
