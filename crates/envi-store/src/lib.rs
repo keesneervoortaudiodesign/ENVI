@@ -44,8 +44,22 @@ pub mod manifest;
 pub mod project_dir;
 
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
+
+/// Current unix epoch seconds (wall clock; saturates at 0 before the epoch).
+///
+/// The single home for the store's timestamp convention, reused by the service
+/// layer so `created_at`/`modified_at`/manifest timestamps agree byte-for-byte
+/// (LOW-4: replaces three byte-identical private copies).
+#[must_use]
+pub fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
 
 /// Typed error for the persistence + DTO boundary (Archetype B — the I/O-crate
 /// error that wraps sources and always carries the offending `PathBuf`).

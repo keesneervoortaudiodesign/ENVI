@@ -28,7 +28,6 @@
 //! the canonicalized store root (symlink-escape guard).
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use geojson::FeatureCollection;
 use serde::{Deserialize, Serialize};
@@ -36,9 +35,9 @@ use uuid::Uuid;
 
 use envi_geo::{LonLat, ProjectCrs};
 
-use crate::StoreError;
 use crate::dto::{CrsDto, ProjectMetaDto, SettingsDto};
 use crate::geojson::validate_feature_collection;
+use crate::{StoreError, now_unix};
 
 /// The reopen-last record persisted at `<root>/.envi-state.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,9 +90,19 @@ impl ProjectStore {
             path: self.root.clone(),
             source,
         })?;
-        let canon = dir
-            .canonicalize()
-            .map_err(|_| StoreError::NotFound { project_id: id })?;
+        // Distinguish "does not exist" from a real I/O failure (permission
+        // denied, path too long on Windows, etc.) instead of reporting every
+        // canonicalize error as NotFound (LOW-9).
+        let canon = dir.canonicalize().map_err(|source| {
+            if source.kind() == std::io::ErrorKind::NotFound {
+                StoreError::NotFound { project_id: id }
+            } else {
+                StoreError::Io {
+                    path: dir.clone(),
+                    source,
+                }
+            }
+        })?;
         if !canon.starts_with(&canon_root) {
             return Err(StoreError::PathEscape { path: canon });
         }
@@ -396,14 +405,6 @@ pub fn atomic_write(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), StoreErr
         source: e.error,
     })?;
     Ok(())
-}
-
-/// Current unix epoch seconds (monotone wall clock; dependency-free).
-fn now_unix() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 #[cfg(test)]
