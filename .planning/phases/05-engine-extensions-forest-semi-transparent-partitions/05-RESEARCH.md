@@ -859,7 +859,15 @@ optional seam fields.) None — verified by phase scope (engine-only additive ex
 | A5 | TI 386's "factor kp" ≡ AV 1106/07's k_f (Table 8) — 1:1 parameter-list match; no free "kp" input exists in the document [ASSUMED mapping, CITED sources both read this session] | Finding 1 | If NoizCalc's kp is a user scaling knob, ENVI simply doesn't expose one (document-faithful is the project's stated priority) |
 | A6 | Deferring Fs (Eq. 288) is acceptable for this phase (no FORCE forest cases; decorrelation not in locked scope) [ASSUMED disposition — needs user/planner sign-off] | Finding 2, Q1 | Through-forest dips too coherent until wired; documented deferred item mitigates |
 
-## Open Questions
+## Open Questions (RESOLVED at plan time — 2026-07-09)
+
+> **All four resolved and reflected in the executable plans (05-01/02/03):**
+> **Q1 (Fs, Eq. 288) → DEFER with a documented seam** (`forest.rs` header + `deferred-items.md`),
+> per D-03's locked "excess attenuation, not decorrelation" scope, mirroring the Phase-4
+> directional-phase-seam discipline. **Q2 (`terrain_effect` signature) → 8th positional
+> `Option` arg** (05-03). **Q3 (default forest params) → carried to Phase 7 SCN-04.**
+> **Q4 (multi-partition composition) → Phase 9 GEOX.** Dispositions accepted by the orchestrator
+> for this autonomous run and verified by the plan-checker.
 
 1. **Fs (Eq. 288) disposition — needs an explicit decision at plan time.**
    - What we know: Nord2000 multiplies `Fs = 1 − k_f·T` into every coherence coefficient when a
