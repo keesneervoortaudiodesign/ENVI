@@ -63,7 +63,7 @@
 
 ### Engine extensions — new acoustics for Milestone 2 (ENG)
 
-- [ ] **ENG-09**: Compute forest scattering/attenuation `A = d·a(f)` (Nord2000: mean tree density, mean stem radius, factor kp, mean absorption coefficient) along the through-forest path length `d`, evaluated at 1/12-octave and applied to the transfer as a per-path attenuation
+- [x] **ENG-09**: Compute forest scattering/attenuation `A = d·a(f)` (Nord2000: mean tree density, mean stem radius, factor kp, mean absorption coefficient) along the through-forest path length `d`, evaluated at 1/12-octave and applied to the transfer as a per-path attenuation
 - [ ] **ENG-10**: Compute a **semi-transparent partition** — a transmission path through a screen/façade attenuated by a per-band **isolation spectrum** (transmission loss `R(f)`, amplitude factor 10^(−R(f)/20)), with the ray **direction preserved** (straight source→receiver line), combined with the diffracted and reflected contributions as **complex pressure with phase intact** (two-channel `H_coh`/`P_incoh` contract). The opaque limit `R(f)→∞` reproduces the standard opaque screen bit-for-bit. (Per-façade building transmission reuses ENG-10 with each façade's `R(f)`.)
 
 ### Scene model extensions (SCN)
@@ -194,7 +194,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | VAL-01 | Phase 1 | Complete |
 | VAL-02 | Phase 4 | Chain complete; numeric Pass deferred (external coefficient blocker) |
 | VAL-03 | Phase 4 | Complete |
-| ENG-09 | Phase 5 | Pending |
+| ENG-09 | Phase 5 | Complete |
 | ENG-10 | Phase 5 | Pending |
 | SCN-01 | Phase 7 | Pending |
 | SCN-02 | Phase 7 | Pending |
