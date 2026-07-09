@@ -154,20 +154,7 @@ pub async fn submit(
     let identity = mint_identity(&app, project_id)?;
 
     let calc_id = Uuid::new_v4();
-    let manifest = CalcManifest {
-        calc_id,
-        dims: identity.dims,
-        chunk_receivers: chunk_receivers(identity.dims[0], identity.dims[1]),
-        tensor_hash: identity.tensor_hash.clone(),
-        stub: true,
-        created_at_unix: now_unix(),
-    };
-    write_manifest(&app.store.project_dir(project_id), &manifest)?;
-
-    app.calcs
-        .write()
-        .await
-        .insert(calc_id, CalcRecord { project_id });
+    persist_calc(&app, project_id, calc_id, &identity).await?;
 
     let job_id = submit_stub_job(&app, CALC_JOB_SPEC).await;
 
@@ -280,21 +267,7 @@ pub async fn recompute(
     };
 
     let identity = mint_identity(&app, project_id)?;
-
-    let manifest = CalcManifest {
-        calc_id,
-        dims: identity.dims,
-        chunk_receivers: chunk_receivers(identity.dims[0], identity.dims[1]),
-        tensor_hash: identity.tensor_hash.clone(),
-        stub: true,
-        created_at_unix: now_unix(),
-    };
-    write_manifest(&app.store.project_dir(project_id), &manifest)?;
-
-    app.calcs
-        .write()
-        .await
-        .insert(calc_id, CalcRecord { project_id });
+    persist_calc(&app, project_id, calc_id, &identity).await?;
 
     let job_id = submit_stub_job(&app, CALC_JOB_SPEC).await;
 
@@ -317,6 +290,32 @@ struct Identity {
     /// `[S, R, 105]` — `S >= 1` (at least one sub-source axis), `R` the receiver
     /// count, `F` always [`N_BANDS`].
     dims: [usize; 3],
+}
+
+/// Persist a calculation's honest-stub [`CalcManifest`] and register its
+/// in-memory [`CalcRecord`] (`calc_id -> project_id` index). Shared by `submit`
+/// and `recompute`, which differ only in whether `calc_id` is fresh or reused.
+/// `stub: true` is written on every manifest (Phase 6 stubbed compute).
+async fn persist_calc(
+    app: &AppState,
+    project_id: Uuid,
+    calc_id: Uuid,
+    identity: &Identity,
+) -> Result<(), ApiError> {
+    let manifest = CalcManifest {
+        calc_id,
+        dims: identity.dims,
+        chunk_receivers: chunk_receivers(identity.dims[0], identity.dims[1]),
+        tensor_hash: identity.tensor_hash.clone(),
+        stub: true,
+        created_at_unix: now_unix(),
+    };
+    write_manifest(&app.store.project_dir(project_id), &manifest)?;
+    app.calcs
+        .write()
+        .await
+        .insert(calc_id, CalcRecord { project_id });
+    Ok(())
 }
 
 /// Load a project's scene + met + receivers and mint its content-hash tensor
