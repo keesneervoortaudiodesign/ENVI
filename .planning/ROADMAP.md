@@ -155,7 +155,7 @@ Architecture per `.planning/research/ARCHITECTURE.md`: three new crates (`envi-g
 ## Milestone 2 Phases
 
 - [x] **Phase 5: Engine Extensions — Forest & Semi-Transparent Partitions** - Nord2000 forest attenuation A = d·a(f) and finite-transmission partitions via per-band isolation spectra R(f), phase-preserving, with the opaque limit regression-pinned to the standard screen (completed 2026-07-09)
-- [ ] **Phase 6: Service Foundation & Persistence** - `envi-store` + `envi-service` skeleton: project-folder CRUD, single CRS boundary, band-index wire contract, recondition/recompute API split, job state machine, GDAL/PROJ Windows provisioning + startup self-check
+- [ ] **Phase 6: Service Foundation & Persistence** - `envi-geo` + `envi-store` + `envi-service` skeleton: project-folder CRUD, single pure-Rust CRS boundary, band-index wire contract, recondition/recompute API split, job state machine, pure-Rust CRS startup self-check (GDAL/PROJ provisioning deferred to Phase 8 per D-01/D-02)
 - [ ] **Phase 7: Frontend Shell & Scene Editing** - MapLibre/Terra Draw scene editor for all object kinds — including semi-transparent screens/buildings with the isolation-spectrum editor, forests, and elevation editing — with draw-time validation
 - [ ] **Phase 8: GIS Ingestion & DGM** - Viewport import of GLO-30/LiDAR terrain, WorldCover ground cover, and Overture/OSM buildings onto a triangulated DGM; local-cache compute path; check-and-complete editability
 - [ ] **Phase 9: Path Extraction & Weather** - DEM cut-profile extractor (GRASS oracle), impedance segmentation, screening edges, CDT receiver grids; Open-Meteo import → per-azimuth A/B/C; ERA5 groundwork
@@ -191,17 +191,33 @@ Plans:
 ### Phase 6: Service Foundation & Persistence
 
 **Goal**: A self-hosted service skeleton exists with the milestone's non-retrofittable contracts locked — project persistence, one CRS boundary, the band-index wire format, the recondition/recompute API split, and the job state machine — before any UI binds to them
-**Depends on**: Nothing in Milestone 2 (engine types only — fully parallel-safe with engine Phases 3–4). First plan absorbs GDAL/PROJ Windows provisioning before any feature work
+**Depends on**: Nothing in Milestone 2 (engine types only — fully parallel-safe with engine Phases 3–4). ~~First plan absorbs GDAL/PROJ Windows provisioning before any feature work~~ *(superseded by D-01/D-02: Phase 6 is pure-Rust; GDAL/PROJ provisioning moves to Phase 8)*
 **Requirements**: SVC-01, SVC-03, SVC-04, SVC-05, SVC-07, GEOX-04
 **Success Criteria** (what must be TRUE):
 
   1. User can create, open, save (autosave), duplicate, and delete a project with metadata and reopen-last; a project is a folder (scene JSON + settings + manifest, chunked tensor layout reserved) that survives service restart and round-trips scene GET/PUT
-  2. One deployable axum binary serves the API and the built frontend bundle, binds localhost by default, and refuses to start unless the GDAL/PROJ self-check passes (versions logged, `proj.db`/`GDAL_DATA` resolved, one in-memory reprojection) — verified on a clean Windows machine, not just the dev shell
+  2. One deployable axum binary serves the API and the built frontend bundle, binds localhost by default, and refuses to start unless the startup self-check passes — **ADJUSTED per D-08 (06-CONTEXT.md):** the self-check is a **pure-Rust CRS landmark round-trip** (WGS84→UTM→WGS84 ≤ 1 m, CRS/zone logged), not a GDAL/PROJ check; the GDAL/PROJ version/`proj.db`/`GDAL_DATA` self-check and its Windows provisioning move to Phase 8 with the C `gdal` dependency (D-01/D-02 — Phase 6 ships with zero C toolchain)
   3. Exactly one reprojection boundary exists: GeoJSON WGS84 on the wire, an auto-picked UTM CRS pinned per project at creation, newtyped `LonLat`/`SceneXY`, a landmark round-trip test accurate to the meter, and loud rejection of degree-magnitude scene coordinates
   4. The API contract structurally separates `recondition` (conditioning-only → tensor MAC) from `recompute` (scene/terrain/ground/met → propagation), with tensor identity keyed by content hash and a mismatched-hash MAC request rejected (contract-tested against a stub tensor; realized end-to-end in Phase 11) — and all spectra cross the wire as dense arrays keyed by band index with the 105-point 1/12-octave axis served once at a meta endpoint, no client-side acoustic math
   5. The job registry exposes the Queued/Running/Done/Failed/Cancelled state machine with SSE progress: a stub job can be submitted, observed live, and cancelled
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — `envi-geo`: pure-Rust CRS boundary crate (proj4rs, LonLat/SceneXY, UTM zone pin, landmark round-trip + pyproj oracle) — GEOX-04
+
+**Wave 2** *(blocked on 06-01)*
+
+- [ ] 06-02-PLAN.md — `envi-store`: serde DTO mirror, GeoJSON 9-kind vocabulary, project-as-folder CRUD + atomic saves, calc manifest, blake3 tensor-identity hash — SVC-01/05/07
+
+**Wave 3** *(blocked on 06-02)*
+
+- [ ] 06-03-PLAN.md — `envi-service` core: axum binary, D-08 pure-Rust self-check (refuse-to-start), freq-axis meta, project CRUD + scene GET/PUT over HTTP, placeholder bundle — SVC-03/04/05/07
+
+**Wave 4** *(blocked on 06-03)*
+
+- [ ] 06-04-PLAN.md — jobs/SSE state machine + recondition/recompute split with enforced 409 hash gate + doc contract (crates/README.md, root README) — SC4/SC5
 
 ### Phase 7: Frontend Shell & Scene Editing
 
