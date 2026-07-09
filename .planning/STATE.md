@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 06
 current_phase_name: service-foundation-persistence
-status: verifying
-stopped_at: Completed 06-04-PLAN.md
-last_updated: "2026-07-09T19:57:51.002Z"
+status: complete
+stopped_at: Phase 6 complete — 5 completion gates closed
+last_updated: "2026-07-09T21:30:00.000Z"
 last_activity: 2026-07-09
-last_activity_desc: Completed 06-04 (jobs/SSE + recondition/recompute split + doc contract)
+last_activity_desc: "Phase 6 closed: 5 completion gates green (06-REVIEW 11 fixed/2 accepted, simplify 6 cleanups, 06-SECURITY SECURED 24/24, 06-VERIFICATION passed 5/5, doc-consistency)"
 progress:
   total_phases: 11
   completed_phases: 6
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** A numerically faithful Nord2000 engine — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain.
-**Current focus:** Phase 06 — service-foundation-persistence
+**Current focus:** Phase 06 — service-foundation-persistence (COMPLETE)
 
 ## Current Position
 
-Phase: 06 (service-foundation-persistence) — ALL PLANS EXECUTED
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-07-09 — Completed 06-04 (jobs/SSE + recondition/recompute + doc contract)
+Phase: 06 (service-foundation-persistence) — COMPLETE
+Plan: 4 of 4 complete (06-01, 06-02, 06-03, 06-04)
+Status: Phase 6 COMPLETE — all 5 completion gates closed (code-review + simplify + secure + verify + doc-consistency). SVC-01/03/04/05/07 and GEOX-04 all Complete. Next: Phase 7 (Frontend Shell & Scene Editing).
+Last activity: 2026-07-09 — Phase 6 closed: 5 completion gates green (06-REVIEW fixed, 06-SECURITY SECURED 24/24, 06-VERIFICATION passed 5/5, simplify applied, doc-consistency)
 
 Progress: [██████████] Phase 6 — 4/4 plans complete (06-01 ✅ envi-geo CRS seam, 06-02 ✅ envi-store persistence, 06-03 ✅ axum binary + project/scene, 06-04 ✅ jobs/SSE + recondition/recompute split)
 

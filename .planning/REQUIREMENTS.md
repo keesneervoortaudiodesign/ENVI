@@ -121,7 +121,7 @@
 - [x] **SVC-01**: Persist projects as a project folder (scene + settings + chunked cached tensors)
 - [ ] **SVC-02**: Compute-job model (submit, queue, run, progress via SSE, cancel, fetch results) with a Queued/Running/Done/Failed/Cancelled state machine
 - [x] **SVC-03**: Rust HTTP API backend (axum), serving the built frontend bundle
-- [x] **SVC-04**: Single self-hosted deployable service (localhost bind; GDAL/PROJ startup self-check)
+- [x] **SVC-04**: Single self-hosted deployable service (localhost bind; startup self-check) — *self-check scope adjusted by Phase-6 decision D-08: Phase 6 ships a **pure-Rust CRS landmark round-trip** self-check (zero C toolchain); the **GDAL/PROJ** version / `proj.db` / `GDAL_DATA` self-check lands in Phase 8 with the C `gdal` dependency*
 - [x] **SVC-05**: Project CRUD lifecycle — create / open / save (autosave) / delete / duplicate with metadata; reopen-last
 - [ ] **SVC-06**: API separates **`recondition`** (conditioning-only → tensor MAC) from **`recompute`** (scene/terrain/ground/met → full propagation); tensor cache keyed by content hash; a MAC request with a mismatched hash is rejected, never silently served
 - [x] **SVC-07**: All acoustic quantities are computed **server-side**; spectra cross the wire keyed by **band index** with the 1/12-octave grid served once (no Hz-based client-side acoustic math)

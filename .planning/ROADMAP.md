@@ -329,7 +329,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 3. Meteorology & Refraction | 3/3 | Complete | 2026-07-08 |
 | 4. Transfer Tensor, Directional Sources & Full Validation | 5/5 | Complete (VAL-02 numeric Pass deferred — external coefficient blocker) | 2026-07-09 |
 | 5. Engine Extensions — Forest & Semi-Transparent Partitions | 3/3 | Complete (all 5 completion gates closed) | 2026-07-09 |
-| 6. Service Foundation & Persistence | 0/? | Not started | - |
+| 6. Service Foundation & Persistence | 4/4 | Complete (all 5 completion gates closed) | 2026-07-09 |
 | 7. Frontend Shell & Scene Editing | 0/? | Not started | - |
 | 8. GIS Ingestion & DGM | 0/? | Not started | - |
 | 9. Path Extraction & Weather | 0/? | Not started | - |
