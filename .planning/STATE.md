@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 05
-current_phase_name: engine-extensions-forest-semi-transparent-partitions
+current_phase: 06
+current_phase_name: service-foundation-persistence
 status: executing
-stopped_at: Phase 6 context gathered
-last_updated: "2026-07-09T16:53:16.625Z"
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-07-09T17:09:33.559Z"
 last_activity: 2026-07-09
-last_activity_desc: "Phase 5 closed: 5 completion gates green (05-REVIEW SECURED, 05-SECURITY, 05-VERIFICATION passed, simplify applied, doc-consistency)"
+last_activity_desc: Phase 06 execution started
 progress:
   total_phases: 11
   completed_phases: 5
-  total_plans: 19
-  completed_plans: 19
+  total_plans: 23
+  completed_plans: 20
   percent: 45
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** A numerically faithful Nord2000 engine — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain.
-**Current focus:** Phase 05 — engine-extensions-forest-semi-transparent-partitions (COMPLETE)
+**Current focus:** Phase 06 — service-foundation-persistence
 
 ## Current Position
 
-Phase: 05 (engine-extensions-forest-semi-transparent-partitions) — COMPLETE
-Plan: 3 of 3 complete (05-01, 05-02, 05-03)
+Phase: 06 (service-foundation-persistence) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-09 — Phase 5 closed: 5 completion gates green (05-REVIEW SECURED, 05-SECURITY, 05-VERIFICATION passed, simplify applied, doc-consistency)
+Last activity: 2026-07-09 — Phase 06 execution started
 
 Progress: [██████████] Phase 5 — 3/3 plans complete (05-01 ✅ forest SM10, 05-02 ✅ min-phase kernel, 05-03 ✅ integration + opaque regression)
 
@@ -68,6 +68,7 @@ Progress: [██████████] Phase 5 — 3/3 plans complete (05-01
 | Phase 05 P01 | 25min | 3 tasks | 10 files |
 | Phase 05 P02 | 13min | 2 tasks | 5 files |
 | Phase 05 P03 | 23min | 3 tasks | 13 files |
+| Phase 06 P01 | 11min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 5, 05-01] Table 9 interp = hand-rolled Fritsch-Carlson-Butland PCHIP matching scipy.PchipInterpolator to 1e-9 (no linalg/FFT crate), nested R'->α->log10(h'); R' clamped [0.0625,10] consistently in BOTH table lookup and 20·log10(8R') term (A3); pinned pre-extension solver bit-baseline proves forest:None byte-identical
 - [Phase ?]: [Phase 5, 05-02] ENG-10+ min-phase kernel (D-06 ENVI extension): R(f)→complex T(f)=10^(−R/20)·e^{jφ_min}, φ_min via even-mirror 208-pt real-cepstrum fold on the 105-pt band axis (hand-rolled naive DFT, dep quarantine intact — no FFT crate). DFT sign PINNED numpy.fft (fwd e^{−j2πkn/M}, inv (1/M)e^{+j2πkn/M}) ⇒ fold yields ENVI lagging φ_cep, so NATIVE e^{−jωt} filter = |T|·e^{−jφ_cep} written as explicit negative sine Complex::new(mag·cosφ, mag·(−sinφ)); conj gate in propagation/ stays 0. D-08 sign pinned two ways: first-principles causality property (T3) + committed numpy oracle to 1e-9 rad on all 105 bands (T5). D-10 opaque=None structural (IsolationSpectrum rejects non-finite/negative R; no INFINITY/MAX sentinel token). Kernel-only — NOT yet reachable from any solve path (plan 05-03 threads it into screen_channel)
 - [Phase ?]: [Phase 5, 05-02, Rule 1] Plan's T3 adjacency spec (φ[n+1]≤φ[n] over 30..75) was unsatisfiable — even-mirror makes φ symmetric about band 52 (φ[k]=φ[104−k]), so no rising R is monotone across mid-band (Finding 3c). Engine φ verified correct vs numpy (~1e-15); T3 reformulated to lagging-sign + rising-FLANK monotonicity (10..50) + slope-antisymmetry (φ_rise=−φ_fall) + native negation — a stronger D-08 pin, no production-code change
+- [Phase 06]: envi-geo is the milestone's ONE reprojection boundary (GEOX-04) on pure-Rust proj4rs 0.1.10 — zero C toolchain (D-01/D-02); radians quarantined to transform.rs; pinned to pyproj oracle <=1e-3 m
 
 ### Pending Todos
 
@@ -141,6 +143,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-09T16:00:48.341Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-service-foundation-persistence/06-CONTEXT.md
+Last session: 2026-07-09T17:09:20.738Z
+Stopped at: Completed 06-01-PLAN.md
+Resume file: None
