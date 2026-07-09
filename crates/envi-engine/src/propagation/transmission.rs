@@ -75,8 +75,10 @@ const M: usize = 208;
 ///
 /// This is the caller → pure-math trust boundary for semi-transparent partitions
 /// (future Phase-7 UI / Phase-9 path data). The constructor rejects any
-/// non-finite or negative band so that `ln|T| = −R·ln10/20` is always finite and
-/// a NaN can never poison the transfer tensor.
+/// non-finite, negative, or physically-implausible (`R > MAX_R_DB`) band so that
+/// `ln|T| = −R·ln10/20` stays finite **and bounded** — the un-normalised O(M²)
+/// cepstral accumulation can never overflow to `±∞` → `NaN`, so a NaN can never
+/// poison the transfer tensor.
 ///
 /// # Contract
 ///
@@ -93,20 +95,36 @@ pub struct IsolationSpectrum {
 }
 
 impl IsolationSpectrum {
+    /// Physical upper bound on a per-band sound reduction index (dB).
+    ///
+    /// A passive partition's `R` is at most a few hundred dB; this cap sits far
+    /// above any real isolation yet **bounds** the un-normalised O(M²) cepstral
+    /// accumulation in [`min_phase_phi_envi`] so it can never overflow to `±∞`
+    /// → `NaN` φ. Without it a pathological-but-finite `R` (e.g. `1e307`) passes
+    /// the `is_finite`/`≥ 0` checks — `ln|T|` stays finite — yet the 208-term DFT
+    /// sum still overflows, and the resulting `NaN` reaches `h_coh_factor`,
+    /// defeating this seam's own "a NaN can never poison the transfer tensor"
+    /// guarantee (threat T-05-02-01). Capping `R` at the trust boundary makes
+    /// that guarantee real.
+    pub const MAX_R_DB: f64 = 1_000.0;
+
     /// Build a validated isolation spectrum from 105 per-band `R` values (dB).
     ///
-    /// Accepts `R = 0.0` (fully transparent) and any large **finite** `R`.
+    /// Accepts `R = 0.0` (fully transparent) up to [`Self::MAX_R_DB`] — the full
+    /// physical range of a passive partition.
     ///
     /// # Errors
     ///
     /// [`PropagationError::InvalidIsolationSpectrum`] carrying the offending band
-    /// index and value if any band is NaN, `±∞`, or negative (a passive partition
-    /// cannot have transmission gain, and a non-finite `R` would poison the
-    /// cepstrum). The explicit `is_finite` check is load-bearing — a bare
+    /// index and value if any band is NaN, `±∞`, negative, or exceeds
+    /// [`Self::MAX_R_DB`] (a passive partition cannot have transmission gain, and
+    /// a non-finite or unbounded-magnitude `R` would poison the cepstrum: `ln|T|`
+    /// stays finite but the un-normalised O(M²) accumulation overflows to `±∞`
+    /// → `NaN`). The explicit `is_finite` check is load-bearing — a bare
     /// `value < 0.0` comparison lets `+∞` through.
     pub fn new(r_db: [f64; N_BANDS]) -> Result<Self, PropagationError> {
         for (band, &value) in r_db.iter().enumerate() {
-            if !value.is_finite() || value < 0.0 {
+            if !value.is_finite() || !(0.0..=Self::MAX_R_DB).contains(&value) {
                 return Err(PropagationError::InvalidIsolationSpectrum { band, value });
             }
         }
@@ -388,13 +406,15 @@ mod tests {
         }
     }
 
-    /// T10: the validating constructor rejects NaN / +∞ / −∞ / negative R at any
-    /// band, carrying the band index and value; accepts 0.0 and large finite R.
+    /// T10: the validating constructor rejects NaN / +∞ / −∞ / negative R and R
+    /// beyond `MAX_R_DB` at any band, carrying the band index and value; accepts
+    /// 0.0 through `MAX_R_DB`.
     #[test]
     fn t10_constructor_rejects_non_finite_and_negative() {
-        // Accept: fully transparent and a large finite isolation.
+        // Accept: fully transparent, a physical isolation, and the exact cap.
         assert!(IsolationSpectrum::new(flat(0.0)).is_ok());
         assert!(IsolationSpectrum::new(flat(300.0)).is_ok());
+        assert!(IsolationSpectrum::new(flat(IsolationSpectrum::MAX_R_DB)).is_ok());
 
         // ±∞ are built from their IEEE-754 bit patterns rather than the library
         // constant: the D-10 source gate forbids any infinity sentinel token
@@ -407,6 +427,10 @@ mod tests {
             (pos_inf, 40),
             (neg_inf, 64),
             (-1e-9, 88),
+            // Absurd-but-finite R (passes is_finite/≥0) must be rejected by the
+            // MAX_R_DB cap — it would otherwise overflow the cepstrum to NaN φ.
+            (1e307, 12),
+            (IsolationSpectrum::MAX_R_DB + 1.0, 100),
         ] {
             let mut r = flat(30.0);
             r[band] = bad;
@@ -421,5 +445,34 @@ mod tests {
                 other => panic!("expected InvalidIsolationSpectrum for {bad}, got {other:?}"),
             }
         }
+    }
+
+    /// T11 (WR-01): the `MAX_R_DB` cap makes the "a NaN can never poison the
+    /// transfer tensor" guarantee real. An unbounded-but-finite `R` overflows the
+    /// un-normalised O(M²) cepstral accumulation to `±∞` → `NaN` φ; the seam now
+    /// rejects it, and at the very top of the allowed range a **live** (non-flat)
+    /// spectrum still yields fully finite φ and filter bands.
+    #[test]
+    fn t11_capped_isolation_keeps_min_phase_finite() {
+        // A live (non-flat) spectrum at the very top of the allowed band range
+        // still produces finite φ and a finite complex filter.
+        let mut r = [0.0; N_BANDS];
+        for (n, slot) in r.iter_mut().enumerate() {
+            *slot = (IsolationSpectrum::MAX_R_DB * (0.5 + 0.5 * (n as f64 * 0.3).sin()))
+                .clamp(0.0, IsolationSpectrum::MAX_R_DB);
+        }
+        let phi = min_phase_phi_envi(&r);
+        assert!(
+            phi.iter().all(|p| p.is_finite()),
+            "φ must be finite for a live spectrum at the MAX_R_DB cap"
+        );
+        let filter = TransmissionFilter::from_isolation(&IsolationSpectrum::new(r).unwrap());
+        assert!(
+            filter
+                .bands
+                .iter()
+                .all(|b| b.re.is_finite() && b.im.is_finite()),
+            "filter bands must be finite for a live spectrum at the MAX_R_DB cap"
+        );
     }
 }
