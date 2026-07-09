@@ -39,6 +39,9 @@
 
 pub mod dto;
 pub mod geojson;
+pub mod hash;
+pub mod manifest;
+pub mod project_dir;
 
 use std::path::PathBuf;
 

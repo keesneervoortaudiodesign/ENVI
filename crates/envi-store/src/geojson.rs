@@ -304,8 +304,9 @@ fn expect_point<'a>(
 }
 
 /// All positions in a geometry value (Point/LineString/Polygon and their multi
-/// variants). Used by validation; unsupported geometry types are rejected.
-fn geometry_positions(
+/// variants). Used by validation and by the tensor hash; unsupported geometry
+/// types are rejected.
+pub(crate) fn geometry_positions(
     value: &geojson::GeometryValue,
 ) -> Result<Vec<&geojson::Position>, StoreError> {
     use geojson::GeometryValue::{
