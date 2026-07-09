@@ -29,11 +29,18 @@ pub async fn get_scene(
 /// `PUT /projects/{id}/scene` -> 204. The store validates the collection before
 /// the atomic write; a schema violation is rejected with a structured JSON error
 /// and the previous scene stays on disk unchanged.
+///
+/// After a successful write the project's in-memory calc records are refreshed
+/// to the new scene's identity (HIGH-1b): editing the scene must not leave a
+/// stale `calc_id` reconditionable against a mutated receiver set. The primary
+/// guard is `recondition` re-minting identity per request; this keeps the cached
+/// records consistent too.
 pub async fn put_scene(
     State(app): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Json(scene): Json<FeatureCollection>,
 ) -> Result<StatusCode, ApiError> {
     app.store.save_scene(id, &scene)?;
+    crate::api::calc::refresh_project_calc_identity(&app, id).await;
     Ok(StatusCode::NO_CONTENT)
 }

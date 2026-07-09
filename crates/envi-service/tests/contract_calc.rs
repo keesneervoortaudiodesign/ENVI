@@ -371,6 +371,93 @@ async fn recompute_mints_identity_and_job() {
 }
 
 #[tokio::test]
+async fn scene_edit_invalidates_previously_valid_recondition_hash() {
+    // HIGH-1: a tensor_hash that reconditioned fine must 409 after the scene is
+    // edited, because the gate re-mints identity from the CURRENT scene (and the
+    // cached record is refreshed on PUT /scene).
+    let tmp = tempfile::TempDir::new().expect("tempdir");
+    let app = app_over(tmp.path());
+    let project_id = make_project(&app, 4.8950).await;
+    let (calc_id, _job, h) = submit_calc(&app, &project_id).await;
+
+    // The freshly minted hash reconditions successfully.
+    let (status, _) = read_json(
+        app.clone()
+            .oneshot(json_req(
+                Method::POST,
+                &format!("/api/v1/calculations/{calc_id}/recondition"),
+                &serde_json::json!({ "tensor_hash": h, "conditioning": {} }),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "hash valid before the edit");
+
+    // Edit the scene (move the receiver) WITHOUT recomputing.
+    let resp = app
+        .clone()
+        .oneshot(json_req(
+            Method::PUT,
+            &format!("/api/v1/projects/{project_id}/scene"),
+            &source_receiver_scene(4.8971),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT, "scene edited");
+
+    // The SAME hash now 409s — the tensor's inputs changed on disk.
+    let (status, body) = read_json(
+        app.clone()
+            .oneshot(json_req(
+                Method::POST,
+                &format!("/api/v1/calculations/{calc_id}/recondition"),
+                &serde_json::json!({ "tensor_hash": h, "conditioning": {} }),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "a scene edit invalidates the previously-valid hash (HIGH-1)"
+    );
+    assert_eq!(body["error"], "tensor_hash_mismatch", "frozen 409 code");
+    assert_ne!(
+        body["expected"], h,
+        "expected is the freshly-minted (post-edit) identity, not the stale one"
+    );
+    assert_eq!(body["got"], h, "got echoes the stale client hash");
+}
+
+#[tokio::test]
+async fn recondition_unknown_calc_is_404_not_409() {
+    // HIGH-1: an unknown calc_id is a 404, never a 409 — the mismatch gate only
+    // applies to calcs that actually exist.
+    let tmp = tempfile::TempDir::new().expect("tempdir");
+    let app = app_over(tmp.path());
+    let unknown_calc = "00000000-0000-0000-0000-0000000000ff";
+
+    let (status, _) = read_json(
+        app.clone()
+            .oneshot(json_req(
+                Method::POST,
+                &format!("/api/v1/calculations/{unknown_calc}/recondition"),
+                &serde_json::json!({ "tensor_hash": "deadbeef", "conditioning": {} }),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "unknown calc -> 404, not 409"
+    );
+}
+
+#[tokio::test]
 async fn calc_submit_writes_stub_manifest() {
     let tmp = tempfile::TempDir::new().expect("tempdir");
     let app = app_over(tmp.path());

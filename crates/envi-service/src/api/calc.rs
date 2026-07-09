@@ -9,11 +9,15 @@
 //! conditioning type). Two structurally separate endpoints bind to that identity:
 //!
 //! - `recondition` (conditioning -> MAC readout): its request carries the
-//!   `tensor_hash` the client believes it is reconditioning. A **mismatch** —
-//!   the scene/met/receivers changed since the tensor was minted — is ACTUALLY
-//!   rejected with **HTTP 409** carrying `expected`/`got`/`hint` (never silently
-//!   served stale). A match returns dense `[105]` band-index spectra per receiver,
-//!   flagged `stub: true`.
+//!   `tensor_hash` the client believes it is reconditioning. The gate re-mints
+//!   identity from the **current** scene/met/receivers per request (HIGH-1a) and
+//!   compares the request hash against that freshly-derived value — NOT against a
+//!   cached record — so any scene edit since the tensor was minted forces an
+//!   **HTTP 409** carrying `expected`/`got`/`hint` (never silently served stale).
+//!   The spectra readout is built from the SAME scene load the identity was
+//!   minted from, so the served receiver set can never disagree with the matched
+//!   hash. A match returns dense `[105]` band-index spectra per receiver, flagged
+//!   `stub: true`.
 //! - `recompute` (scene/terrain/ground/met -> propagation): the separate path that
 //!   re-mints identity from the CURRENT scene and launches a fresh job (202).
 //!
@@ -32,7 +36,6 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -46,6 +49,7 @@ use envi_geo::{LonLat, ProjectCrs};
 use envi_store::dto::{BandSpectrumDto, ConditioningDto, ReceiverDto};
 use envi_store::hash::tensor_hash;
 use envi_store::manifest::{CalcManifest, chunk_receivers, write_manifest};
+use envi_store::now_unix;
 
 use envi_engine::freq::N_BANDS;
 
@@ -186,19 +190,48 @@ pub async fn submit(
 ///
 /// The 409 body is the frozen SC4 shape `{ error: "tensor_hash_mismatch",
 /// expected, got, hint }` (D-07; designed-ahead SVC-06, realized fully Phase 11).
-/// On a hash match, returns one deterministic all-zero `[105]` spectrum per scene
-/// receiver, flagged `stub: true`. The stub tensor is NEVER mutated by a
-/// recondition — a mismatched request leaves it intact for a later matched call.
+///
+/// # HIGH-1: identity re-minted per request, readout consistent with it
+///
+/// The gate does NOT compare against a cached `CalcRecord.tensor_hash` (which is
+/// minted at submit/recompute and would go stale on a later scene edit). It
+/// re-derives identity from the CURRENT scene/met/receivers and compares the
+/// request hash against that fresh value, so a scene edit since the tensor was
+/// minted correctly 409s (`expected` is the freshly-minted hash). The canned
+/// spectra are built from the SAME scene load, so the served receiver set can
+/// never disagree with the matched identity. Unknown `calc_id` -> 404 (not 409).
+/// The stub tensor is NEVER mutated by a recondition.
 pub async fn recondition(
     State(app): State<Arc<AppState>>,
     Path(calc_id): Path<Uuid>,
     Json(req): Json<ReconditionRequest>,
 ) -> Result<Json<ReconditionResponse>, ApiError> {
-    // Look up the stub tensor identity (404 for an unknown calc).
-    let record = {
+    // Resolve the calc to its project (404 for an unknown calc — never 409).
+    let project_id = {
         let calcs = app.calcs.read().await;
-        calcs.get(&calc_id).cloned().ok_or(ApiError::NotFound)?
+        calcs.get(&calc_id).ok_or(ApiError::NotFound)?.project_id
     };
+
+    // Re-mint identity from the CURRENT scene and reuse that exact load for the
+    // spectra readout (HIGH-1a): the served receiver set is guaranteed to match
+    // the identity the gate accepts.
+    let (identity, receivers) = load_and_mint(&app, project_id)?;
+
+    // The enforced 409 gate (SC4) is evaluated BEFORE conditioning-shape
+    // validation (LOW-2): a stale hash on an otherwise well-formed request
+    // surfaces as 409, not 400.
+    if req.tensor_hash != identity.tensor_hash {
+        return Err(ApiError::Conflict {
+            body: json!({
+                "error": "tensor_hash_mismatch",
+                "expected": identity.tensor_hash,
+                "got": req.tensor_hash,
+                "hint": format!(
+                    "scene/met/receivers changed — POST /api/v1/calculations/{calc_id}/recompute"
+                ),
+            }),
+        });
+    }
 
     // Validate conditioning shape (readout param): filter arrays must be dense
     // [105] when present. This influences nothing in Phase 6 (D-07).
@@ -215,27 +248,12 @@ pub async fn recondition(
         }
     }
 
-    // The enforced 409 gate (SC4): a mismatched hash is ACTUALLY rejected.
-    if req.tensor_hash != record.tensor_hash {
-        return Err(ApiError::Conflict {
-            body: json!({
-                "error": "tensor_hash_mismatch",
-                "expected": record.tensor_hash,
-                "got": req.tensor_hash,
-                "hint": format!(
-                    "scene/met/receivers changed — POST /api/v1/calculations/{calc_id}/recompute"
-                ),
-            }),
-        });
-    }
-
-    // Match: one canned dense [105] band-index spectrum per scene receiver uuid.
-    let scene = app.store.load_scene(record.project_id)?;
-    let receiver_ids = scene_receiver_ids(&scene)?;
-    let mut spectra = HashMap::with_capacity(receiver_ids.len());
-    for id in receiver_ids {
+    // Match: one canned dense [105] band-index spectrum per scene receiver uuid,
+    // keyed from the receiver set the identity was minted over.
+    let mut spectra = HashMap::with_capacity(receivers.len());
+    for r in &receivers {
         spectra.insert(
-            id,
+            r.id,
             BandSpectrumDto {
                 band_db: vec![0.0; N_BANDS],
             },
@@ -244,9 +262,38 @@ pub async fn recondition(
 
     Ok(Json(ReconditionResponse {
         spectra,
-        tensor_hash: record.tensor_hash,
+        tensor_hash: identity.tensor_hash,
         stub: true,
     }))
+}
+
+/// Refresh every in-memory `CalcRecord` for `project_id` to the identity of the
+/// CURRENT scene (HIGH-1b defense in depth), called after a `PUT /scene`.
+///
+/// The primary SC4 guard is that [`recondition`] re-mints identity per request;
+/// this keeps the cached stub-tensor records from lagging the on-disk scene too.
+/// Records are left in place (recompute still addresses them by calc id) — only
+/// their `tensor_hash`/`dims` are updated, so a client holding a pre-edit hash
+/// can no longer match a cached record either. Best-effort: if there are no
+/// records for the project, or re-minting fails, the cached records are simply
+/// left as-is (recondition's per-request re-mint still guarantees correctness).
+pub(crate) async fn refresh_project_calc_identity(app: &AppState, project_id: Uuid) {
+    let has_any = {
+        let calcs = app.calcs.read().await;
+        calcs.values().any(|r| r.project_id == project_id)
+    };
+    if !has_any {
+        return;
+    }
+    if let Ok(identity) = mint_identity(app, project_id) {
+        let mut calcs = app.calcs.write().await;
+        for rec in calcs.values_mut() {
+            if rec.project_id == project_id {
+                rec.tensor_hash = identity.tensor_hash.clone();
+                rec.dims = identity.dims;
+            }
+        }
+    }
 }
 
 /// `POST /calculations/{cid}/recompute` -> 202 `{ job_id, tensor_hash }`.
@@ -311,8 +358,14 @@ struct Identity {
 }
 
 /// Load a project's scene + met + receivers and mint its content-hash tensor
-/// identity (geometry + met + receivers ONLY — conditioning excluded, D-07).
-fn mint_identity(app: &AppState, project_id: Uuid) -> Result<Identity, ApiError> {
+/// identity (geometry + met + receivers ONLY — conditioning excluded, D-07),
+/// returning the reprojected receiver set alongside so a caller that also reads
+/// out spectra uses the SAME load the identity was minted from (HIGH-1
+/// consistency — the readout can never disagree with the identity).
+fn load_and_mint(
+    app: &AppState,
+    project_id: Uuid,
+) -> Result<(Identity, Vec<ReceiverDto>), ApiError> {
     let meta = app.store.load_meta(project_id)?;
     let scene = app.store.load_scene(project_id)?;
     let crs = meta.crs.to_project_crs()?;
@@ -324,7 +377,14 @@ fn mint_identity(app: &AppState, project_id: Uuid) -> Result<Identity, ApiError>
     let tensor_hash = tensor_hash(&scene, &met, &receivers);
     let dims = [source_count.max(1), receivers.len(), N_BANDS];
 
-    Ok(Identity { tensor_hash, dims })
+    Ok((Identity { tensor_hash, dims }, receivers))
+}
+
+/// Mint just the content-hash tensor identity (dims + hash) for a project's
+/// current state. Thin wrapper over [`load_and_mint`] for callers (submit /
+/// recompute) that do not need the receiver set.
+fn mint_identity(app: &AppState, project_id: Uuid) -> Result<Identity, ApiError> {
+    Ok(load_and_mint(app, project_id)?.0)
 }
 
 /// Extract the receiver-set (reprojected to SceneXY, id-tagged) from the scene —
@@ -393,34 +453,4 @@ fn scene_source_count(scene: &FeatureCollection) -> usize {
                 == Some("source")
         })
         .count()
-}
-
-/// Collect the uuids of every `receiver`-kind feature (spectra readout keys).
-fn scene_receiver_ids(scene: &FeatureCollection) -> Result<Vec<Uuid>, ApiError> {
-    let mut ids = Vec::new();
-    for feature in &scene.features {
-        let Some(props) = feature.properties.as_ref() else {
-            continue;
-        };
-        if props.get("kind").and_then(|v| v.as_str()) != Some("receiver") {
-            continue;
-        }
-        let id = props
-            .get("id")
-            .and_then(|v| v.as_str())
-            .and_then(|s| Uuid::parse_str(s).ok())
-            .ok_or_else(|| ApiError::BadRequest {
-                detail: "receiver feature is missing a valid uuid id".to_string(),
-            })?;
-        ids.push(id);
-    }
-    Ok(ids)
-}
-
-/// Current unix epoch seconds (matches the store's timestamp convention).
-fn now_unix() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }

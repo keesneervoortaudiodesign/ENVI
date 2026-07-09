@@ -8,8 +8,11 @@
 //!   each handle carrying a `watch::Receiver<JobStatus>` (live progress) and a
 //!   `CancellationToken` (cooperative cancel). See [`crate::jobs`].
 //! - [`AppState::calcs`] — the in-memory **stub tensor** registry (`calc_id ->
-//!   CalcRecord`) whose `tensor_hash` the `recondition` 409 gate checks against
-//!   (SC4, D-07). [`CalcRecord`] lives here.
+//!   CalcRecord`) resolving a `calc_id` to its owning project + last-minted
+//!   identity (SC4, D-07). The `recondition` 409 gate re-mints identity from the
+//!   current scene per request (HIGH-1a) rather than trusting the cached hash;
+//!   the cached `tensor_hash` is kept fresh on scene edits (HIGH-1b) so it never
+//!   lags disk. [`CalcRecord`] lives here.
 //!
 //! Both registries live behind an `Arc<RwLock<..>>` so `AppState` stays `Clone`
 //! (it is always shared as `Arc<AppState>`; the inner `Arc` keeps the derive and
@@ -56,8 +59,9 @@ pub struct AppState {
     /// registry eviction is Phase-10 business (T-06-04-03).
     pub jobs: Arc<RwLock<HashMap<JobId, JobHandle>>>,
     /// The in-memory stub-tensor registry: `calc_id -> CalcRecord` (project id +
-    /// `tensor_hash` + dims). The `recondition` 409 gate checks the request hash
-    /// against `CalcRecord::tensor_hash` (SC4, D-07).
+    /// last-minted `tensor_hash` + dims). The `recondition` 409 gate re-mints
+    /// identity from the current scene per request (HIGH-1a); this map resolves
+    /// `calc_id -> project_id` and caches the last identity (SC4, D-07).
     pub calcs: Arc<RwLock<HashMap<Uuid, CalcRecord>>>,
 }
 
