@@ -74,6 +74,15 @@ impl ProjectStore {
         self.root.join(id.to_string())
     }
 
+    /// The on-disk directory for a project id (`root/<uuid>`). Public so the
+    /// service's calc layer can address `calc/<cid>/` under it (manifest writes
+    /// via [`crate::manifest::write_manifest`]). The id is a `Uuid`, so no
+    /// untrusted string is ever joined into the path (Pitfall 7).
+    #[must_use]
+    pub fn project_dir(&self, id: Uuid) -> PathBuf {
+        self.dir_of(id)
+    }
+
     /// Resolve + containment-check a project dir for a destructive op: it must
     /// exist and canonicalize under the canonicalized store root.
     fn guarded_dir(&self, id: Uuid) -> Result<PathBuf, StoreError> {
