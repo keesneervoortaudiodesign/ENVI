@@ -201,7 +201,7 @@ Plans:
   4. The API contract structurally separates `recondition` (conditioning-only → tensor MAC) from `recompute` (scene/terrain/ground/met → propagation), with tensor identity keyed by content hash and a mismatched-hash MAC request rejected (contract-tested against a stub tensor; realized end-to-end in Phase 11) — and all spectra cross the wire as dense arrays keyed by band index with the 105-point 1/12-octave axis served once at a meta endpoint, no client-side acoustic math
   5. The job registry exposes the Queued/Running/Done/Failed/Cancelled state machine with SSE progress: a stub job can be submitted, observed live, and cancelled
 
-**Plans**: 2/4 plans executed
+**Plans**: 3/4 plans executed
 
 **Wave 1**
 
@@ -213,7 +213,7 @@ Plans:
 
 **Wave 3** *(blocked on 06-02)*
 
-- [ ] 06-03-PLAN.md — `envi-service` core: axum binary, D-08 pure-Rust self-check (refuse-to-start), freq-axis meta, project CRUD + scene GET/PUT over HTTP, placeholder bundle — SVC-03/04/05/07
+- [x] 06-03-PLAN.md — `envi-service` core: axum binary, D-08 pure-Rust self-check (refuse-to-start), freq-axis meta, project CRUD + scene GET/PUT over HTTP, placeholder bundle — SVC-03/04/05/07
 
 **Wave 4** *(blocked on 06-03)*
 
