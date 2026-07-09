@@ -201,7 +201,7 @@ Plans:
   4. The API contract structurally separates `recondition` (conditioning-only → tensor MAC) from `recompute` (scene/terrain/ground/met → propagation), with tensor identity keyed by content hash and a mismatched-hash MAC request rejected (contract-tested against a stub tensor; realized end-to-end in Phase 11) — and all spectra cross the wire as dense arrays keyed by band index with the 105-point 1/12-octave axis served once at a meta endpoint, no client-side acoustic math
   5. The job registry exposes the Queued/Running/Done/Failed/Cancelled state machine with SSE progress: a stub job can be submitted, observed live, and cancelled
 
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 
 **Wave 1**
 
@@ -209,7 +209,7 @@ Plans:
 
 **Wave 2** *(blocked on 06-01)*
 
-- [ ] 06-02-PLAN.md — `envi-store`: serde DTO mirror, GeoJSON 9-kind vocabulary, project-as-folder CRUD + atomic saves, calc manifest, blake3 tensor-identity hash — SVC-01/05/07
+- [x] 06-02-PLAN.md — `envi-store`: serde DTO mirror, GeoJSON 9-kind vocabulary, project-as-folder CRUD + atomic saves, calc manifest, blake3 tensor-identity hash — SVC-01/05/07
 
 **Wave 3** *(blocked on 06-02)*
 

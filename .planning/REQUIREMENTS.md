@@ -118,13 +118,13 @@
 
 ### Service & persistence (SVC)
 
-- [ ] **SVC-01**: Persist projects as a project folder (scene + settings + chunked cached tensors)
+- [x] **SVC-01**: Persist projects as a project folder (scene + settings + chunked cached tensors)
 - [ ] **SVC-02**: Compute-job model (submit, queue, run, progress via SSE, cancel, fetch results) with a Queued/Running/Done/Failed/Cancelled state machine
 - [ ] **SVC-03**: Rust HTTP API backend (axum), serving the built frontend bundle
 - [ ] **SVC-04**: Single self-hosted deployable service (localhost bind; GDAL/PROJ startup self-check)
-- [ ] **SVC-05**: Project CRUD lifecycle — create / open / save (autosave) / delete / duplicate with metadata; reopen-last
+- [x] **SVC-05**: Project CRUD lifecycle — create / open / save (autosave) / delete / duplicate with metadata; reopen-last
 - [ ] **SVC-06**: API separates **`recondition`** (conditioning-only → tensor MAC) from **`recompute`** (scene/terrain/ground/met → full propagation); tensor cache keyed by content hash; a MAC request with a mismatched hash is rejected, never silently served
-- [ ] **SVC-07**: All acoustic quantities are computed **server-side**; spectra cross the wire keyed by **band index** with the 1/12-octave grid served once (no Hz-based client-side acoustic math)
+- [x] **SVC-07**: All acoustic quantities are computed **server-side**; spectra cross the wire keyed by **band index** with the 1/12-octave grid served once (no Hz-based client-side acoustic math)
 
 ### Future imports & BEM (FUT — deferred beyond Milestone 2)
 
@@ -228,13 +228,13 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | WEB-10 | Phase 7 | Pending |
 | WEB-11 | Phase 11 | Pending |
 | WEB-12 | Phase 11 | Pending |
-| SVC-01 | Phase 6 | Pending |
+| SVC-01 | Phase 6 | Complete |
 | SVC-02 | Phase 10 | Pending |
 | SVC-03 | Phase 6 | Pending |
 | SVC-04 | Phase 6 | Pending |
-| SVC-05 | Phase 6 | Pending |
+| SVC-05 | Phase 6 | Complete |
 | SVC-06 | Phase 11 | Pending |
-| SVC-07 | Phase 6 | Pending |
+| SVC-07 | Phase 6 | Complete |
 
 **Coverage:**
 
