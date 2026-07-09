@@ -394,21 +394,82 @@ fn table9_delta_l(h_norm: f64, alpha: f64, r_norm: f64) -> f64 {
 /// `f_hz` MUST be an exact grid centre (`axis.centres[i]`), never a nominal
 /// label; `c0` is the sound speed the terrain effect uses (`coh.c0`).
 #[must_use]
-pub fn forest_delta_l(f_hz: f64, fc: &ForestCrossing, c0: f64) -> f64 {
-    let n_q = 2.0 * fc.stem_radius_m * fc.density_per_m2; // Eq. 290
-    let t = ((fc.d_m * n_q) / 1.75).powi(2).min(1.0); // Eq. 289
-    let ka = 2.0 * PI * f_hz * fc.stem_radius_m / c0;
-    let kf = table8_kf(ka);
-    // Exact zero: no scattering below ka = 0.7, or no crossing (T = 0). No
-    // table math is constructed — F1's analytic zero is bit-exact.
-    if kf == 0.0 || t == 0.0 {
-        return 0.0;
+/// Band-independent precompute for one forest crossing, so the expensive
+/// Table-9 tensor-product PCHIP (`a_e`) and the excess-attenuation scale (`t`)
+/// are built ONCE per path instead of once per 1/12-octave band.
+///
+/// Only `ka`/`k_f` (Eq. 288 / Table 8) depend on frequency; everything else in
+/// Sub-Model 10 is a pure function of the [`ForestCrossing`] and `c₀`. Building
+/// this once and calling [`ForestBands::eval_band`] per band is **bit-for-bit
+/// identical** to calling [`forest_delta_l`] per band: the final Eq. 291
+/// expression keeps the exact operand order `(1.25 · k_f · t · a_e).max(floor)`
+/// (float multiplication is not associative, so the order is load-bearing).
+#[derive(Debug, Clone, Copy)]
+pub struct ForestBands {
+    stem_radius_m: f64,
+    c0: f64,
+    /// Eq. 289 crossing factor `T`, precomputed.
+    t: f64,
+    /// Eq. 290 `A_e` (Table-9 PCHIP + log term), precomputed. Meaningful only
+    /// when `t > 0`; left `0.0` otherwise (the `t == 0` path returns exactly 0).
+    a_e: f64,
+    /// `t == 0` ⇒ every band is an exact analytic zero (no crossing); the
+    /// Table-9 PCHIP is then never constructed (F1's zero stays bit-exact).
+    zero: bool,
+}
+
+impl ForestBands {
+    /// Precompute the band-independent Sub-Model 10 quantities for `fc` at `c0`.
+    pub fn new(fc: &ForestCrossing, c0: f64) -> Self {
+        let n_q = 2.0 * fc.stem_radius_m * fc.density_per_m2; // Eq. 290
+        let t = ((fc.d_m * n_q) / 1.75).powi(2).min(1.0); // Eq. 289
+        if t == 0.0 {
+            // No crossing ⇒ all bands zero; skip the Table-9 PCHIP entirely.
+            return Self {
+                stem_radius_m: fc.stem_radius_m,
+                c0,
+                t,
+                a_e: 0.0,
+                zero: true,
+            };
+        }
+        let h_norm = n_q * fc.height_m; // h′ = nQ·h
+        // R′ clamped consistently in BOTH the table lookup and the log term (A3).
+        let r_norm = (n_q * fc.d_m).clamp(0.0625, 10.0);
+        let a_e = table9_delta_l(h_norm, fc.absorption, r_norm) + 20.0 * (8.0 * r_norm).log10();
+        Self {
+            stem_radius_m: fc.stem_radius_m,
+            c0,
+            t,
+            a_e,
+            zero: false,
+        }
     }
-    let h_norm = n_q * fc.height_m; // h′ = nQ·h
-    // R′ clamped consistently in BOTH the table lookup and the log term (A3).
-    let r_norm = (n_q * fc.d_m).clamp(0.0625, 10.0);
-    let a_e = table9_delta_l(h_norm, fc.absorption, r_norm) + 20.0 * (8.0 * r_norm).log10();
-    (1.25 * kf * t * a_e).max(DELTA_L_FLOOR_DB) // Eq. 291
+
+    /// Sub-Model 10 excess attenuation `ΔL_s` (dB) at `f_hz`, using the
+    /// precomputed band-independent state. Bit-identical to [`forest_delta_l`].
+    pub fn eval_band(&self, f_hz: f64) -> f64 {
+        // Exact zero: no crossing (T = 0). No table math is constructed —
+        // F1's analytic zero is bit-exact.
+        if self.zero {
+            return 0.0;
+        }
+        let ka = 2.0 * PI * f_hz * self.stem_radius_m / self.c0;
+        let kf = table8_kf(ka);
+        // Exact zero: no scattering below ka = 0.7 (Table 8).
+        if kf == 0.0 {
+            return 0.0;
+        }
+        // Eq. 291 — operand order preserved for bit-exactness.
+        (1.25 * kf * self.t * self.a_e).max(DELTA_L_FLOOR_DB)
+    }
+}
+
+/// Sub-Model 10 excess attenuation `ΔL_s` (dB) for one band. Thin wrapper over
+/// [`ForestBands`] — the per-path solve loop builds a [`ForestBands`] once and
+/// calls [`ForestBands::eval_band`] instead, avoiding the per-band Table-9 PCHIP.
+pub fn forest_delta_l(f_hz: f64, fc: &ForestCrossing, c0: f64) -> f64 {
+    ForestBands::new(fc, c0).eval_band(f_hz)
 }
 
 #[cfg(test)]

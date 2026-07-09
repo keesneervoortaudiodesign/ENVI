@@ -37,7 +37,7 @@
 use ndarray::{Array3, s};
 use num_complex::Complex;
 
-use crate::forest::{ForestCrossing, forest_delta_l};
+use crate::forest::{ForestBands, ForestCrossing};
 use crate::freq::{FreqAxis, N_BANDS};
 use crate::geometry::PathGeometry;
 use crate::propagation::air_absorption::Atmosphere;
@@ -92,7 +92,8 @@ pub struct SolveJob<'a> {
     pub directivity_phase_rad: Option<[f64; N_BANDS]>,
     /// Optional forest (scattering-zone) crossing on this path. When `Some`, the
     /// solver evaluates the Sub-Model 10 excess attenuation `ΔL_s ≤ 0` dB
-    /// ([`forest_delta_l`]) per band and applies it as a real magnitude factor —
+    /// ([`ForestBands::eval_band`], built once per path) per band and applies it
+    /// as a real magnitude factor —
     /// `10^{ΔL_s/20}` on `H_coh` (`arg` untouched) and `10^{ΔL_s/10}` on
     /// `P_incoh_abs` — a **per-path** property applied post-conj, exactly like
     /// `directivity_gain_db` and never inside `propagation/` (D-03/D-04). The
@@ -217,6 +218,13 @@ fn solve_pair(job: &SolveJob<'_>) -> Result<(Vec<Complex<f64>>, Vec<f64>), Propa
         job.isolation,
     )?;
 
+    // Sub-Model 10 band-independent precompute (Table-9 PCHIP + Eq. 289 T):
+    // built ONCE per path, not per band. `None` when the job carries no forest.
+    let forest_bands = job
+        .forest
+        .as_ref()
+        .map(|fc| ForestBands::new(fc, job.coh.c0));
+
     let mut h_coh = Vec::with_capacity(N_BANDS);
     let mut p_abs = Vec::with_capacity(N_BANDS);
     for (i, ((&hf, &factor), &pi)) in h_ff
@@ -249,8 +257,8 @@ fn solve_pair(job: &SolveJob<'_>) -> Result<(Vec<Complex<f64>>, Vec<f64>), Propa
         // ΔL_s ≤ 0 (bar a ≤ ~0.01 dB PCHIP interpolation-corner tolerance the f4
         // sweep pins), so this is attenuation-only; a real scale of an exact-zero
         // P_incoh stays exactly zero regardless of that sign (F→1 ⇒ P_incoh→0).
-        if let Some(fc) = job.forest.as_ref() {
-            let dls = forest_delta_l(job.axis.centres[i], fc, job.coh.c0);
+        if let Some(fb) = forest_bands.as_ref() {
+            let dls = fb.eval_band(job.axis.centres[i]);
             hc *= 10f64.powf(dls / 20.0);
             pa *= 10f64.powf(dls / 10.0);
         }
