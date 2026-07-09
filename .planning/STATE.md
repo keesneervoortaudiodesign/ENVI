@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 06
 current_phase_name: service-foundation-persistence
-status: executing
-stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-07-09T17:55:10.020Z"
+status: verifying
+stopped_at: Completed 06-04-PLAN.md
+last_updated: "2026-07-09T19:57:51.002Z"
 last_activity: 2026-07-09
-last_activity_desc: Phase 06 execution started
+last_activity_desc: Completed 06-04 (jobs/SSE + recondition/recompute split + doc contract)
 progress:
   total_phases: 11
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 23
-  completed_plans: 22
-  percent: 45
+  completed_plans: 23
+  percent: 55
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 06 (service-foundation-persistence) — EXECUTING
+Phase: 06 (service-foundation-persistence) — ALL PLANS EXECUTED
 Plan: 4 of 4
-Status: Ready to execute
-Last activity: 2026-07-09 — Phase 06 execution started
+Status: Phase complete — ready for verification
+Last activity: 2026-07-09 — Completed 06-04 (jobs/SSE + recondition/recompute + doc contract)
 
-Progress: [██████████] Phase 5 — 3/3 plans complete (05-01 ✅ forest SM10, 05-02 ✅ min-phase kernel, 05-03 ✅ integration + opaque regression)
+Progress: [██████████] Phase 6 — 4/4 plans complete (06-01 ✅ envi-geo CRS seam, 06-02 ✅ envi-store persistence, 06-03 ✅ axum binary + project/scene, 06-04 ✅ jobs/SSE + recondition/recompute split)
 
 ## Performance Metrics
 
@@ -71,6 +71,7 @@ Progress: [██████████] Phase 5 — 3/3 plans complete (05-01
 | Phase 06 P01 | 11min | 3 tasks | 8 files |
 | Phase 06 P02 | 19min | 3 tasks | 7 files |
 | Phase 06 P03 | 13min | 3 tasks | 13 files |
+| Phase 06 P04 | 25min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 5, 05-02, Rule 1] Plan's T3 adjacency spec (φ[n+1]≤φ[n] over 30..75) was unsatisfiable — even-mirror makes φ symmetric about band 52 (φ[k]=φ[104−k]), so no rising R is monotone across mid-band (Finding 3c). Engine φ verified correct vs numpy (~1e-15); T3 reformulated to lagging-sign + rising-FLANK monotonicity (10..50) + slope-antisymmetry (φ_rise=−φ_fall) + native negation — a stronger D-08 pin, no production-code change
 - [Phase 06]: envi-geo is the milestone's ONE reprojection boundary (GEOX-04) on pure-Rust proj4rs 0.1.10 — zero C toolchain (D-01/D-02); radians quarantined to transform.rs; pinned to pyproj oracle <=1e-3 m
 - [Phase ?]: [Phase 06, 06-03] envi-service = the single deployable axum binary (SVC-03/04): /api/v1 + web/dist, 127.0.0.1:8080 default (warn on non-loopback ENVI_BIND), refuse-to-start on the D-08 pure-Rust CRS round-trip self-check (SC2 adjusted, GDAL deferred to Phase 8); thin handlers delegate to envi-store; freq-axis served once from envi_engine::freq (band-index wire, SVC-07); scene GET/PUT round-trips WGS84 GeoJSON and survives restart (SC1); lib+bin split so oneshot tests reach api::app
+- [Phase ?]: [Phase 06, 06-04] SC5 job machine runs on a dedicated std::thread (Anti-Pattern 5/D-08, grep-gated zero spawn_blocking) with watch::channel progress + CancellationToken, bridged to SSE via WatchStream + 15s keep-alive; SC4 recondition/recompute split ENFORCES a real 409 tensor_hash_mismatch ({error,expected,got,hint} served verbatim, top-level) against the in-memory CalcRecord; D-07 conditioning-exclusion proven (same identity under any conditioning); honest all-zero [105] stubs (stub:true); tier router + registry eviction deferred to Phase 10/11
 
 ### Pending Todos
 
@@ -146,6 +148,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-09T17:55:10.012Z
+Last session: 2026-07-09T19:56:53.828Z
 Stopped at: Completed 06-03-PLAN.md
 Resume file: None
