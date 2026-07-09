@@ -24,8 +24,7 @@
 //! - [`selfcheck`] — the D-08 refuse-to-start CRS round-trip.
 //! - [`state`] — [`state::AppState`] (the `Arc`-shared store handle).
 //! - [`error`] — [`error::ApiError`] -> `IntoResponse` (status + structured JSON).
-//! - `api` — the `/api/v1` router (axum 0.8 brace-syntax paths) + handlers
-//!   (added by Task 2/3 of plan 06-03).
+//! - [`api`] — the `/api/v1` router (axum 0.8 brace-syntax paths) + handlers.
 //!
 //! # House rules
 //! - `f64` throughout; typed errors, never panics on data.
@@ -34,6 +33,7 @@
 //!
 #![deny(unsafe_code)]
 
+pub mod api;
 pub mod error;
 pub mod selfcheck;
 pub mod state;

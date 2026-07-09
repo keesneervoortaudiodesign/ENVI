@@ -14,13 +14,10 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::Router;
-use axum::extract::State;
-use axum::routing::get;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
-use envi_service::error::ApiError;
+use envi_service::api;
 use envi_service::selfcheck;
 use envi_service::state::AppState;
 
@@ -77,12 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let store = envi_store::project_dir::ProjectStore::new(projects_dir)?;
     let state = Arc::new(AppState::new(store));
-
-    // NOTE: Task 2 replaces this scaffold router with `envi_service::api::app`.
-    // For now a single health route keeps the binary a runnable, testable shell.
-    let app = Router::new()
-        .route("/", get(scaffold_health))
-        .with_state(state);
+    let app = api::app(state, &web_dist);
 
     let listener = TcpListener::bind(bind).await?;
     tracing::info!(%bind, "envi-service listening");
@@ -114,11 +106,4 @@ fn resolve_web_dist() -> PathBuf {
     std::env::var_os("ENVI_WEB_DIST")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("web/dist"))
-}
-
-/// Scaffold health handler (Task 1 only): confirms the store is reachable.
-/// Replaced by the real router in Task 2.
-async fn scaffold_health(State(app): State<Arc<AppState>>) -> Result<String, ApiError> {
-    let n = app.store.list()?.len();
-    Ok(format!("envi-service scaffold: {n} projects"))
 }
