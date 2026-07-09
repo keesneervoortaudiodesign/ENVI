@@ -37,8 +37,11 @@
 //! `directivity_gain_db`. Forest is therefore an engine-root module (like
 //! `directivity`), **never** a `propagation/` operator: it never touches the
 //! Nord2000-native `e^{−jωt}` side and the single-`.conj()` quarantine is
-//! unaffected. Because `ΔL_s ≤ 0`, forest can only attenuate; a real scale of an
-//! exactly-zero `P_incoh` stays exactly zero (`F→1 ⇒ P_incoh→0` preserved).
+//! unaffected. `ΔL_s ≤ 0` — forest is attenuation-only — bar a ≤ ~0.01 dB
+//! PCHIP interpolation-corner tolerance near `R′ = 0.0625` (where the Table 9
+//! value and `20·log₁₀(8R′)` nearly cancel); the `f4` sweep pins that bound. A
+//! real scale of an exactly-zero `P_incoh` stays exactly zero regardless of that
+//! sign (`F→1 ⇒ P_incoh→0` preserved).
 //!
 //! # Deferred: the Fs coherence factor (Eq. 288) — documented seam, not dropped
 //!
@@ -383,8 +386,10 @@ fn table9_delta_l(h_norm: f64, alpha: f64, r_norm: f64) -> f64 {
 }
 
 /// Sub-Model 10 forest excess attenuation `ΔL_s(f) ≤ 0` dB for one crossing
-/// (AV 1106/07 Eqs. 288–291). Infallible on a validated [`ForestCrossing`]:
-/// the `f64` return type is type-incapable of carrying phase (D-03/D-04).
+/// (AV 1106/07 Eqs. 288–291), to within a ≤ ~0.01 dB PCHIP interpolation-corner
+/// tolerance near `R′ = 0.0625` (pinned by the `f4` sweep). Infallible on a
+/// validated [`ForestCrossing`]: the `f64` return type is type-incapable of
+/// carrying phase (D-03/D-04).
 ///
 /// `f_hz` MUST be an exact grid centre (`axis.centres[i]`), never a nominal
 /// label; `c0` is the sound speed the terrain effect uses (`coh.c0`).

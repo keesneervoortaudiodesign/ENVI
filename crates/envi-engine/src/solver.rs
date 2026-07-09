@@ -246,8 +246,9 @@ fn solve_pair(job: &SolveJob<'_>) -> Result<(Vec<Complex<f64>>, Vec<f64>), Propa
         // Optional forest excess attenuation (Sub-Model 10, D-03/D-04): a real
         // per-band dB factor on BOTH channels — 10^{ΔL_s/20} on the coherent
         // transfer (arg untouched) and 10^{ΔL_s/10} on the incoherent energy.
-        // ΔL_s ≤ 0, so this only attenuates; a real scale of an exact-zero
-        // P_incoh stays exactly zero (F→1 ⇒ P_incoh→0 preserved).
+        // ΔL_s ≤ 0 (bar a ≤ ~0.01 dB PCHIP interpolation-corner tolerance the f4
+        // sweep pins), so this is attenuation-only; a real scale of an exact-zero
+        // P_incoh stays exactly zero regardless of that sign (F→1 ⇒ P_incoh→0).
         if let Some(fc) = job.forest.as_ref() {
             let dls = forest_delta_l(job.axis.centres[i], fc, job.coh.c0);
             hc *= 10f64.powf(dls / 20.0);
