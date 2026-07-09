@@ -176,7 +176,12 @@ Architecture per `.planning/research/ARCHITECTURE.md`: three new crates (`envi-g
   3. The opaque limit `R(f)→∞` reproduces the standard opaque-screen result bit-for-bit — a permanent regression test in the harness
   4. A building with per-façade isolation spectra applies the crossed façade's `R(f)` to the transmission path through that façade
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — ENG-09 forest: SM10 (Eqs. 288–291) module + SolveJob.forest seam + scipy oracle + pinned solver bit-baseline (wave 1)
+- [ ] 05-02-PLAN.md — ENG-10 kernel: IsolationSpectrum + hand-rolled min-phase cepstral filter (native sign pinned) + numpy oracle (wave 1, parallel)
+- [ ] 05-03-PLAN.md — ENG-10 integration: opaque bit-baseline, isolation threading into screen_channel (D-05/D-10), T6–T9, doc-contract close-out (wave 2)
 
 ### Phase 6: Service Foundation & Persistence
 
