@@ -550,7 +550,8 @@ mod tests {
             let ener = 10f64.powf(dls / 10.0);
             let h0 = plain.tensor().h_coh[[0, 0, f]];
             let h1 = with_forest.tensor().h_coh[[0, 0, f]];
-            // arg unchanged (ΔL_s ≥ 0 ⇒ mag > 0, a positive real factor).
+            // arg unchanged (any finite ΔL_s ≤ 0 ⇒ mag = 10^(ΔL_s/20) > 0, a
+            // positive real factor).
             assert!(
                 (h1.arg() - h0.arg()).abs() < 1e-12,
                 "band {f}: forest must not change arg(H_coh)"
