@@ -40,13 +40,12 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use geojson::FeatureCollection;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use envi_geo::{LonLat, ProjectCrs};
 use envi_store::dto::{BandSpectrumDto, ConditioningDto, ReceiverDto};
+use envi_store::geojson::{scene_receivers, scene_source_count};
 use envi_store::hash::tensor_hash;
 use envi_store::manifest::{CalcManifest, chunk_receivers, write_manifest};
 use envi_store::now_unix;
@@ -348,72 +347,4 @@ fn load_and_mint(
 /// recompute) that do not need the receiver set.
 fn mint_identity(app: &AppState, project_id: Uuid) -> Result<Identity, ApiError> {
     Ok(load_and_mint(app, project_id)?.0)
-}
-
-/// Extract the receiver-set (reprojected to SceneXY, id-tagged) from the scene —
-/// the receiver axis of tensor identity (D-07).
-fn scene_receivers(
-    scene: &FeatureCollection,
-    crs: &ProjectCrs,
-) -> Result<Vec<ReceiverDto>, ApiError> {
-    let mut out = Vec::new();
-    for feature in &scene.features {
-        let Some(props) = feature.properties.as_ref() else {
-            continue;
-        };
-        if props.get("kind").and_then(|v| v.as_str()) != Some("receiver") {
-            continue;
-        }
-        let id = props
-            .get("id")
-            .and_then(|v| v.as_str())
-            .and_then(|s| Uuid::parse_str(s).ok())
-            .ok_or_else(|| ApiError::BadRequest {
-                detail: "receiver feature is missing a valid uuid id".to_string(),
-            })?;
-        let Some(geometry) = feature.geometry.as_ref() else {
-            continue;
-        };
-        let geojson::GeometryValue::Point { coordinates } = &geometry.value else {
-            return Err(ApiError::BadRequest {
-                detail: "receiver feature must be a Point".to_string(),
-            });
-        };
-        if coordinates.len() < 2 {
-            return Err(ApiError::BadRequest {
-                detail: "receiver position needs >= 2 components".to_string(),
-            });
-        }
-        let lonlat = LonLat {
-            lon_deg: coordinates[0],
-            lat_deg: coordinates[1],
-        };
-        let xy = crs.to_utm(lonlat).map_err(|e| ApiError::BadRequest {
-            detail: e.to_string(),
-        })?;
-        let z = props
-            .get("height_m")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        out.push(ReceiverDto {
-            id,
-            position: [xy.x_m, xy.y_m, z],
-        });
-    }
-    Ok(out)
-}
-
-/// Count `source`-kind features (the S axis; at least 1 after `max(1, ..)`).
-fn scene_source_count(scene: &FeatureCollection) -> usize {
-    scene
-        .features
-        .iter()
-        .filter(|f| {
-            f.properties
-                .as_ref()
-                .and_then(|p| p.get("kind"))
-                .and_then(|v| v.as_str())
-                == Some("source")
-        })
-        .count()
 }

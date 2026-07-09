@@ -30,7 +30,7 @@ use envi_engine::scene::{
 use envi_geo::{LonLat, ProjectCrs};
 
 use crate::StoreError;
-use crate::dto::BandSpectrumDto;
+use crate::dto::{BandSpectrumDto, ReceiverDto};
 
 /// The locked scene object vocabulary (ARCHITECTURE.md, aligned with the
 /// NoizCalc TI 386 palette). Engine-mappable in Phase 6: `source`, `receiver`,
@@ -121,6 +121,63 @@ pub fn scene_to_engine(fc: &FeatureCollection, crs: &ProjectCrs) -> Result<Scene
         buildings,
         terrain: Vec::new(),
     })
+}
+
+/// Extract the receiver set (id-carrying, reprojected to SceneXY meters) from a
+/// scene FeatureCollection — the receiver axis of tensor identity (D-07).
+///
+/// Reuses the same private schema helpers as [`scene_to_engine`] so there is a
+/// single scene-walker for `receiver` features: uuid via [`feature_uuid`], Point
+/// assertion via [`expect_point`], the WGS84 lon/lat-range check via
+/// [`check_wgs84`], `height_m` default via [`opt_f64`], and the one reprojection
+/// seam `crs.to_utm` (GEOX-04). Non-receiver features are skipped; a receiver
+/// with no geometry is skipped (validated scenes always carry geometry).
+///
+/// # Errors
+/// [`StoreError`] on a missing/invalid receiver uuid, a non-Point geometry, an
+/// out-of-range WGS84 position, or a reprojection failure.
+pub fn scene_receivers(
+    fc: &FeatureCollection,
+    crs: &ProjectCrs,
+) -> Result<Vec<ReceiverDto>, StoreError> {
+    let mut out = Vec::new();
+    for feature in &fc.features {
+        if kind_str(feature) != Some("receiver") {
+            continue;
+        }
+        let id = feature_uuid(feature, "receiver")?;
+        let Some(geometry) = feature.geometry.as_ref() else {
+            continue;
+        };
+        let pos = expect_point(&geometry.value, "receiver")?;
+        let xy = crs.to_utm(check_wgs84(pos)?)?;
+        let z = opt_f64(feature, "height_m").unwrap_or(0.0);
+        out.push(ReceiverDto {
+            id,
+            position: [xy.x_m, xy.y_m, z],
+        });
+    }
+    Ok(out)
+}
+
+/// Count `source`-kind features (the S axis of tensor dims; the caller applies
+/// `.max(1)`). Infallible — a malformed feature simply does not match `source`.
+#[must_use]
+pub fn scene_source_count(fc: &FeatureCollection) -> usize {
+    fc.features
+        .iter()
+        .filter(|f| kind_str(f) == Some("source"))
+        .count()
+}
+
+/// The feature's raw `properties.kind` string, if present (lenient — no
+/// vocabulary validation; used only to filter by kind).
+fn kind_str(feature: &geojson::Feature) -> Option<&str> {
+    feature
+        .properties
+        .as_ref()
+        .and_then(|p| p.get("kind"))
+        .and_then(JsonValue::as_str)
 }
 
 /// Extract the validated `properties.kind` of a feature.
