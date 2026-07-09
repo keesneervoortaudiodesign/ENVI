@@ -28,7 +28,8 @@
 //!
 //! WGS84 <-> project UTM reprojection happens exclusively through
 //! `envi_geo::ProjectCrs` in [`geojson::scene_to_engine`]. This crate never
-//! calls `proj4rs` directly.
+//! calls the underlying pure-Rust projection library directly — the
+//! `envi-geo` seam is the only reprojection boundary in the milestone.
 //!
 //! # House rules
 //! - `f64` throughout; typed errors ([`StoreError`]), never panics on data.
@@ -37,6 +38,7 @@
 #![deny(unsafe_code)]
 
 pub mod dto;
+pub mod geojson;
 
 use std::path::PathBuf;
 
