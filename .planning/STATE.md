@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 05
 current_phase_name: engine-extensions-forest-semi-transparent-partitions
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-07-09T12:45:25.114Z"
+stopped_at: 05-02-PLAN.md complete (05-03 next)
+last_updated: "2026-07-09T13:02:58.000Z"
 last_activity: 2026-07-09
-last_activity_desc: Phase 05 execution started
+last_activity_desc: 05-02 ENG-10 min-phase transmission kernel complete
 progress:
   total_phases: 11
   completed_phases: 4
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
   percent: 36
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 05 (engine-extensions-forest-semi-transparent-partitions) — EXECUTING
-Plan: 2 of 3
-Status: Ready to execute
-Last activity: 2026-07-09 — Phase 05 execution started
+Plan: 2 of 3 complete (05-03 next — wave 2)
+Status: Executing
+Last activity: 2026-07-09 — 05-02 ENG-10 min-phase transmission kernel complete
 
-Progress: [██████████] Phase 4 — 5/5 plans complete (04-01 ✅, 04-02 ✅, 04-03 ✅, 04-04 ✅, 04-05 ✅)
+Progress: [███████░░░] Phase 5 — 2/3 plans complete (05-01 ✅ forest, 05-02 ✅ min-phase kernel, 05-03 ⏳ integration)
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Progress: [██████████] Phase 4 — 5/5 plans complete (04-01
 | Phase 04 P02 | 55min | 3 tasks | 12 files |
 | Phase 04 P04 | 25min | 3 tasks | 12 files |
 | Phase 05 P01 | 25min | 3 tasks | 10 files |
+| Phase 05 P02 | 13min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 5, 05-01] D-01 ForestCrossing amended (research-mandated): 'kp' DROPPED (= Table 8's computed k_f, D-02), height_m ADDED (h'=nQ·h needs avg tree height, Pitfall 5); downstream-consistent with Phase-7 SCN-04
 - [Phase ?]: [Phase 5, 05-01] Fs coherence factor (Eq. 288) DEFERRED with documented seam (forest.rs header + plan 05-03 deferred-items) — D-03 excess-attenuation-not-decorrelation scope; revisit Phase 9
 - [Phase ?]: [Phase 5, 05-01] Table 9 interp = hand-rolled Fritsch-Carlson-Butland PCHIP matching scipy.PchipInterpolator to 1e-9 (no linalg/FFT crate), nested R'->α->log10(h'); R' clamped [0.0625,10] consistently in BOTH table lookup and 20·log10(8R') term (A3); pinned pre-extension solver bit-baseline proves forest:None byte-identical
+- [Phase ?]: [Phase 5, 05-02] ENG-10+ min-phase kernel (D-06 ENVI extension): R(f)→complex T(f)=10^(−R/20)·e^{jφ_min}, φ_min via even-mirror 208-pt real-cepstrum fold on the 105-pt band axis (hand-rolled naive DFT, dep quarantine intact — no FFT crate). DFT sign PINNED numpy.fft (fwd e^{−j2πkn/M}, inv (1/M)e^{+j2πkn/M}) ⇒ fold yields ENVI lagging φ_cep, so NATIVE e^{−jωt} filter = |T|·e^{−jφ_cep} written as explicit negative sine Complex::new(mag·cosφ, mag·(−sinφ)); conj gate in propagation/ stays 0. D-08 sign pinned two ways: first-principles causality property (T3) + committed numpy oracle to 1e-9 rad on all 105 bands (T5). D-10 opaque=None structural (IsolationSpectrum rejects non-finite/negative R; no INFINITY/MAX sentinel token). Kernel-only — NOT yet reachable from any solve path (plan 05-03 threads it into screen_channel)
+- [Phase ?]: [Phase 5, 05-02, Rule 1] Plan's T3 adjacency spec (φ[n+1]≤φ[n] over 30..75) was unsatisfiable — even-mirror makes φ symmetric about band 52 (φ[k]=φ[104−k]), so no rising R is monotone across mid-band (Finding 3c). Engine φ verified correct vs numpy (~1e-15); T3 reformulated to lagging-sign + rising-FLANK monotonicity (10..50) + slope-antisymmetry (φ_rise=−φ_fall) + native negation — a stronger D-08 pin, no production-code change
 
 ### Pending Todos
 

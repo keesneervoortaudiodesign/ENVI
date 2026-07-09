@@ -182,7 +182,7 @@ Plans:
 **Wave 1**
 
 - [x] 05-01-PLAN.md — ENG-09 forest: SM10 (Eqs. 288–291) module + SolveJob.forest seam + scipy oracle + pinned solver bit-baseline (wave 1)
-- [ ] 05-02-PLAN.md — ENG-10 kernel: IsolationSpectrum + hand-rolled min-phase cepstral filter (native sign pinned) + numpy oracle (wave 1, parallel)
+- [x] 05-02-PLAN.md — ENG-10 kernel: IsolationSpectrum + hand-rolled min-phase cepstral filter (native sign pinned) + numpy oracle (wave 1, parallel)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -312,7 +312,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 2. Ground Effect & Diffraction | 5/5 | Complete | 2026-07-08 |
 | 3. Meteorology & Refraction | 3/3 | Complete | 2026-07-08 |
 | 4. Transfer Tensor, Directional Sources & Full Validation | 5/5 | Complete (VAL-02 numeric Pass deferred — external coefficient blocker) | 2026-07-09 |
-| 5. Engine Extensions — Forest & Semi-Transparent Partitions | 0/? | Not started | - |
+| 5. Engine Extensions — Forest & Semi-Transparent Partitions | 2/3 | In progress (05-01, 05-02 complete; 05-03 wave 2) | - |
 | 6. Service Foundation & Persistence | 0/? | Not started | - |
 | 7. Frontend Shell & Scene Editing | 0/? | Not started | - |
 | 8. GIS Ingestion & DGM | 0/? | Not started | - |
