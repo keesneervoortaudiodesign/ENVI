@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ENVI service</title>
+    <style>
+      /* Dependency-free: no external stylesheets, fonts, or scripts. */
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 3rem auto;
+        max-width: 40rem;
+        line-height: 1.5;
+        color: #1a1a1a;
+      }
+      code {
+        background: #f0f0f0;
+        padding: 0.1em 0.3em;
+        border-radius: 3px;
+      }
+      #status {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+      }
+      .ok {
+        color: #0a7d24;
+      }
+      .err {
+        color: #b00020;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ENVI service running — frontend arrives in Phase 7</h1>
+    <p>
+      This is the placeholder bundle served by the single
+      <code>envi-service</code> binary. The real MapLibre/React frontend is built
+      in Phase 7. The panel below is a live smoke check: it fetches
+      <code>/api/v1/meta/freq-axis</code> and shows that the API and
+      bundle-serving contracts are both wired.
+    </p>
+    <div id="status">Checking <code>/api/v1/meta/freq-axis</code>&hellip;</div>
+
+    <script>
+      // No frameworks, no external assets — a plain fetch smoke check.
+      const el = document.getElementById("status");
+      fetch("/api/v1/meta/freq-axis")
+        .then((r) => {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then((axis) => {
+          const c = axis.centres_hz;
+          const first = c[0].toFixed(3);
+          const last = c[c.length - 1].toFixed(1);
+          el.className = "ok";
+          el.innerHTML =
+            "freq-axis OK: <strong>" +
+            axis.n_bands +
+            "</strong> bands (band index 0.." +
+            (axis.n_bands - 1) +
+            "), centres " +
+            first +
+            " Hz .. " +
+            last +
+            " Hz. Spectra are keyed by band index, never nominal Hz.";
+        })
+        .catch((e) => {
+          el.className = "err";
+          el.textContent = "freq-axis fetch failed: " + e.message;
+        });
+    </script>
+  </body>
+</html>

@@ -9,3 +9,7 @@ target/
 # Python oracle bytecode cache (tools/nord2000_oracle)
 __pycache__/
 *.pyc
+
+# User project data (envi-service ProjectStore root) — never repo content
+# (06-RESEARCH Open Q2). The ENVI_PROJECTS_DIR override points elsewhere in prod.
+projects/

@@ -1,0 +1,45 @@
+[package]
+name = "envi-service"
+description = "ENVI self-hosted axum service — the single deployable: /api/v1 + the web/dist bundle (thin HTTP layer, no acoustics)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# Boundary rule (06-RESEARCH "Architectural Responsibility Map"): this is a THIN
+# HTTP layer — routing, jobs, and wire contracts only. Storage lives in
+# envi-store, CRS reprojection in envi-geo, and acoustic math NEVER here (SVC-07:
+# all spectra originate server-side from the engine's frozen constants).
+[dependencies]
+envi-engine = { path = "../envi-engine" }
+envi-geo = { path = "../envi-geo" }
+envi-store = { path = "../envi-store" }
+axum = "0.8"
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "signal",
+    "sync",
+    "time",
+] }
+tokio-util = "0.7"
+tokio-stream = { version = "0.1", features = ["sync"] }
+tower-http = { version = "0.7", features = ["fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# geojson: the scene GET/PUT handlers round-trip a WGS84 FeatureCollection on the
+# wire and delegate it to `envi_store::project_dir::ProjectStore::{load,save}_scene`
+# (which take `&geojson::FeatureCollection`). Naming that type at the HTTP boundary
+# requires geojson as a direct dep (it is already a transitive dep via envi-store).
+geojson = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+tracing = "0.1"
+# env-filter: main initializes tracing with an EnvFilter (RUST_LOG-aware, default
+# `info`) per the D-08 startup-logging requirement.
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tempfile = "3"
