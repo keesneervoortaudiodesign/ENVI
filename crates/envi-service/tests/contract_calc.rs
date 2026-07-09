@@ -8,109 +8,14 @@
 //! identity (D-07); recompute mints a new hash + job and invalidates the old hash;
 //! and calc submit writes an honest-stub manifest with the reserved chunk layout.
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use axum::body::Body;
-use axum::http::{Method, Request, StatusCode};
-use http_body_util::BodyExt;
+use axum::http::{Method, StatusCode};
 use tower::ServiceExt; // oneshot
 
-use envi_service::api;
-use envi_service::state::AppState;
-use envi_store::project_dir::ProjectStore;
-
-fn repo_web_dist() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("workspace root two levels up")
-        .join("web")
-        .join("dist")
-}
-
-fn app_over(root: &Path) -> Router {
-    let store = ProjectStore::new(root.to_path_buf()).expect("store");
-    let state = Arc::new(AppState::new(store));
-    api::app(state, &repo_web_dist())
-}
-
-fn get(uri: &str) -> Request<Body> {
-    Request::builder()
-        .uri(uri)
-        .body(Body::empty())
-        .expect("request")
-}
-
-fn json_req(method: Method, uri: &str, body: &serde_json::Value) -> Request<Body> {
-    Request::builder()
-        .method(method)
-        .uri(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_vec(body).expect("serialize")))
-        .expect("request")
-}
-
-async fn read_json(resp: axum::response::Response) -> (StatusCode, serde_json::Value) {
-    let status = resp.status();
-    let bytes = resp
-        .into_body()
-        .collect()
-        .await
-        .expect("collect")
-        .to_bytes();
-    let json = if bytes.is_empty() {
-        serde_json::Value::Null
-    } else {
-        serde_json::from_slice(&bytes).expect("json body")
-    };
-    (status, json)
-}
-
-/// A minimal scene: one source + one receiver near Amsterdam. The receiver
-/// longitude is a parameter so a test can move it (recompute identity change).
-fn source_receiver_scene(receiver_lon: f64) -> serde_json::Value {
-    serde_json::json!({
-      "type": "FeatureCollection",
-      "features": [
-        {"type":"Feature","geometry":{"type":"Point","coordinates":[4.8936,52.3731]},
-         "properties":{"kind":"source","id":"00000000-0000-0000-0000-000000000001","height_m":0.5}},
-        {"type":"Feature","geometry":{"type":"Point","coordinates":[receiver_lon,52.3740]},
-         "properties":{"kind":"receiver","id":"00000000-0000-0000-0000-000000000002","height_m":1.5}}
-      ]
-    })
-}
-
-/// Create a project + persist a source/receiver scene; return its project id.
-async fn make_project(app: &Router, receiver_lon: f64) -> String {
-    let create_body = serde_json::json!({
-        "name": "Calc Scene",
-        "origin": { "lon_deg": 4.8936, "lat_deg": 52.3731 }
-    });
-    let (status, created) = read_json(
-        app.clone()
-            .oneshot(json_req(Method::POST, "/api/v1/projects", &create_body))
-            .await
-            .unwrap(),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "project created");
-    let id = created["id"].as_str().expect("project id").to_string();
-
-    let resp = app
-        .clone()
-        .oneshot(json_req(
-            Method::PUT,
-            &format!("/api/v1/projects/{id}/scene"),
-            &source_receiver_scene(receiver_lon),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::NO_CONTENT, "scene persisted");
-    id
-}
+mod common;
+use common::{app_over, get, json_req, make_project, read_json, source_receiver_scene};
 
 /// POST a calculation; return `(calc_id, job_id, tensor_hash)`.
 async fn submit_calc(app: &Router, project_id: &str) -> (String, String, String) {

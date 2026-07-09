@@ -3,69 +3,12 @@
 //! TempDir roots, no sockets (06-RESEARCH Validation Architecture).
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
-use axum::Router;
-use axum::body::Body;
-use axum::http::{Method, Request, StatusCode};
-use http_body_util::BodyExt;
+use axum::http::{Method, StatusCode};
 use tower::ServiceExt; // oneshot
 
-use envi_service::api;
-use envi_service::state::AppState;
-use envi_store::project_dir::ProjectStore;
-
-/// Repo `web/dist` (harness idiom): two levels up from this crate's manifest dir.
-fn repo_web_dist() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("workspace root two levels up")
-        .join("web")
-        .join("dist")
-}
-
-/// Build an app over an existing store root (used to simulate a fresh process).
-fn app_over(root: &Path) -> Router {
-    let store = ProjectStore::new(root.to_path_buf()).expect("store");
-    let state = Arc::new(AppState::new(store));
-    api::app(state, &repo_web_dist())
-}
-
-fn get(uri: &str) -> Request<Body> {
-    Request::builder()
-        .uri(uri)
-        .body(Body::empty())
-        .expect("request")
-}
-
-fn json_req(method: Method, uri: &str, body: &serde_json::Value) -> Request<Body> {
-    Request::builder()
-        .method(method)
-        .uri(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_vec(body).expect("serialize body"),
-        ))
-        .expect("request")
-}
-
-async fn read_json(resp: axum::response::Response) -> (StatusCode, serde_json::Value) {
-    let status = resp.status();
-    let bytes = resp
-        .into_body()
-        .collect()
-        .await
-        .expect("collect body")
-        .to_bytes();
-    let json = if bytes.is_empty() {
-        serde_json::Value::Null
-    } else {
-        serde_json::from_slice(&bytes).expect("json body")
-    };
-    (status, json)
-}
+mod common;
+use common::{app_over, get, json_req, read_json};
 
 /// A FeatureCollection with one feature of each of the 9 kinds (WGS84, Amsterdam).
 fn nine_kind_scene() -> serde_json::Value {

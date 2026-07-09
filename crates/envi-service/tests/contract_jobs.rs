@@ -10,57 +10,18 @@
 //! ordered MILESTONES (queued/running -> running(progress) -> terminal), never
 //! every coalesced tick (Pitfall 6).
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
 use axum::body::Body;
-use axum::http::{Method, Request, StatusCode};
+use axum::http::StatusCode;
 use http_body_util::BodyExt;
 use tokio::time::timeout;
 use tower::ServiceExt; // oneshot
 
-use envi_service::api;
 use envi_service::jobs::{StubJobSpec, submit_stub_job};
-use envi_service::state::AppState;
-use envi_store::project_dir::ProjectStore;
 
-/// Repo `web/dist`: two levels up from this crate's manifest dir.
-fn repo_web_dist() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("workspace root two levels up")
-        .join("web")
-        .join("dist")
-}
-
-/// A fresh shared `AppState` over a TempDir root (kept alive by the returned guard).
-fn test_state() -> (Arc<AppState>, tempfile::TempDir) {
-    let tmp = tempfile::TempDir::new().expect("tempdir");
-    let store = ProjectStore::new(tmp.path().to_path_buf()).expect("store");
-    (Arc::new(AppState::new(store)), tmp)
-}
-
-fn app_of(state: Arc<AppState>) -> Router {
-    api::app(state, &repo_web_dist())
-}
-
-fn get(uri: &str) -> Request<Body> {
-    Request::builder()
-        .uri(uri)
-        .body(Body::empty())
-        .expect("request")
-}
-
-fn delete(uri: &str) -> Request<Body> {
-    Request::builder()
-        .method(Method::DELETE)
-        .uri(uri)
-        .body(Body::empty())
-        .expect("request")
-}
+mod common;
+use common::{app_of, delete, get, test_state};
 
 /// Pull the next `JobStatus` JSON off an SSE body, draining `data:` lines from a
 /// running buffer and reading more frames (each bounded by `secs`) as needed.

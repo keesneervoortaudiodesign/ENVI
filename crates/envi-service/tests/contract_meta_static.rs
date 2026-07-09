@@ -5,38 +5,13 @@
 //! socket binding, no credentials). Building the full router also proves every
 //! route uses the axum 0.8 brace syntax (a colon straggler panics here).
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
-use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt; // oneshot
 
-use envi_service::api;
-use envi_service::state::AppState;
-use envi_store::project_dir::ProjectStore;
-
-/// Repo `web/dist`, resolved from this crate's manifest dir (harness main.rs
-/// idiom): `crates/envi-service` -> workspace root two levels up -> `web/dist`.
-fn repo_web_dist() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("crates/envi-service has a workspace root two levels up")
-        .join("web")
-        .join("dist")
-}
-
-/// Build the full app over a fresh TempDir projects root + the repo web bundle.
-fn test_app() -> (Router, tempfile::TempDir) {
-    let tmp = tempfile::TempDir::new().expect("tempdir");
-    let store = ProjectStore::new(tmp.path().to_path_buf()).expect("store");
-    let state = Arc::new(AppState::new(store));
-    let app = api::app(state, &repo_web_dist());
-    (app, tmp)
-}
+mod common;
+use common::test_app;
 
 async fn body_bytes(resp: axum::response::Response) -> Vec<u8> {
     resp.into_body()
