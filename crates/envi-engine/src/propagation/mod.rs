@@ -36,6 +36,7 @@ pub mod refraction;
 pub mod special;
 pub mod terrain_effect;
 pub mod terrain_interpretation;
+pub mod transmission;
 
 use air_absorption::{Atmosphere, alpha_db_per_m, band_attenuation_db};
 use divergence::divergence_amplitude;
@@ -210,6 +211,19 @@ pub enum PropagationError {
     /// cell). Propagated verbatim so the honest typed cause survives.
     #[error("tensor sink rejected a chunk: {0}")]
     Sink(#[from] crate::tensor::SinkError),
+    /// An [`IsolationSpectrum`](crate::propagation::transmission::IsolationSpectrum)
+    /// band carried a non-finite or negative sound reduction index `R(f)` — a
+    /// domain error at the caller → min-phase-kernel boundary (threat
+    /// T-05-02-01), never a NaN into the cepstrum. A passive partition cannot
+    /// have transmission gain (`R ≥ 0`), and `R = ∞` (opaque) is structurally
+    /// unrepresentable (`None`, D-10), so `ln|T|` stays finite for every band.
+    #[error("invalid isolation spectrum: band {band} = {value} dB must be finite and ≥ 0")]
+    InvalidIsolationSpectrum {
+        /// The offending band index (0..=104).
+        band: usize,
+        /// The rejected isolation value, dB.
+        value: f64,
+    },
 }
 
 /// Speed of sound in air, `c = Coft(t) = 20.05·√(t + 273.15)` (AV 1106/07
