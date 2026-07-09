@@ -154,7 +154,7 @@ Architecture per `.planning/research/ARCHITECTURE.md`: three new crates (`envi-g
 
 ## Milestone 2 Phases
 
-- [ ] **Phase 5: Engine Extensions — Forest & Semi-Transparent Partitions** - Nord2000 forest attenuation A = d·a(f) and finite-transmission partitions via per-band isolation spectra R(f), phase-preserving, with the opaque limit regression-pinned to the standard screen
+- [x] **Phase 5: Engine Extensions — Forest & Semi-Transparent Partitions** - Nord2000 forest attenuation A = d·a(f) and finite-transmission partitions via per-band isolation spectra R(f), phase-preserving, with the opaque limit regression-pinned to the standard screen (completed 2026-07-09)
 - [ ] **Phase 6: Service Foundation & Persistence** - `envi-store` + `envi-service` skeleton: project-folder CRUD, single CRS boundary, band-index wire contract, recondition/recompute API split, job state machine, GDAL/PROJ Windows provisioning + startup self-check
 - [ ] **Phase 7: Frontend Shell & Scene Editing** - MapLibre/Terra Draw scene editor for all object kinds — including semi-transparent screens/buildings with the isolation-spectrum editor, forests, and elevation editing — with draw-time validation
 - [ ] **Phase 8: GIS Ingestion & DGM** - Viewport import of GLO-30/LiDAR terrain, WorldCover ground cover, and Overture/OSM buildings onto a triangulated DGM; local-cache compute path; check-and-complete editability
@@ -176,7 +176,7 @@ Architecture per `.planning/research/ARCHITECTURE.md`: three new crates (`envi-g
   3. The opaque limit `R(f)→∞` reproduces the standard opaque-screen result bit-for-bit — a permanent regression test in the harness
   4. A building with per-façade isolation spectra applies the crossed façade's `R(f)` to the transmission path through that façade
 
-**Plans**: 1/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -186,7 +186,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 05-03-PLAN.md — ENG-10 integration: opaque bit-baseline, isolation threading into screen_channel (D-05/D-10), T6–T9, doc-contract close-out (wave 2)
+- [x] 05-03-PLAN.md — ENG-10 integration: opaque bit-baseline, isolation threading into screen_channel (D-05/D-10), T6–T9, doc-contract close-out (wave 2)
 
 ### Phase 6: Service Foundation & Persistence
 
