@@ -61,9 +61,17 @@ pub fn tensor_hash(scene: &FeatureCollection, met: &MetDto, receivers: &[Receive
     }
 
     // --- met contribution ---
+    // Destructured WITHOUT `..` so adding a `MetDto` field is a COMPILE error
+    // right here, forcing an explicit hashing decision (LOW-7). The met identity
+    // set is therefore total and self-documenting, not a silently-drifting
+    // allowlist; a future scheme change rides behind the `v1` version prefix.
     h.update(b"met");
-    put_f64(&mut h, met.temperature_c);
-    put_f64(&mut h, met.humidity_pct);
+    let MetDto {
+        temperature_c,
+        humidity_pct,
+    } = met;
+    put_f64(&mut h, *temperature_c);
+    put_f64(&mut h, *humidity_pct);
 
     // --- receiver-set: sorted by id ---
     h.update(b"recv");
@@ -119,12 +127,26 @@ fn write_feature(h: &mut blake3::Hasher, id: Uuid, feature: &geojson::Feature) {
         h.update(b"Ps");
         put_str(h, s);
     }
-    // Dense spectrum array (source).
-    if let Some(arr) = prop_f64_array(feature, "spectrum_band_db") {
+    // Dense spectrum array (source). Each element is hashed EXPLICITLY and
+    // totally (LOW-6): a numeric element contributes an `n` tag + its bits; a
+    // non-numeric element (which validation would reject on the persist path,
+    // but `tensor_hash` is `pub` and may see unvalidated input) contributes an
+    // `x` tag + its canonical JSON text. Nothing is silently dropped, so
+    // `[1.0, "x", 2.0]` can never collide with `[1.0, 2.0]`.
+    if let Some(arr) = prop_array(feature, "spectrum_band_db") {
         h.update(b"Pa");
         put_len(h, arr.len());
         for v in arr {
-            put_f64(h, v);
+            match v.as_f64() {
+                Some(f) => {
+                    h.update(b"n");
+                    put_f64(h, f);
+                }
+                None => {
+                    h.update(b"x");
+                    put_str(h, &v.to_string());
+                }
+            }
         }
     }
 }
@@ -158,13 +180,14 @@ fn prop_f64(feature: &geojson::Feature, key: &str) -> Option<f64> {
         .and_then(JsonValue::as_f64)
 }
 
-fn prop_f64_array(feature: &geojson::Feature, key: &str) -> Option<Vec<f64>> {
+/// The raw JSON array under `key` (elements hashed explicitly by the caller so
+/// non-numeric entries are never silently dropped — LOW-6).
+fn prop_array<'a>(feature: &'a geojson::Feature, key: &str) -> Option<&'a Vec<JsonValue>> {
     feature
         .properties
         .as_ref()
         .and_then(|p| p.get(key))
         .and_then(JsonValue::as_array)
-        .map(|a| a.iter().filter_map(JsonValue::as_f64).collect())
 }
 
 /// `u64` little-endian length prefix.
@@ -255,6 +278,36 @@ mod tests {
         // identity. Conditioning is a readout parameter (compose_gain), never a
         // tensor-identity input. This is a compile-time fact, asserted here in
         // prose because the exclusion is the absence of an argument.
+    }
+
+    #[test]
+    fn spectrum_non_numeric_entries_are_hashed_not_dropped() {
+        // A source feature carrying a spectrum with a non-numeric element must NOT
+        // hash identically to the same spectrum with that element removed (LOW-6:
+        // the identity contract stays injective for unvalidated inputs).
+        let met = MetDto::default();
+        let receivers = vec![receiver(10.0)];
+
+        let with_junk: FeatureCollection = serde_json::from_str(
+            r#"{"type":"FeatureCollection","features":[
+              {"type":"Feature","geometry":{"type":"Point","coordinates":[4.894,52.373]},
+               "properties":{"kind":"source","id":"00000000-0000-0000-0000-000000000009",
+                             "spectrum_band_db":[1.0,"x",2.0]}}]}"#,
+        )
+        .expect("valid FC");
+        let without_junk: FeatureCollection = serde_json::from_str(
+            r#"{"type":"FeatureCollection","features":[
+              {"type":"Feature","geometry":{"type":"Point","coordinates":[4.894,52.373]},
+               "properties":{"kind":"source","id":"00000000-0000-0000-0000-000000000009",
+                             "spectrum_band_db":[1.0,2.0]}}]}"#,
+        )
+        .expect("valid FC");
+
+        assert_ne!(
+            tensor_hash(&with_junk, &met, &receivers),
+            tensor_hash(&without_junk, &met, &receivers),
+            "a dropped non-numeric spectrum entry must not collide (LOW-6)"
+        );
     }
 
     #[test]
