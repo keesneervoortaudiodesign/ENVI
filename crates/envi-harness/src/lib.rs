@@ -386,7 +386,7 @@ fn run_terrain_case(case: &cases::CaseDefinition) -> Outcome {
     };
 
     let axis = &*FREQ_AXIS;
-    let te = match terrain_effect(&profile, src, rcv, coh.c0, &coh, axis, None) {
+    let te = match terrain_effect(&profile, src, rcv, coh.c0, &coh, axis, None, None) {
         Ok(te) => te,
         Err(PropagationError::NonFlatTerrainNotImplemented { .. }) => {
             return Outcome::Skipped(

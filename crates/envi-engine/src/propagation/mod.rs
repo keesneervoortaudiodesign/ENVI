@@ -224,6 +224,19 @@ pub enum PropagationError {
         /// The rejected isolation value, dB.
         value: f64,
     },
+    /// An [`IsolationSpectrum`](crate::propagation::transmission::IsolationSpectrum)
+    /// (a partition's sound reduction index `R(f)`) was supplied over terrain the
+    /// §5.21 interpreter classified as **flat** — there is no screen/partition on
+    /// the path for the spectrum to describe. A transmission spectrum with no
+    /// partition to transmit through is contradictory caller input: refuse loudly
+    /// rather than silently no-op (threat T-05-03-04; the same refuse-to-be-wrong
+    /// precedent as [`Self::WeatherScreenNotImplemented`]). Opaque/no-partition is
+    /// the `None` state (D-10), never a flat-terrain `Some`.
+    #[error(
+        "isolation spectrum supplied over flat terrain (no screen on the path) — \
+         a partition spectrum with no partition is contradictory input"
+    )]
+    IsolationWithoutScreen,
 }
 
 /// Speed of sound in air, `c = Coft(t) = 20.05·√(t + 273.15)` (AV 1106/07

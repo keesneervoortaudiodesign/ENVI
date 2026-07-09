@@ -62,6 +62,7 @@ fn compute_baseline() -> (Vec<u64>, Vec<u64>, Vec<u64>) {
         directivity_gain_db: None,
         directivity_phase_rad: None,
         forest: None,
+        isolation: None,
     };
     let mut sink = InMemorySink::new(1, 1);
     solve([job], 1, 1, &mut sink).unwrap();

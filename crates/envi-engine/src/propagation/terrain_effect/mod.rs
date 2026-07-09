@@ -52,6 +52,7 @@ use crate::propagation::refraction::shadow_zone::shadow_zone_shielding;
 use crate::propagation::terrain_interpretation::{
     ScreenClass, StripSpec, TerrainInterpretation, interpret_terrain,
 };
+use crate::propagation::transmission::{IsolationSpectrum, TransmissionFilter};
 use crate::scene::TerrainProfile;
 
 pub mod screen;
@@ -147,14 +148,54 @@ pub struct TerrainEffect {
 /// ([`PropagationError::WeatherScreenNotImplemented`], Pitfall 9) — refusing to
 /// compute an unrefracted screen.
 ///
+/// # Semi-transparent partitions (plan 05-03, ENG-10 + the D-06 extension)
+///
+/// `isolation = Some(R)` threads a partition's sound reduction index `R(f)` into
+/// the screen branch as a complex **minimum-phase** transmission filter `T(f)`
+/// ([`TransmissionFilter::from_isolation`], native `e^{−jωt}`). The filter is
+/// built ONCE before the band loop (the min-phase transform needs the whole
+/// 105-point grid, never per-band — the [`FlatChannel::from_profile`] precompute
+/// precedent) and the per-band `T` is added to the screen branch's coherent
+/// factor at [`screen_channel`] — the single §5.13–5.15 assembly point covering
+/// Sub-models 4/5/6. Since every screen sub-model's `h_coh_factor` is a ratio
+/// relative to the free-field direct `p̂₀` and the straight-through path travels
+/// the same S→R line, the transmitted term relative to `p̂₀` is exactly `T(f)`:
+/// `h_semi = h_opaque + T`, one complex addition. It joins the **coherent channel
+/// only** — the deterministic min-phase filter is never decorrelated by `F` and
+/// never leaks into `p_incoh` (Pitfall 6).
+///
+/// In the marginal transition zone the whole screen branch — including `T` — is
+/// weighted by `r_scr1` (the Eq. 332 outer blend), which is correct: leakage only
+/// exists where the screen does. This is documented behaviour, not "fixed".
+///
+/// **Opaque is `None` (D-10), structural.** `isolation = None` takes the exact
+/// pre-extension code path — the transmission term and the min-phase computation
+/// are never constructed, so the opaque screen result is bit-identical (pinned by
+/// the `opaque_regression` fixture, T6). The `R → 0` corner is a documented model
+/// property, NOT a bug: `R ≡ 0` restores the direct field PLUS the diffracted
+/// residue (inherent to the locked additive composition — benign for physical
+/// partitions, never renormalized; Pitfall 7). Opaque is the `None` state, never
+/// a large-`R` / `INFINITY` sentinel.
+///
 /// # Errors
 ///
 /// [`PropagationError::ConvexSegmentNotImplemented`] if the no-screen branch
 /// demands Sub-model 3 (`r_flat < 1` with weight) over a **convex**/transition
 /// ground segment (the §5.12 concave path IS wired);
 /// [`PropagationError::WeatherScreenNotImplemented`] if a weather profile is
-/// supplied over a screen terrain (Pitfall 9); other [`PropagationError`]s
-/// propagate from the sub-models on degenerate geometry.
+/// supplied over a screen terrain (Pitfall 9);
+/// [`PropagationError::IsolationWithoutScreen`] if an `isolation` spectrum is
+/// supplied over flat terrain (no partition on the path); other
+/// [`PropagationError`]s propagate from the sub-models on degenerate geometry.
+///
+/// Note: `isolation + weather + engaged screen` is already unreachable —
+/// [`PropagationError::WeatherScreenNotImplemented`] fires first for a refracting
+/// screen — so no separate guard is needed for that combination.
+// Q2 disposition (plan 05-03): `isolation` is the 8th positional parameter, not
+// an options struct — minimal mechanical churn on a bit-exactness-critical
+// change. An options struct can absorb `refraction`+`isolation` when the Fs
+// coherence seam lands (see deferred-items.md).
+#[allow(clippy::too_many_arguments)]
 pub fn terrain_effect(
     profile: &TerrainProfile,
     src: [f64; 3],
@@ -163,10 +204,24 @@ pub fn terrain_effect(
     coh: &CoherenceInputs,
     axis: &FreqAxis,
     refraction: Option<&SoundSpeedProfile>,
+    isolation: Option<&IsolationSpectrum>,
 ) -> Result<TerrainEffect, PropagationError> {
     let source = [src[0], src[2]];
     let receiver = [rcv[0], rcv[2]];
     let interp = interpret_terrain(profile, source, receiver, atmos_c0)?;
+
+    // Contradictory-input guard (D-10 / threat T-05-03-04): a partition spectrum
+    // over terrain with no screen has no partition to describe. Refuse loudly
+    // (typed error) rather than silently no-op — opaque/no-partition is `None`.
+    if isolation.is_some() && interp.class == ScreenClass::Flat {
+        return Err(PropagationError::IsolationWithoutScreen);
+    }
+
+    // Build the native minimum-phase transmission filter ONCE (the cepstral fold
+    // needs the whole 105-point grid; never per-band). `None` ⇒ the opaque path
+    // never constructs it — the D-10 structural guarantee.
+    let tfilter = isolation.map(TransmissionFilter::from_isolation);
+
     let flat = FlatChannel::from_profile(profile, source, receiver, atmos_c0, refraction)?;
 
     // Sub-model 3 (§5.12 non-flat terrain without screens): built once from the
@@ -194,7 +249,7 @@ pub fn terrain_effect(
     let mut p_incoh = Vec::with_capacity(n);
     let mut delta_l_db = Vec::with_capacity(n);
 
-    for &f in axis.centres.iter() {
+    for (band, &f) in axis.centres.iter().enumerate() {
         let tp = interp.transition_params(f);
 
         let flat_res = flat.eval(f, coh)?;
@@ -230,7 +285,11 @@ pub fn terrain_effect(
             if refraction.is_some() && tp.r_scr1 > 1e-12 {
                 return Err(PropagationError::WeatherScreenNotImplemented { f_hz: f });
             }
-            screen_channel(f, &interp, coh)?
+            // The per-band native transmission `T(f)` (coherent-channel only) when
+            // a partition spectrum is present; `None` on the opaque path leaves the
+            // screen assembly bit-identical (D-10). Compare by BAND INDEX.
+            let transmission = tfilter.as_ref().map(|t| t.bands[band]);
+            screen_channel(f, &interp, coh, transmission)?
         };
 
         // Eq. 332 outer blend on r_scr1 (screen vs no-screen). Phase 2 targets:
@@ -496,10 +555,20 @@ impl FlatChannel {
 /// Sub-model 7 turbulence-scattering floor). Because the Phase 2 targets give
 /// `r_scr2`/`r_scr12 ∈ {0,1}`, the Eq. 332 inner tree collapses to a single
 /// sub-model selected by the screen class — the exact tree value.
+///
+/// `transmission = Some(t)` adds the straight-through partition leakage `T(f)`
+/// (native `e^{−jωt}`, relative to the free-field `p̂₀`) to the coherent factor —
+/// the single §5.13–5.15 composition point for semi-transparent screens/façades
+/// (plan 05-03, ENG-10+). It joins the **coherent channel only**: `p_incoh` and
+/// the Sub-model 7 scattered energy are untouched (Pitfall 6). `None` returns
+/// `base.h_coh_factor` EXACTLY as before — a structural match, never a `+ 0.0`
+/// (adding a zero complex can flip a negative-zero component's bits; the `None`
+/// arm is the D-10 bit-exact guarantee).
 fn screen_channel(
     f: f64,
     interp: &TerrainInterpretation,
     coh: &CoherenceInputs,
+    transmission: Option<Complex<f64>>,
 ) -> Result<GroundResult, PropagationError> {
     use screen::{ScreenConfig, submodel4, submodel4_c_sr, submodel5, submodel6};
     use submodel7::{ScreenScatterGeometry, submodel7_delta_l};
@@ -572,9 +641,21 @@ fn screen_channel(
     let dl7 = submodel7_delta_l(f, &scatter, coh.cv2, coh.ct2, c_sr)?;
     let sm7_energy = 10f64.powf(dl7 / 10.0);
 
-    // Sub-model 7 is energy-only (f64) — it can never touch the phase channel.
+    // Semi-transparent partition (plan 05-03): the straight-through leakage T(f)
+    // relative to p̂₀ joins the COHERENT factor as complex pressure (native
+    // e^{−jωt}, deterministic min-phase filter — ENVI extension ENG-10+). The
+    // `None` arm is a structural match returning the opaque factor UNCHANGED — no
+    // `+ 0.0`, which could flip a negative-zero component's bits (D-10). No
+    // sub-model file changes: screen.rs stays document-exact.
+    let h_coh_factor = match transmission {
+        Some(t) => base.h_coh_factor + t,
+        None => base.h_coh_factor,
+    };
+
+    // Sub-model 7 is energy-only (f64) — it can never touch the phase channel;
+    // transmission never touches p_incoh/sm7 (Pitfall 6).
     Ok(GroundResult::from_channels(
-        base.h_coh_factor,
+        h_coh_factor,
         base.p_incoh + sm7_energy,
     ))
 }
@@ -655,7 +736,7 @@ mod terrain_effect_tests {
         let (profile, src, rcv) = flat_sigma200();
         let coh = zero_turb();
         let axis = FreqAxis::new();
-        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None).unwrap();
+        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None, None).unwrap();
 
         // delta_l_db equals Sub-model 1 exactly (flat ⇒ r_scr1 = 0).
         let rays = straight_rays(97.5, 0.5, 1.5, C0).unwrap();
@@ -697,7 +778,7 @@ mod terrain_effect_tests {
         let (profile, src, rcv) = flat_sigma200();
         let coh = zero_turb();
         let axis = FreqAxis::new();
-        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None).unwrap();
+        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None, None).unwrap();
 
         let argmin = |v: &[f64]| {
             v.iter()
@@ -737,7 +818,7 @@ mod terrain_effect_tests {
         };
         let axis = FreqAxis::new();
         for (profile, src, rcv) in [flat_sigma200(), thin_screen()] {
-            let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None).unwrap();
+            let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None, None).unwrap();
             let hff = h_ff(src, rcv);
             let hc = h_coh(&te, &hff);
             let live = hc.iter().filter(|z| z.im.abs() > 1e-12).count();
@@ -764,7 +845,7 @@ mod terrain_effect_tests {
         let (profile, src, rcv) = flat_sigma200();
         let coh = zero_turb();
         let axis = FreqAxis::new();
-        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None).unwrap();
+        let te = terrain_effect(&profile, src, rcv, C0, &coh, &axis, None, None).unwrap();
 
         // Structural: band_levels_db_two_channel with p_incoh = 0 equals the pure
         // coherent readout band_levels_db(H_coh) — p_incoh never alters phase.
@@ -793,6 +874,7 @@ mod terrain_effect_tests {
             },
             &axis,
             None,
+            None,
         )
         .unwrap();
         for (p, h) in te2.p_incoh.iter().zip(&te2.h_coh_factor) {
@@ -817,9 +899,9 @@ mod terrain_effect_tests {
             ..zero_turb()
         };
         let (fp, fsrc, frcv) = flat_sigma200();
-        let flat = terrain_effect(&fp, fsrc, frcv, C0, &coh, &axis, None).unwrap();
+        let flat = terrain_effect(&fp, fsrc, frcv, C0, &coh, &axis, None, None).unwrap();
         let (sp, ssrc, srcv) = thin_screen();
-        let screen = terrain_effect(&sp, ssrc, srcv, C0, &coh, &axis, None).unwrap();
+        let screen = terrain_effect(&sp, ssrc, srcv, C0, &coh, &axis, None, None).unwrap();
 
         // The screen deeply attenuates the mid/high band vs flat ground.
         let idx_1k = 64;
@@ -868,7 +950,7 @@ mod terrain_effect_tests {
         let (fp, src, rcv) = flat_sigma200();
         let coh = zero_turb();
         let axis = FreqAxis::new();
-        let base = terrain_effect(&fp, src, rcv, C0, &coh, &axis, None).unwrap();
+        let base = terrain_effect(&fp, src, rcv, C0, &coh, &axis, None, None).unwrap();
         let hom = terrain_effect(
             &fp,
             src,
@@ -877,6 +959,7 @@ mod terrain_effect_tests {
             &coh,
             &axis,
             Some(&SoundSpeedProfile::homogeneous(C0)),
+            None,
         )
         .unwrap();
         for i in 0..N_BANDS {
@@ -896,9 +979,18 @@ mod terrain_effect_tests {
         let axis = FreqAxis::new();
         // Downwind at the σ=200 anchor geometry.
         let (fp, src, rcv) = flat_sigma200();
-        let base = terrain_effect(&fp, src, rcv, C0, &coh, &axis, None).unwrap();
-        let down =
-            terrain_effect(&fp, src, rcv, C0, &coh, &axis, Some(&profile(1.0, 0.05))).unwrap();
+        let base = terrain_effect(&fp, src, rcv, C0, &coh, &axis, None, None).unwrap();
+        let down = terrain_effect(
+            &fp,
+            src,
+            rcv,
+            C0,
+            &coh,
+            &axis,
+            Some(&profile(1.0, 0.05)),
+            None,
+        )
+        .unwrap();
         let max_gain = (0..N_BANDS)
             .map(|i| down.delta_l_db[i] - base.delta_l_db[i])
             .fold(f64::NEG_INFINITY, f64::max);
@@ -909,8 +1001,17 @@ mod terrain_effect_tests {
 
         // Upward refraction into a shadow zone: strong negative gradient so the
         // receiver sits beyond 0.95·dSZ at the anchor distance.
-        let up =
-            terrain_effect(&fp, src, rcv, C0, &coh, &axis, Some(&profile(-1.5, -0.08))).unwrap();
+        let up = terrain_effect(
+            &fp,
+            src,
+            rcv,
+            C0,
+            &coh,
+            &axis,
+            Some(&profile(-1.5, -0.08)),
+            None,
+        )
+        .unwrap();
         let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
         assert!(
             mean(&up.delta_l_db) < mean(&base.delta_l_db) - 1.0,
@@ -936,7 +1037,7 @@ mod terrain_effect_tests {
         .unwrap();
         let src = [0.0, 0.0, 0.5];
         let rcv = [100.0, 0.0, 1.5];
-        let base = terrain_effect(&seg_profile, src, rcv, C0, &coh, &axis, None).unwrap();
+        let base = terrain_effect(&seg_profile, src, rcv, C0, &coh, &axis, None, None).unwrap();
         // A homogeneous weather profile (A=B=0 ⇒ |ξ|<1e-6) is bit-identical.
         let hom = terrain_effect(
             &seg_profile,
@@ -946,6 +1047,7 @@ mod terrain_effect_tests {
             &coh,
             &axis,
             Some(&SoundSpeedProfile::homogeneous(C0)),
+            None,
         )
         .unwrap();
         for i in 0..N_BANDS {
@@ -963,6 +1065,7 @@ mod terrain_effect_tests {
             &coh,
             &axis,
             Some(&profile(1.0, 0.05)),
+            None,
         )
         .unwrap();
         assert!(
@@ -985,11 +1088,20 @@ mod terrain_effect_tests {
         let coh = zero_turb();
         let (sp, ssrc, srcv) = thin_screen();
         // Homogeneous (None) computes fine.
-        assert!(terrain_effect(&sp, ssrc, srcv, C0, &coh, &axis, None).is_ok());
+        assert!(terrain_effect(&sp, ssrc, srcv, C0, &coh, &axis, None, None).is_ok());
         // With a weather profile: a typed WeatherScreenNotImplemented error,
         // never a silent unrefracted screen result.
-        let err = terrain_effect(&sp, ssrc, srcv, C0, &coh, &axis, Some(&profile(1.0, 0.05)))
-            .unwrap_err();
+        let err = terrain_effect(
+            &sp,
+            ssrc,
+            srcv,
+            C0,
+            &coh,
+            &axis,
+            Some(&profile(1.0, 0.05)),
+            None,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, PropagationError::WeatherScreenNotImplemented { .. }),
             "weather+screen must be a typed error, got {err:?}"
@@ -1016,8 +1128,17 @@ mod terrain_effect_tests {
         let (fp, src, rcv) = flat_sigma200();
         let coh = zero_turb();
         let axis = FreqAxis::new();
-        let base =
-            terrain_effect(&fp, src, rcv, C0, &coh, &axis, Some(&profile(1.0, 0.05))).unwrap();
+        let base = terrain_effect(
+            &fp,
+            src,
+            rcv,
+            C0,
+            &coh,
+            &axis,
+            Some(&profile(1.0, 0.05)),
+            None,
+        )
+        .unwrap();
         let with_zero_std = terrain_effect(
             &fp,
             src,
@@ -1026,6 +1147,7 @@ mod terrain_effect_tests {
             &coh,
             &axis,
             Some(&fluctuating_profile(1.0, 0.05, 0.0, 0.0)),
+            None,
         )
         .unwrap();
         for i in 0..N_BANDS {
@@ -1050,8 +1172,17 @@ mod terrain_effect_tests {
         };
         let axis = FreqAxis::new();
         let (fp, src, rcv) = flat_sigma200();
-        let base =
-            terrain_effect(&fp, src, rcv, C0, &coh, &axis, Some(&profile(1.0, 0.05))).unwrap();
+        let base = terrain_effect(
+            &fp,
+            src,
+            rcv,
+            C0,
+            &coh,
+            &axis,
+            Some(&profile(1.0, 0.05)),
+            None,
+        )
+        .unwrap();
         let fluct = terrain_effect(
             &fp,
             src,
@@ -1061,6 +1192,7 @@ mod terrain_effect_tests {
             &axis,
             // Sizeable fluctuation std-devs ⇒ Δτ⁺ ≠ Δτ ⇒ FΔν < 1.
             Some(&fluctuating_profile(1.0, 0.05, 0.6, 0.03)),
+            None,
         )
         .unwrap();
 
@@ -1115,7 +1247,7 @@ mod terrain_effect_tests {
             profile(0.5, 0.0),    // log-only downward
             profile(-0.5, 0.02),  // mixed
         ] {
-            let te = terrain_effect(&fp, src, rcv, C0, &coh, &axis, Some(&prof)).unwrap();
+            let te = terrain_effect(&fp, src, rcv, C0, &coh, &axis, Some(&prof), None).unwrap();
             assert_eq!(te.delta_l_db.len(), N_BANDS);
             for i in 0..N_BANDS {
                 assert!(

@@ -63,6 +63,7 @@ fn coherent_mac_equals_full_recompute_bit_for_bit() {
                 directivity_gain_db: None,
                 directivity_phase_rad: None,
                 forest: None,
+                isolation: None,
             });
         }
     }

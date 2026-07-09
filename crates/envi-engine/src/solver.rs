@@ -7,11 +7,17 @@
 //!
 //! ```text
 //! 1. PathGeometry::direct(src, rcv) → direct_path(&atmos, axis) → H_ff(f)
-//! 2. terrain_effect(profile, src, rcv, coh.c0, coh, axis, weather)
+//! 2. terrain_effect(profile, src, rcv, coh.c0, coh, axis, weather, isolation)
 //!      → { h_coh_factor(f), p_incoh(f) }
 //! 3. H_coh[s,r,f]      = H_ff · nord_ratio_to_transfer(h_coh_factor) · 10^{ΔL/20} · 10^{ΔL_s/20}
 //! 4. P_incoh_abs[s,r,f] = |H_ff|² · p_incoh · 10^{ΔL/10} · 10^{ΔL_s/10}
 //! ```
+//!
+//! The optional semi-transparent partition `isolation` (`R(f)`,
+//! [`IsolationSpectrum`]) is threaded INTO `terrain_effect` (step 2) — it is a
+//! `propagation/`-side, pre-conj complex min-phase filter `T(f)` added to the
+//! screen branch's coherent factor (D-05), NOT a post-conj magnitude factor like
+//! forest/directivity. Opaque is `None` (bit-exact opaque screen, D-10).
 //!
 //! The optional forest excess attenuation `ΔL_s ≤ 0` (Sub-Model 10,
 //! [`crate::forest`]) is a **per-path** property applied on the post-conj side
@@ -38,6 +44,7 @@ use crate::propagation::air_absorption::Atmosphere;
 use crate::propagation::coherence::CoherenceInputs;
 use crate::propagation::refraction::SoundSpeedProfile;
 use crate::propagation::terrain_effect::terrain_effect;
+use crate::propagation::transmission::IsolationSpectrum;
 use crate::propagation::{PropagationError, direct_path};
 use crate::scene::TerrainProfile;
 use crate::tensor::TensorSink;
@@ -95,6 +102,21 @@ pub struct SolveJob<'a> {
     /// leaves every output bit unchanged (pinned by the `solve_baseline`
     /// regression).
     pub forest: Option<ForestCrossing>,
+    /// Optional semi-transparent partition on this path — a per-band sound
+    /// reduction index `R(f)` on the 105-point grid, validated at construction
+    /// ([`IsolationSpectrum`]). When `Some`, `terrain_effect` threads it through
+    /// the screen branch as a complex minimum-phase transmission filter `T(f)`
+    /// (native `e^{−jωt}`, pre-conj, D-05) added to the coherent screen factor —
+    /// the straight-through leakage that makes a screen/façade semi-transparent.
+    /// It joins the **coherent channel only** (never `P_incoh`; Pitfall 6).
+    ///
+    /// ONE spectrum per job = the **total crossed partition stack**;
+    /// multi-partition composition (`T₁·T₂`) and façade→`R(f)` selection are
+    /// upstream Phase-7/9 concerns (D-11). Opaque/no-partition is `None` (D-10),
+    /// the structural absence that reproduces the standard opaque screen
+    /// bit-for-bit — never a large-`R` sentinel. An `isolation` spectrum over flat
+    /// terrain is a typed [`PropagationError::IsolationWithoutScreen`].
+    pub isolation: Option<&'a IsolationSpectrum>,
 }
 
 /// Fill a paired tensor by streaming receiver-axis chunks into `sink`.
@@ -192,6 +214,7 @@ fn solve_pair(job: &SolveJob<'_>) -> Result<(Vec<Complex<f64>>, Vec<f64>), Propa
         job.coh,
         job.axis,
         job.weather,
+        job.isolation,
     )?;
 
     let mut h_coh = Vec::with_capacity(N_BANDS);
@@ -294,6 +317,7 @@ mod tests {
             directivity_gain_db: None,
             directivity_phase_rad: None,
             forest: None,
+            isolation: None,
         };
         let mut sink = InMemorySink::new(1, 1);
         solve([job], 1, 1, &mut sink).unwrap();
@@ -301,7 +325,7 @@ mod tests {
         // Hand-assembled reference chain (same order, same c0).
         let path = PathGeometry::direct(src, rcv).unwrap();
         let h_ff = direct_path(&path, &a, &axis).unwrap();
-        let te = terrain_effect(&profile, src, rcv, c.c0, &c, &axis, None).unwrap();
+        let te = terrain_effect(&profile, src, rcv, c.c0, &c, &axis, None, None).unwrap();
         let pair = sink.tensor();
         for (f, ((&hf, &factor), &pi)) in h_ff
             .iter()
@@ -347,6 +371,7 @@ mod tests {
                         directivity_gain_db: None,
                         directivity_phase_rad: None,
                         forest: None,
+                        isolation: None,
                     });
                 }
             }
@@ -388,6 +413,7 @@ mod tests {
             directivity_gain_db: None,
             directivity_phase_rad: None,
             forest: None,
+            isolation: None,
         };
         let mut plain = InMemorySink::new(1, 1);
         solve([base], 1, 1, &mut plain).unwrap();
@@ -440,6 +466,7 @@ mod tests {
             directivity_gain_db: None,
             directivity_phase_rad: None,
             forest: None,
+            isolation: None,
         };
         let mut plain = InMemorySink::new(1, 1);
         solve([base], 1, 1, &mut plain).unwrap();
@@ -501,6 +528,7 @@ mod tests {
             directivity_gain_db: None,
             directivity_phase_rad: None,
             forest: None,
+            isolation: None,
         };
         let mut plain = InMemorySink::new(1, 1);
         solve([base], 1, 1, &mut plain).unwrap();
@@ -572,6 +600,7 @@ mod tests {
             directivity_gain_db: None,
             directivity_phase_rad: None,
             forest: None,
+            isolation: None,
         };
         let mut plain = InMemorySink::new(1, 1);
         solve([base], 1, 1, &mut plain).unwrap();
@@ -620,6 +649,7 @@ mod tests {
             directivity_gain_db: None,
             directivity_phase_rad: None,
             forest: None,
+            isolation: None,
         };
         let mut sink = InMemorySink::new(1, 1);
         assert!(matches!(
@@ -647,6 +677,7 @@ mod tests {
             directivity_gain_db: None,
             directivity_phase_rad: None,
             forest: None,
+            isolation: None,
         };
         let mut sink = InMemorySink::new(1, 1);
         assert!(matches!(
