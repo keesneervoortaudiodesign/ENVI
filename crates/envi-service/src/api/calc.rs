@@ -165,14 +165,10 @@ pub async fn submit(
     };
     write_manifest(&app.store.project_dir(project_id), &manifest)?;
 
-    app.calcs.write().await.insert(
-        calc_id,
-        CalcRecord {
-            project_id,
-            tensor_hash: identity.tensor_hash.clone(),
-            dims: identity.dims,
-        },
-    );
+    app.calcs
+        .write()
+        .await
+        .insert(calc_id, CalcRecord { project_id });
 
     let job_id = submit_stub_job(&app, CALC_JOB_SPEC).await;
 
@@ -267,35 +263,6 @@ pub async fn recondition(
     }))
 }
 
-/// Refresh every in-memory `CalcRecord` for `project_id` to the identity of the
-/// CURRENT scene (HIGH-1b defense in depth), called after a `PUT /scene`.
-///
-/// The primary SC4 guard is that [`recondition`] re-mints identity per request;
-/// this keeps the cached stub-tensor records from lagging the on-disk scene too.
-/// Records are left in place (recompute still addresses them by calc id) — only
-/// their `tensor_hash`/`dims` are updated, so a client holding a pre-edit hash
-/// can no longer match a cached record either. Best-effort: if there are no
-/// records for the project, or re-minting fails, the cached records are simply
-/// left as-is (recondition's per-request re-mint still guarantees correctness).
-pub(crate) async fn refresh_project_calc_identity(app: &AppState, project_id: Uuid) {
-    let has_any = {
-        let calcs = app.calcs.read().await;
-        calcs.values().any(|r| r.project_id == project_id)
-    };
-    if !has_any {
-        return;
-    }
-    if let Ok(identity) = mint_identity(app, project_id) {
-        let mut calcs = app.calcs.write().await;
-        for rec in calcs.values_mut() {
-            if rec.project_id == project_id {
-                rec.tensor_hash = identity.tensor_hash.clone();
-                rec.dims = identity.dims;
-            }
-        }
-    }
-}
-
 /// `POST /calculations/{cid}/recompute` -> 202 `{ job_id, tensor_hash }`.
 ///
 /// Re-mints tensor identity from the project's CURRENT scene/met/receivers,
@@ -325,14 +292,10 @@ pub async fn recompute(
     };
     write_manifest(&app.store.project_dir(project_id), &manifest)?;
 
-    app.calcs.write().await.insert(
-        calc_id,
-        CalcRecord {
-            project_id,
-            tensor_hash: identity.tensor_hash.clone(),
-            dims: identity.dims,
-        },
-    );
+    app.calcs
+        .write()
+        .await
+        .insert(calc_id, CalcRecord { project_id });
 
     let job_id = submit_stub_job(&app, CALC_JOB_SPEC).await;
 

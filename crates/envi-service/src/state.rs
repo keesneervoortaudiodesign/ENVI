@@ -7,12 +7,10 @@
 //! - [`AppState::jobs`] — the SC5 job state machine registry (`JobId -> JobHandle`),
 //!   each handle carrying a `watch::Receiver<JobStatus>` (live progress) and a
 //!   `CancellationToken` (cooperative cancel). See [`crate::jobs`].
-//! - [`AppState::calcs`] — the in-memory **stub tensor** registry (`calc_id ->
-//!   CalcRecord`) resolving a `calc_id` to its owning project + last-minted
-//!   identity (SC4, D-07). The `recondition` 409 gate re-mints identity from the
-//!   current scene per request (HIGH-1a) rather than trusting the cached hash;
-//!   the cached `tensor_hash` is kept fresh on scene edits (HIGH-1b) so it never
-//!   lags disk. [`CalcRecord`] lives here.
+//! - [`AppState::calcs`] — the in-memory `calc_id -> project_id` index (SC4,
+//!   D-07). It resolves a `calc_id` to its owning project and nothing else:
+//!   **tensor identity is always derived on read** from the current
+//!   scene/met/receivers, never cached here. [`CalcRecord`] lives here.
 //!
 //! Both registries live behind an `Arc<RwLock<..>>` so `AppState` stays `Clone`
 //! (it is always shared as `Arc<AppState>`; the inner `Arc` keeps the derive and
@@ -28,20 +26,19 @@ use envi_store::project_dir::ProjectStore;
 
 use crate::jobs::{JobHandle, JobId};
 
-/// The in-memory **stub tensor** identity record for one calculation (D-07). It
-/// carries only what the `recondition` 409 gate and the `[S, R, 105]` spectra
-/// readout need: the owning project, the content `tensor_hash` (geometry + met +
-/// receivers — conditioning excluded), and the tensor `dims`. The real tensor
-/// payload is Phase 9-11; here identity alone is the frozen contract.
+/// The in-memory registry entry for one calculation: a `calc_id -> project_id`
+/// index and nothing more (D-07).
+///
+/// **Tensor identity is always derived on read** — the `recondition` 409 gate
+/// re-mints the content hash (geometry + met + receivers) from the CURRENT
+/// scene/met/receivers per request via `load_and_mint`, and the persisted
+/// `calc/<id>/manifest.json` holds the authoritative stored hash. No cached hash
+/// is kept here, and **no cached hash may ever be used for the 409 decision** —
+/// that is what keeps a scene edit from leaving a stale identity reconditionable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CalcRecord {
     /// The project this calculation belongs to.
     pub project_id: Uuid,
-    /// The frozen content hash keying tensor identity (see
-    /// `envi_store::hash::tensor_hash`).
-    pub tensor_hash: String,
-    /// `[S, R, 105]` — sub-source count, receiver count, band count.
-    pub dims: [usize; 3],
 }
 
 /// Process-wide application state, shared behind `Arc<AppState>`.
@@ -58,10 +55,9 @@ pub struct AppState {
     /// Completed jobs stay queryable (terminal status readable via the receiver);
     /// registry eviction is Phase-10 business (T-06-04-03).
     pub jobs: Arc<RwLock<HashMap<JobId, JobHandle>>>,
-    /// The in-memory stub-tensor registry: `calc_id -> CalcRecord` (project id +
-    /// last-minted `tensor_hash` + dims). The `recondition` 409 gate re-mints
-    /// identity from the current scene per request (HIGH-1a); this map resolves
-    /// `calc_id -> project_id` and caches the last identity (SC4, D-07).
+    /// The in-memory calc registry: a `calc_id -> project_id` index (SC4, D-07).
+    /// It carries no cached identity — the `recondition` 409 gate always re-mints
+    /// the tensor hash from the current scene per request (`load_and_mint`).
     pub calcs: Arc<RwLock<HashMap<Uuid, CalcRecord>>>,
 }
 

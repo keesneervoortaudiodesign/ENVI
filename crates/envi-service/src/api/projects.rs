@@ -136,9 +136,9 @@ pub async fn update(
 
 /// `DELETE /projects/{id}` -> 204.
 ///
-/// Evicts the deleted project's in-memory `CalcRecord`s (HIGH-1b / LOW-8): a
-/// calc whose project folder is gone must not linger in the registry, and its
-/// stale `calc_id` must not remain reconditionable.
+/// Evicts the deleted project's in-memory `CalcRecord`s (LOW-8): a calc whose
+/// project folder is gone must not linger in the registry, and its now-orphaned
+/// `calc_id` must not resolve to a project that no longer exists.
 pub async fn delete(
     State(app): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
