@@ -68,8 +68,9 @@ pub fn crs_self_check() -> Result<SelfCheckReport, SelfCheckError> {
     let back = crs.to_wgs84(utm)?;
 
     let dlat_m = (back.lat_deg - LANDMARK.lat_deg).abs() * M_PER_DEG_LAT;
-    let dlon_m =
-        (back.lon_deg - LANDMARK.lon_deg).abs() * M_PER_DEG_LAT * LANDMARK.lat_deg.to_radians().cos();
+    let dlon_m = (back.lon_deg - LANDMARK.lon_deg).abs()
+        * M_PER_DEG_LAT
+        * LANDMARK.lat_deg.to_radians().cos();
     let err_m = (dlat_m.powi(2) + dlon_m.powi(2)).sqrt();
 
     if err_m > 1.0 {

@@ -28,7 +28,10 @@ pub enum ApiError {
     },
     /// 409 — reserved for plan 06-04's `recondition` tensor-hash mismatch. The
     /// body carries the structured mismatch detail (`expected`/`got`/`hint`).
-    #[allow(dead_code, reason = "constructed by the recondition 409 path in plan 06-04")]
+    #[allow(
+        dead_code,
+        reason = "constructed by the recondition 409 path in plan 06-04"
+    )]
     Conflict {
         /// The pre-built JSON conflict body.
         body: Value,
@@ -44,9 +47,11 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code, detail) = match self {
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not_found", Value::Null),
-            ApiError::BadRequest { detail } => {
-                (StatusCode::BAD_REQUEST, "bad_request", Value::String(detail))
-            }
+            ApiError::BadRequest { detail } => (
+                StatusCode::BAD_REQUEST,
+                "bad_request",
+                Value::String(detail),
+            ),
             ApiError::Conflict { body } => (StatusCode::CONFLICT, "conflict", body),
             ApiError::Internal { detail } => (
                 StatusCode::INTERNAL_SERVER_ERROR,

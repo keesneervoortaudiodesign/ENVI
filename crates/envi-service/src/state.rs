@@ -16,7 +16,6 @@ pub struct AppState {
     /// The folder-backed project store (create/open/save/duplicate/delete +
     /// reopen-last, atomic writes).
     pub store: ProjectStore,
-
     // NOTE (plan 06-04): the job registry (`RwLock<HashMap<JobId, JobHandle>>`)
     // and the calc/tensor-stub registries attach here. Kept out of Phase 6 so the
     // recondition/recompute + SSE contracts land as a single coherent addition.
