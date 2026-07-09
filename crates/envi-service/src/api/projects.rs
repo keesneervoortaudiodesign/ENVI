@@ -7,7 +7,6 @@
 //! `Path<String>` id.
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -17,6 +16,7 @@ use uuid::Uuid;
 
 use envi_geo::LonLat;
 use envi_store::dto::{ProjectMetaDto, SettingsDto};
+use envi_store::now_unix;
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -61,11 +61,19 @@ pub struct UpdateProjectRequest {
 }
 
 /// `GET /projects` -> 200 `[ProjectMetaDto]` (metadata of every stored project).
+///
+/// Resilient by design (MED-2): a single malformed/unreadable `project.json`
+/// (e.g. a hand-edit typo — D-04 projects are human-editable flat files) is
+/// skipped and logged, never failing the whole listing. Every project that loads
+/// is returned.
 pub async fn list(State(app): State<Arc<AppState>>) -> Result<Json<Vec<ProjectMetaDto>>, ApiError> {
     let ids = app.store.list()?;
     let mut metas = Vec::with_capacity(ids.len());
     for id in ids {
-        metas.push(app.store.load_meta(id)?);
+        match app.store.load_meta(id) {
+            Ok(meta) => metas.push(meta),
+            Err(e) => tracing::warn!(%id, error = %e, "skipping unreadable project in list"),
+        }
     }
     Ok(Json(metas))
 }
@@ -127,11 +135,19 @@ pub async fn update(
 }
 
 /// `DELETE /projects/{id}` -> 204.
+///
+/// Evicts the deleted project's in-memory `CalcRecord`s (HIGH-1b / LOW-8): a
+/// calc whose project folder is gone must not linger in the registry, and its
+/// stale `calc_id` must not remain reconditionable.
 pub async fn delete(
     State(app): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     app.store.delete(id)?;
+    app.calcs
+        .write()
+        .await
+        .retain(|_, rec| rec.project_id != id);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -143,12 +159,4 @@ pub async fn duplicate(
 ) -> Result<(StatusCode, Json<ProjectMetaDto>), ApiError> {
     let meta = app.store.duplicate(id)?;
     Ok((StatusCode::CREATED, Json(meta)))
-}
-
-/// Current unix epoch seconds (matches the store's timestamp convention).
-fn now_unix() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
