@@ -553,9 +553,12 @@ pub fn parse_city_coordinates(
 ///
 /// Each contour polyline is intersected with the cut line; every intersection
 /// contributes a `(distance-along-cut, elevation)` sample. Samples are sorted by
-/// distance (deduplicated), a `x = 0` endpoint at the source foot is prepended if
-/// missing, and the flat `sigma`/`roughness` are attached to every segment. The
-/// profile `x` axis is the horizontal distance along the cut.
+/// distance (deduplicated), and the flat `sigma`/`roughness` are attached to
+/// every segment. The profile `x` axis is the horizontal distance along the cut,
+/// starting at the first contour crossing (the profile is NOT force-anchored to a
+/// `x = 0` source-foot endpoint — source/receiver-foot endpoint handling is
+/// deferred to when the curved numeric path is wired, since it needs an
+/// extrapolated elevation rather than a contour intersection).
 ///
 /// # Errors
 ///

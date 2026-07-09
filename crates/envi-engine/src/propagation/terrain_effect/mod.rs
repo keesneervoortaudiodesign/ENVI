@@ -521,7 +521,12 @@ fn screen_channel(
     // flanked (double).
     let shape: Vec<[f64; 2]> = match interp.class {
         ScreenClass::DoubleScreen => {
-            let (s1, s2) = interp.screens.expect("double screen carries two shapes");
+            // A DoubleScreen interpretation must carry its two apex shapes; a
+            // missing pair is a terrain-interpreter invariant violation (terrain
+            // state is case-derived) — a typed error, never a panic on data.
+            let (s1, s2) = interp.screens.ok_or(PropagationError::DegenerateProfile {
+                detail: "double-screen class without its two screen shapes",
+            })?;
             vec![s1[0], s1[1], s2[1], s2[2]]
         }
         _ => interp.screen.clone(),

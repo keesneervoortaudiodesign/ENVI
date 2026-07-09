@@ -139,7 +139,10 @@ pub fn compare_spectrum(got: &[f64], want: &[f64], tol_db: f64) -> (Vec<BandDevi
             dev_db: g - w,
         })
         .collect();
-    let pass = deviations.iter().all(|d| d.dev_db.abs() <= tol_db);
+    // A length mismatch must never masquerade as a pass: `zip` silently truncates
+    // to the shorter slice in release, so require equal lengths for a PASS
+    // (the debug_assert above still surfaces the contract break in dev builds).
+    let pass = got.len() == want.len() && deviations.iter().all(|d| d.dev_db.abs() <= tol_db);
     (deviations, pass)
 }
 
@@ -299,7 +302,8 @@ pub fn compare_pointwise(
         .iter()
         .map(|d| d.dev_db.abs())
         .fold(0.0_f64, f64::max);
-    let pass = !verdicts.contains(&BandVerdict::Fail);
+    // A length mismatch must never masquerade as a pass (see `compare_spectrum`).
+    let pass = got.len() == want.len() && !verdicts.contains(&BandVerdict::Fail);
     ComparisonReport {
         deviations,
         verdicts,

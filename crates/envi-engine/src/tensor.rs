@@ -325,8 +325,11 @@ pub fn readout_coherent(
 ///
 /// # Errors
 ///
-/// [`SinkError`] if the channels disagree in shape, `w` has the wrong sub-source
-/// or band count, or any input is non-finite.
+/// [`SinkError`] if the channels disagree in shape, or `w` has the wrong
+/// sub-source or band count or carries a non-finite value. The `h_coh` /
+/// `p_incoh_abs` tensor channels are validated finite at fill time by
+/// [`TensorSink::put_chunk`], so they are not re-scanned here (mirrors
+/// [`readout_coherent`], which likewise validates only its gain argument).
 pub fn readout_incoherent(
     h_coh: ArrayView3<'_, Complex<f64>>,
     p_incoh_abs: ArrayView3<'_, f64>,
