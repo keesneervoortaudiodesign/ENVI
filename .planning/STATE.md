@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 05
 current_phase_name: engine-extensions-forest-semi-transparent-partitions
-status: executing
-stopped_at: 05-02-PLAN.md complete (05-03 next)
-last_updated: "2026-07-09T13:37:49.142Z"
+status: complete
+stopped_at: Phase 5 COMPLETE (3/3 plans) + all 5 completion gates closed (code-review/simplify/secure/verify/doc-consistency). ENG-09 forest SM10 + ENG-10 semi-transparent min-phase transmission shipped; two-channel + single-conj + opaque bit-exact contracts intact.
+last_updated: "2026-07-09T00:00:00.000Z"
 last_activity: 2026-07-09
-last_activity_desc: 05-02 ENG-10 min-phase transmission kernel complete
+last_activity_desc: Phase 5 closed — forest SM10 + min-phase semi-transparent transmission; 5 completion gates (05-REVIEW SECURED/05-SECURITY/05-VERIFICATION passed + simplify + doc-consistency); ENG-09/ENG-10 marked Complete.
 progress:
   total_phases: 11
   completed_phases: 5
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** A numerically faithful Nord2000 engine — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain.
-**Current focus:** Phase 05 — engine-extensions-forest-semi-transparent-partitions
+**Current focus:** Phase 05 — engine-extensions-forest-semi-transparent-partitions (COMPLETE)
 
 ## Current Position
 
-Phase: 05 (engine-extensions-forest-semi-transparent-partitions) — EXECUTING
-Plan: 3 of 3 complete (05-03 next — wave 2)
-Status: Ready to execute
-Last activity: 2026-07-09 — 05-02 ENG-10 min-phase transmission kernel complete
+Phase: 05 (engine-extensions-forest-semi-transparent-partitions) — COMPLETE
+Plan: 3 of 3 complete (05-01, 05-02, 05-03)
+Status: Phase 5 COMPLETE — all 5 completion gates closed (code-review + simplify + secure + verify + doc-consistency). ENG-09 (forest Sub-Model 10) and ENG-10 (semi-transparent min-phase transmission) both delivered and marked Complete. Next: Phase 6 (Service Foundation & Persistence).
+Last activity: 2026-07-09 — Phase 5 closed: 5 completion gates green (05-REVIEW SECURED, 05-SECURITY, 05-VERIFICATION passed, simplify applied, doc-consistency)
 
-Progress: [███████░░░] Phase 5 — 2/3 plans complete (05-01 ✅ forest, 05-02 ✅ min-phase kernel, 05-03 ⏳ integration)
+Progress: [██████████] Phase 5 — 3/3 plans complete (05-01 ✅ forest SM10, 05-02 ✅ min-phase kernel, 05-03 ✅ integration + opaque regression)
 
 ## Performance Metrics
 

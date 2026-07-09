@@ -64,7 +64,7 @@
 ### Engine extensions — new acoustics for Milestone 2 (ENG)
 
 - [x] **ENG-09**: Compute forest excess attenuation via Nord2000 **Sub-Model 10** scattering-zone excess attenuation `ΔL_s` (AV 1106/07 §5.19, Eqs. 288–291, Tables 8/9) from mean tree density, mean stem radius, average tree height, and mean absorption — evaluated per 1/12-octave band and applied as a per-path attenuation to **both** channels (`10^{ΔL_s/20}` on `H_coh`, `10^{ΔL_s/10}` on `P_incoh`), post-conj (arg untouched). (The earlier "`A = d·a(f)` … factor `kp`" phrasing was the NoizCalc/TI 386 UI paraphrase of exactly this sub-model — `kp` ≡ the tabulated `k_f`, computed by the engine; the Eq. 288 `Fs` coherence factor is a **documented deferral** — see the phase `deferred-items.md`.)
-- [ ] **ENG-10**: Compute a **semi-transparent partition** — a transmission path through a screen/façade attenuated by a per-band **isolation spectrum** (transmission loss `R(f)`), with the ray **direction preserved** (straight source→receiver line), combined with the diffracted and reflected contributions as **complex pressure with phase intact** (two-channel `H_coh`/`P_incoh` contract). The isolation spectrum acts as a complex **minimum-phase** transmission filter `T(f) = 10^(−R/20)·e^{jφ_min}`, `φ_min = −H{ln|T|}` over the 105-point band axis (a documented **ENVI extension** beyond stock Nord2000's real energy loss — the same discipline as the Phase-4 directional complex phase); a flat `R` gives `φ ≡ 0`, bit-compatible with a pure attenuation. `T` joins the **coherent channel only** (never `P_incoh`). The opaque limit is the structural **`None`** state, reproducing the standard opaque screen **bit-for-bit** (a permanent committed regression). (Per-façade building transmission reuses ENG-10 with each façade's `R(f)`.)
+- [x] **ENG-10**: Compute a **semi-transparent partition** — a transmission path through a screen/façade attenuated by a per-band **isolation spectrum** (transmission loss `R(f)`), with the ray **direction preserved** (straight source→receiver line), combined with the diffracted and reflected contributions as **complex pressure with phase intact** (two-channel `H_coh`/`P_incoh` contract). The isolation spectrum acts as a complex **minimum-phase** transmission filter `T(f) = 10^(−R/20)·e^{jφ_min}`, `φ_min = −H{ln|T|}` over the 105-point band axis (a documented **ENVI extension** beyond stock Nord2000's real energy loss — the same discipline as the Phase-4 directional complex phase); a flat `R` gives `φ ≡ 0`, bit-compatible with a pure attenuation. `T` joins the **coherent channel only** (never `P_incoh`). The opaque limit is the structural **`None`** state, reproducing the standard opaque screen **bit-for-bit** (a permanent committed regression). (Per-façade building transmission reuses ENG-10 with each façade's `R(f)`.)
 
 ### Scene model extensions (SCN)
 
@@ -195,7 +195,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | VAL-02 | Phase 4 | Chain complete; numeric Pass deferred (external coefficient blocker) |
 | VAL-03 | Phase 4 | Complete |
 | ENG-09 | Phase 5 | Complete |
-| ENG-10 | Phase 5 | Pending |
+| ENG-10 | Phase 5 | Complete |
 | SCN-01 | Phase 7 | Pending |
 | SCN-02 | Phase 7 | Pending |
 | SCN-03 | Phase 7 | Pending |
