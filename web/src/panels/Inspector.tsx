@@ -16,7 +16,8 @@ import { type ReactElement } from "react";
 
 import { assertNeverKind, type Kind } from "../draw/kinds";
 import { useSceneStore } from "../store/sceneStore";
-import { GroundZoneFields, type FieldsProps } from "./fields/GroundZoneFields";
+import { GroundZoneFields } from "./fields/GroundZoneFields";
+import type { FieldsProps } from "./fields/types";
 import { ForestFields } from "./fields/ForestFields";
 import { SourceFields } from "./fields/SourceFields";
 import { FacadePanel } from "./FacadePanel";

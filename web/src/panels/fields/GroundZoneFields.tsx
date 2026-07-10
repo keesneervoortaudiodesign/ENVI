@@ -14,13 +14,8 @@
 import { type ReactElement } from "react";
 
 import { KIND_DEFAULTS } from "../../store/inheritance";
-
-export interface FieldsProps {
-  readonly id: string;
-  readonly properties: Readonly<Record<string, unknown>>;
-  readonly inherited: readonly string[];
-  readonly update: (patch: Record<string, unknown>) => void;
-}
+import { SeedChip } from "./SeedChip";
+import type { FieldsProps } from "./types";
 
 // Nord2000 flow-resistivity σ per impedance class (kPa·s/m²). Mirrors
 // `envi_engine::scene::impedance_class`; the σ is display-only (the class letter is the stored value).
@@ -36,26 +31,6 @@ const IMPEDANCE_SIGMA: Record<string, number> = {
 };
 const IMPEDANCE_CLASSES = Object.keys(IMPEDANCE_SIGMA);
 const ROUGHNESS_CLASSES = ["N", "S", "M", "L"] as const;
-
-// The seed marker for a field: the "inherited from last" chip (until edited) or the first-of-kind
-// "default" chip. Returns null once the user has edited the field.
-function SeedChip({
-  field,
-  inherited,
-  isDefault,
-}: {
-  field: string;
-  inherited: readonly string[];
-  isDefault: boolean;
-}): ReactElement | null {
-  if (inherited.includes(field)) {
-    return <span className="chip info">inherited from last ground_zone</span>;
-  }
-  if (isDefault) {
-    return <span className="chip off">default</span>;
-  }
-  return null;
-}
 
 export function GroundZoneFields({ properties, inherited, update }: FieldsProps): ReactElement {
   const impedance = typeof properties["impedance_class"] === "string" ? (properties["impedance_class"] as string) : "D";
@@ -78,7 +53,12 @@ export function GroundZoneFields({ properties, inherited, update }: FieldsProps)
             </option>
           ))}
         </select>
-        <SeedChip field="impedance_class" inherited={inherited} isDefault={impedance === defaults["impedance_class"]} />
+        <SeedChip
+          field="impedance_class"
+          inherited={inherited}
+          isDefault={impedance === defaults["impedance_class"]}
+          kind="ground_zone"
+        />
       </label>
 
       <label className="field-row">
@@ -95,7 +75,12 @@ export function GroundZoneFields({ properties, inherited, update }: FieldsProps)
             </option>
           ))}
         </select>
-        <SeedChip field="roughness_class" inherited={inherited} isDefault={roughness === defaults["roughness_class"]} />
+        <SeedChip
+          field="roughness_class"
+          inherited={inherited}
+          isDefault={roughness === defaults["roughness_class"]}
+          kind="ground_zone"
+        />
       </label>
     </div>
   );

@@ -16,7 +16,7 @@
 import { type ReactElement } from "react";
 
 import { useSceneStore } from "../store/sceneStore";
-import type { FieldsProps } from "./fields/GroundZoneFields";
+import type { FieldsProps } from "./fields/types";
 
 // A short, legible form of an edge UUID for the row label (the full UUID stays the store key).
 function shortId(id: string): string {

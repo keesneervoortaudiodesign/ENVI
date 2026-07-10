@@ -15,9 +15,9 @@
 
 import { useState, type ReactElement } from "react";
 
-import type { FieldsProps } from "./GroundZoneFields";
+import type { FieldsProps } from "./types";
 import { useSceneStore } from "../../store/sceneStore";
-import { splToLw, ApiError } from "../../api/client";
+import { splToLw, errorText } from "../../api/client";
 import { materializeDense } from "../../spectrum/interpolateClient";
 
 function positionOf(properties: Readonly<Record<string, unknown>>): [number, number, number] {
@@ -66,7 +66,7 @@ export function SourceFields({ id, properties }: FieldsProps): ReactElement {
       const resp = await splToLw({ spl_db: splDense, reference_distance_m: refDistance }); // server back-calc
       setSpectrum(id, { resolution: "twelfth", values: resp.l_w_db });
     } catch (err) {
-      setDeriveError(err instanceof ApiError ? err.detail : "The L_W derivation request failed.");
+      setDeriveError(errorText(err, "The L_W derivation request failed."));
     } finally {
       setDeriving(false);
     }

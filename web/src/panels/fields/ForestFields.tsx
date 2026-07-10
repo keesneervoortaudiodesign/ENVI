@@ -13,25 +13,8 @@
 import { type ReactElement } from "react";
 
 import { KIND_DEFAULTS } from "../../store/inheritance";
-import type { FieldsProps } from "./GroundZoneFields";
-
-function SeedChip({
-  field,
-  inherited,
-  isDefault,
-}: {
-  field: string;
-  inherited: readonly string[];
-  isDefault: boolean;
-}): ReactElement | null {
-  if (inherited.includes(field)) {
-    return <span className="chip info">inherited from last forest</span>;
-  }
-  if (isDefault) {
-    return <span className="chip off">default</span>;
-  }
-  return null;
-}
+import { SeedChip } from "./SeedChip";
+import type { FieldsProps } from "./types";
 
 function numeric(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -58,7 +41,12 @@ export function ForestFields({ properties, inherited, update }: FieldsProps): Re
           />
           <span className="field-unit">trees/m²</span>
         </span>
-        <SeedChip field="density_per_m2" inherited={inherited} isDefault={density === defaults["density_per_m2"]} />
+        <SeedChip
+          field="density_per_m2"
+          inherited={inherited}
+          isDefault={density === defaults["density_per_m2"]}
+          kind="forest"
+        />
       </label>
 
       <label className="field-row">
@@ -74,7 +62,12 @@ export function ForestFields({ properties, inherited, update }: FieldsProps): Re
           />
           <span className="field-unit">m</span>
         </span>
-        <SeedChip field="stem_radius_m" inherited={inherited} isDefault={stemRadius === defaults["stem_radius_m"]} />
+        <SeedChip
+          field="stem_radius_m"
+          inherited={inherited}
+          isDefault={stemRadius === defaults["stem_radius_m"]}
+          kind="forest"
+        />
       </label>
 
       <label className="field-row">
@@ -90,7 +83,7 @@ export function ForestFields({ properties, inherited, update }: FieldsProps): Re
           />
           <span className="field-unit">m</span>
         </span>
-        <SeedChip field="height_m" inherited={inherited} isDefault={height === defaults["height_m"]} />
+        <SeedChip field="height_m" inherited={inherited} isDefault={height === defaults["height_m"]} kind="forest" />
       </label>
     </div>
   );
