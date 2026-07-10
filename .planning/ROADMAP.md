@@ -231,7 +231,7 @@ Plans:
   3. User can mark a screen semi-transparent and assign it an isolation spectrum, and assign per-façade isolation spectra on a building; the spectrum editor accepts direct 1/12-octave entry or 1/1- / 1/3-octave input linearly interpolated onto the 105-point grid, with octave and third-octave centres landing exactly on their band indices
   4. The drawn scene survives a basemap switch, a page reload, and a project close/re-open — Terra Draw re-hydrates from the store on `style.load`, and the persisted scene is what comes back
 
-**Plans**: 6/10 plans executed
+**Plans**: 7/10 plans executed
 **Wave 1**
 
 - [x] 07-01-PLAN.md — envi-store isolation/forest DTOs + shared band-index interpolation core + tested TryFrom (D-01/D-05/D-06)
@@ -249,7 +249,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 07-07-PLAN.md — object palette + all 9 kinds + property inspector + last-object inheritance + typed fetch client + DGM re-triangulation producer (trigger + TIN overlay)
+- [x] 07-07-PLAN.md — object palette + all 9 kinds + property inspector + last-object inheritance + typed fetch client + DGM re-triangulation producer (trigger + TIN overlay)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
