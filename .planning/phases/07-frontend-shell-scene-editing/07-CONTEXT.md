@@ -148,9 +148,46 @@ isolation spectra nor forest params, and `scene_to_engine` maps only **4 of 9** 
   cannot, fall back to a hand-written **zod** schema for that type specifically — zod validates at
   runtime, so drift fails loudly on the first request rather than silently.
 
+### Visual design system — adopted from the sibling repo `metrao3`
+
+**Scope note:** only the **visual appearance** is adopted. `metrao3`'s frontend *architecture* is
+vanilla TypeScript with a hand-rolled DOM layer and zero runtime dependencies — that is explicitly
+**NOT** adopted. ENVI stays React + Vite + TSX (D-09) because it needs `react-map-gl` 8 + Terra Draw,
+and keeps generated wire types (D-10) rather than `metrao3`'s hand-written `api.ts` interfaces.
+
+- **D-11:** ENVI's UI adopts the **metrao3 ops-console theme, dark-only**, taking the *embedded*
+  variant (`crates/metrao3-web/ui/src/theme.css`) as the ancestor rather than the portal variant —
+  identical tokens, but with the `Inter` / `JetBrains Mono` web-font names stripped in favour of a
+  **system font stack**. ENVI serves `web/dist` offline from the binary and Phase 6 already gates on
+  "zero external assets in `index.html`", so no web font may be fetched. **Do not invent tokens** —
+  the token set is the contract. Adopted verbatim:
+  - Layered dark surfaces (`--color-bg` `#0b0d10` → `--color-surface-3`), the text ramp, borders,
+    shadows, radii, the spacing scale, the type scale, and `--row-h` (28px) / `--row-h-lg` (36px).
+  - `--color-primary: #4ea8ff`. (A single-token re-hue is possible later; not now.)
+  - The **severity vocabulary `ok / warn / crit / off`**, which maps directly onto the WEB-04
+    validation panel: `crit` = a rejected crossing ground zone (D-07), `warn` = a wall marked
+    semi-transparent with no isolation spectrum, or a forest with zero density.
+  - The `.dot` / `.chip` / `.btn` / `.input` / `.panel` / `.panel-header` primitives; `.mono` with
+    `font-variant-numeric: tabular-nums` for all numeric readouts — notably the 105-band spectrum table.
+  - **Inline SVG icons built via DOM APIs** (`icons.ts` pattern) — never an icon font, never a CDN,
+    never `innerHTML`. Values reach the DOM by `textContent` only.
+- **D-12 (adaptation):** `metrao3`'s `min-height: 44px` on `.btn` / `.input` exists for a kiosk/phone
+  touch target. ENVI is a mouse-driven desktop map editor with a dense property inspector, so control
+  height is driven from the **existing** `--row-h` / `--row-h-lg` tokens (36px default, a 28px
+  `.dense` variant for the spectrum table), while the **44px minimum is retained for primary and
+  destructive actions** (Save, Delete project) where a misclick is costly. No token is added or
+  changed — only which token each control consumes.
+- **D-13 (adaptation):** the chrome is dark-only, so the basemap must be a **dark MapLibre vector
+  style**; the basemap recedes and the drawn scene carries the colour, hued from the accent +
+  severity tokens. **Research must pick a style that needs no API key and works offline** (ENVI is
+  self-hosted localhost). A light OSM raster under dark chrome would create a hard luminance seam and
+  would break the severity-token palette's legibility.
+
 ### Claude's Discretion
 - Client state library (Zustand suggested, not mandated) and store shape.
-- Panel/layout composition; how the object palette and property inspector are arranged.
+- Panel/layout composition; how the object palette and property inspector are arranged (within D-11's
+  token set and the `.panel` / `.panel-header` primitives).
+- The per-kind scene-object palette: which accent/severity token hues each of the 9 kinds takes.
 - Last-object property inheritance mechanics (WEB-04) — per-kind, session-scoped is the assumed default.
 - Source calibration UI details (WEB-02: sound power / spectrum / SPL-at-reference-point).
 - Terra Draw mode configuration and which modes back which kinds.
@@ -210,6 +247,21 @@ isolation spectra nor forest params, and `scene_to_engine` maps only **4 of 9** 
   (line 105): the solve-time seams, wired in Phase 9/10, NOT this phase.
 - `crates/envi-engine/src/freq.rs` — `FREQ_AXIS`, `N_BANDS`; **every 4th of the 105 points is an
   exact 1/3-octave centre** (the D-05 interpolation invariant).
+
+### Visual design system (D-11/D-12/D-13) — external repo, READ-ONLY, never modify
+- `D:\====CLAUDE\metrao3\crates\metrao3-web\ui\src\theme.css` — **the token source ENVI adopts**
+  (the embedded, system-font, offline variant). Dark-only ops-console tokens: surfaces, text ramp,
+  `--color-primary` `#4ea8ff`, the `ok`/`warn`/`crit`/`off` severity vocabulary, spacing, radii,
+  shadows, `--row-h`, and the `.dot` / `.chip` / `.btn` / `.input` / `.panel` primitives.
+  **Do not invent tokens.**
+- `D:\====CLAUDE\metrao3\portal\src\theme.css` — the upstream portal variant (same tokens, but names
+  `Inter` / `JetBrains Mono` first). **Not** the ancestor for ENVI: web fonts are forbidden offline.
+- `D:\====CLAUDE\metrao3\crates\metrao3-web\ui\src\icons.ts` — the inline-SVG icon pattern
+  (DOM-constructed, never `innerHTML`, no icon font, no CDN).
+- `D:\====CLAUDE\metrao3\crates\metrao3-web\ui\src\styles.css` — layout/primitive usage reference.
+- ⚠ **`metrao3`'s frontend architecture is explicitly NOT adopted** (it is vanilla TS, no framework,
+  zero runtime deps, hand-written `api.ts` types). Only the visual layer crosses over. ENVI remains
+  React + Vite + TSX (D-09) with generated wire types (D-10).
 
 ### Patterns to mirror
 - `tools/nord2000_oracle/gen_ground_fixtures.py` + `crates/envi-harness/tests/oracle_ground.rs` —
