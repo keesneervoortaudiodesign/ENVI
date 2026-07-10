@@ -78,6 +78,35 @@ export function initEdgeIds(ring: readonly Coord[]): string[] {
   return ring.map(() => crypto.randomUUID());
 }
 
+// True when two ring vertices share an exact coordinate. Duplicate coordinates make the exact-`f64`
+// matching the diff relies on (INSERT/DELETE probes, `prevEdgeLookup`) AMBIGUOUS: a `pairKey` collapses so
+// two distinct directed edges map to one UUID, and a `sameCoord(to, w)` split probe matches more than one
+// edge — either of which would silently re-point a façade spectrum. When present, the only safe answer is
+// `rebuild` (ME-03).
+function hasDuplicateCoords(ring: readonly Coord[]): boolean {
+  const seen = new Set<string>();
+  for (const c of ring) {
+    const key = `${c[0]},${c[1]}`;
+    if (seen.has(key)) {
+      return true;
+    }
+    seen.add(key);
+  }
+  return false;
+}
+
+// The fail-safe result: mint fresh UUIDs for every next edge and DROP all overrides (a façade reverts to
+// the building default — visible and loud) rather than risk silently re-pointing a spectrum at the wrong
+// façade. This is the only safe answer whenever per-edge identity cannot be PROVEN (the exact class of
+// data-corruption D-02 exists to prevent).
+function rebuildResult(nextRing: readonly Coord[]): RingDiffResult {
+  return {
+    kind: "rebuild",
+    edgeIds: nextRing.map(() => crypto.randomUUID()),
+    reconcileFacade: () => ({}),
+  };
+}
+
 export function ringDiff(
   prevRing: readonly Coord[],
   prevEdgeIds: readonly string[],
@@ -86,11 +115,35 @@ export function ringDiff(
   const prevN = prevRing.length;
   const nextN = nextRing.length;
 
+  // GUARD (ME-03): a ring carrying duplicate coordinates makes every coordinate-identity match ambiguous
+  // (`prevEdgeLookup` keys collapse; the INSERT/DELETE split probes match >1 edge). Rebuild rather than
+  // proceed with an ambiguous match that could re-point a spectrum. Checking both rings covers a collapsed
+  // prev lookup AND a next ring whose inserted vertex duplicates an existing coordinate.
+  if (hasDuplicateCoords(prevRing) || hasDuplicateCoords(nextRing)) {
+    return rebuildResult(nextRing);
+  }
+
   // IDENTITY / MOVE — same vertex count. Edge identity is positional: the edge between vertex `i` and
   // `i+1` keeps its UUID even as endpoints move (D-02 MOVE), so the façade map is untouched. IDENTITY is
   // the strict sub-case where every coordinate is also unchanged (byte-identical edge ids either way).
   if (prevN === nextN) {
     const identical = ringEquals(prevRing, nextRing);
+    if (!identical) {
+      // Positional preservation is only SOUND when the same-count change is provably a single-vertex MOVE
+      // — i.e. at most one vertex position differs. A same-count insert+delete or a vertex reorder differs
+      // in ≥2 positions and is NOT a move: keeping edge UUIDs positionally would re-point a per-edge
+      // override at a geometrically different façade (the D-02 gap, ME-02). Fail safe to `rebuild` — drop
+      // overrides loudly (façade reverts to the building default, visibly) rather than silently re-point.
+      let changed = 0;
+      for (let i = 0; i < prevN; i++) {
+        if (!sameCoord(prevRing[i], nextRing[i])) {
+          changed++;
+        }
+      }
+      if (changed > 1) {
+        return rebuildResult(nextRing);
+      }
+    }
     return {
       kind: identical ? "identity" : "move",
       edgeIds: prevEdgeIds.slice(),
@@ -186,9 +239,5 @@ export function ringDiff(
   // REBUILD — a delta that is neither a single insert, a single delete, nor a same-count move. There is no
   // safe way to recover per-edge identity, so mint fresh UUIDs and drop all overrides rather than silently
   // re-point them at the wrong façade (the exact failure D-02 exists to prevent).
-  return {
-    kind: "rebuild",
-    edgeIds: nextRing.map(() => crypto.randomUUID()),
-    reconcileFacade: () => ({}),
-  };
+  return rebuildResult(nextRing);
 }

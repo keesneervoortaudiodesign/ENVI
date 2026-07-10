@@ -163,3 +163,60 @@ describe("ringDiff — REBUILD fallback (unclassifiable multi-vertex delta)", ()
     expect(result.reconcileFacade({ [EDGE_CD]: { resolution: "octave", values: [1] } })).toEqual({});
   });
 });
+
+describe("ringDiff — SAME-COUNT insert+delete is NOT trusted as a MOVE (ME-02, the D-02 gap)", () => {
+  it("rebuilds (drops overrides) rather than positionally re-pointing when >1 vertex differs", () => {
+    // A same-vertex-count delta that is NOT a pure move: delete B and insert E ⇒ [A, C, E, D]. Two positions
+    // differ (B→C, C→E), so a positional-preserve would silently re-point EDGE_CD onto a different segment.
+    const E: Coord = [2, 2];
+    const overrideSpectrum = { resolution: "twelfth", values: [42] } as const;
+    const facade = { [EDGE_CD]: overrideSpectrum };
+
+    const result = ringDiff(SQUARE, SQUARE_IDS, [A, C, E, D]);
+
+    // Fail-safe: this is unclassifiable as a single-vertex move → rebuild, NOT "move".
+    expect(result.kind).toBe("rebuild");
+    expect(result.edgeIds).toHaveLength(4);
+    expect(result.edgeIds.some((id) => SQUARE_IDS.includes(id))).toBe(false); // all fresh — no positional keep
+    // The override is DROPPED loudly (façade reverts to the building default) — never silently re-mapped to a
+    // now-geometrically-different edge.
+    expect(result.reconcileFacade(facade)[EDGE_CD]).toBeUndefined();
+    expect(result.reconcileFacade(facade)).toEqual({});
+  });
+
+  it("still treats a genuine single-vertex move (exactly one position differs) as MOVE", () => {
+    // Guard the guard: a real drag of one vertex must NOT regress into a rebuild.
+    const movedC: Coord = [1.5, 1.2];
+    const facade = { [EDGE_BC]: { resolution: "third", values: [9] } } as const;
+    const result = ringDiff(SQUARE, SQUARE_IDS, [A, B, movedC, D]);
+    expect(result.kind).toBe("move");
+    expect(result.edgeIds).toEqual(SQUARE_IDS);
+    expect(result.reconcileFacade(facade)).toEqual(facade);
+  });
+});
+
+describe("ringDiff — DUPLICATE coordinates fall back to REBUILD (ME-03)", () => {
+  it("rebuilds when an inserted vertex duplicates an existing ring coordinate", () => {
+    // Insert a vertex whose coordinate exactly equals B: next ring [A, B, B, C, D]. The coordinate-identity
+    // probes (split match, prevEdgeLookup) are ambiguous here, so the only safe answer is a fresh rebuild.
+    const overrideSpectrum = { resolution: "octave", values: [10, 20] } as const;
+    const facade = { [EDGE_BC]: overrideSpectrum };
+
+    const result = ringDiff(SQUARE, SQUARE_IDS, [A, B, B, C, D]);
+
+    expect(result.kind).toBe("rebuild");
+    expect(result.edgeIds).toHaveLength(5);
+    expect(result.edgeIds.some((id) => SQUARE_IDS.includes(id))).toBe(false); // all fresh
+    // No ambiguous re-point: the override is dropped, not mis-assigned to a collapsed lookup entry.
+    expect(result.reconcileFacade(facade)).toEqual({});
+  });
+
+  it("rebuilds when the PREVIOUS ring already carried a duplicate coordinate (collapsed lookup)", () => {
+    // A degenerate prev footprint with B duplicated collapses prevEdgeLookup — do not trust any recovery.
+    const dupPrev: readonly Coord[] = [A, B, B, C];
+    const dupIds = ["e-0", "e-1", "e-2", "e-3"];
+    const result = ringDiff(dupPrev, dupIds, [A, B, C]);
+    expect(result.kind).toBe("rebuild");
+    expect(result.reconcileFacade({ "e-1": { resolution: "octave", values: [1] } })).toEqual({});
+  });
+});
