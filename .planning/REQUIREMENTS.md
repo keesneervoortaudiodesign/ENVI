@@ -103,7 +103,7 @@
 
 ### Web frontend (WEB)
 
-- [ ] **WEB-01**: OSM/vector basemap (MapLibre GL JS 5)
+- [x] **WEB-01**: OSM/vector basemap (MapLibre GL JS 5)
 - [ ] **WEB-02**: Place/edit directional sources on the map (Terra Draw), with sound power / spectrum / SPL-at-reference-point calibration
 - [ ] **WEB-03**: Place/edit receiver points and the receiver-grid / calculation-area domain
 - [x] **WEB-04**: Draw/edit buildings, walls, ground-effect (impedance A–H + roughness N/S/M/L) zones, forests, and elevation points/lines with DGM re-triangulation; last-object property inheritance; click-to-select validation messages
@@ -216,7 +216,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | GRID-02 | Phase 10 | Pending |
 | GRID-04 | Phase 11 | Pending |
 | GRID-05 | Phase 11 | Pending |
-| WEB-01 | Phase 7 | Pending |
+| WEB-01 | Phase 7 | Complete |
 | WEB-02 | Phase 7 | Pending |
 | WEB-03 | Phase 7 | Pending |
 | WEB-04 | Phase 7 | Complete |
