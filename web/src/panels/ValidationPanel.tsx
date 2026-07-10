@@ -14,7 +14,7 @@
 //   scene shows the valid empty-state. Every description reaches the DOM as a React text child (no innerHTML).
 // - Valid input range: derives entirely from current store state; no props.
 
-import { type ReactElement } from "react";
+import { useMemo, type ReactElement } from "react";
 
 import { useSceneStore } from "../store/sceneStore";
 import { useDgmStore } from "../store/dgm";
@@ -40,45 +40,52 @@ export function ValidationPanel(): ReactElement {
   const selectAndZoom = useSceneStore((s) => s.selectAndZoom);
   const dgmReject = useDgmStore((s) => s.rejectReason);
 
-  const rows: IssueRow[] = [];
+  // Derive the issue list from the current store slices only (features + spectra + dgmReject). Memoized so a
+  // render that changes none of them (e.g. an unrelated store notify) reuses the last list rather than
+  // re-scanning every feature twice on each render.
+  const rows = useMemo<IssueRow[]>(() => {
+    const out: IssueRow[] = [];
 
-  for (const [id, feature] of Object.entries(features)) {
-    const props = (feature.properties ?? {}) as Record<string, unknown>;
-    const kind = props["kind"];
-    // (a) A semi-transparent wall/screen with no isolation spectrum is acoustically incomplete (WEB-04/08).
-    if (kind === "wall" && props["semi_transparent"] === true && !Object.prototype.hasOwnProperty.call(spectra, id)) {
-      rows.push({
-        key: `wall-nospectrum-${id}`,
-        severity: "warn",
-        text: "Semi-transparent wall has no isolation spectrum.",
-        targetId: id,
+    for (const [id, feature] of Object.entries(features)) {
+      const props = (feature.properties ?? {}) as Record<string, unknown>;
+      const kind = props["kind"];
+      // (a) A semi-transparent wall/screen with no isolation spectrum is acoustically incomplete (WEB-04/08).
+      if (kind === "wall" && props["semi_transparent"] === true && !Object.prototype.hasOwnProperty.call(spectra, id)) {
+        out.push({
+          key: `wall-nospectrum-${id}`,
+          severity: "warn",
+          text: "Semi-transparent wall has no isolation spectrum.",
+          targetId: id,
+        });
+      }
+      // (b) A forest with zero mean density contributes nothing at solve time (WEB-04/SCN-04).
+      if (kind === "forest" && props["density_per_m2"] === 0) {
+        out.push({
+          key: `forest-zero-${id}`,
+          severity: "warn",
+          text: "Forest has zero mean tree density.",
+          targetId: id,
+        });
+      }
+    }
+
+    // (c) The elevation-breakline interior-cross crit row, sourced from the dgm slice's `rejectReason`
+    // (07-07's dgmTrigger producer). The "offending object" is the crossing breaklines — target the first
+    // elevation_line so the row still selects + zooms.
+    if (dgmReject) {
+      const firstBreakline = Object.entries(features).find(
+        ([, f]) => (f.properties ?? {})["kind"] === "elevation_line",
+      );
+      out.push({
+        key: "dgm-reject",
+        severity: "crit",
+        text: `Elevation breaklines interior-cross — ${dgmReject.detail}`,
+        targetId: firstBreakline ? firstBreakline[0] : null,
       });
     }
-    // (b) A forest with zero mean density contributes nothing at solve time (WEB-04/SCN-04).
-    if (kind === "forest" && props["density_per_m2"] === 0) {
-      rows.push({
-        key: `forest-zero-${id}`,
-        severity: "warn",
-        text: "Forest has zero mean tree density.",
-        targetId: id,
-      });
-    }
-  }
 
-  // (c) The elevation-breakline interior-cross crit row, sourced from the dgm slice's `rejectReason`
-  // (07-07's dgmTrigger producer). The "offending object" is the crossing breaklines — target the first
-  // elevation_line so the row still selects + zooms.
-  if (dgmReject) {
-    const firstBreakline = Object.entries(features).find(
-      ([, f]) => (f.properties ?? {})["kind"] === "elevation_line",
-    );
-    rows.push({
-      key: "dgm-reject",
-      severity: "crit",
-      text: `Elevation breaklines interior-cross — ${dgmReject.detail}`,
-      targetId: firstBreakline ? firstBreakline[0] : null,
-    });
-  }
+    return out;
+  }, [features, spectra, dgmReject]);
 
   return (
     <section className="panel" data-testid="validation">
