@@ -13,6 +13,7 @@ import { type ReactElement } from "react";
 import { MapCanvas } from "./map/MapCanvas";
 import { Palette } from "./panels/Palette";
 import { Inspector } from "./panels/Inspector";
+import { RejectBanner } from "./panels/RejectBanner";
 import { SpectrumEditor } from "./spectrum/SpectrumEditor";
 import { useSceneStore } from "./store/sceneStore";
 
@@ -60,9 +61,11 @@ export function App(): ReactElement {
         {/* Region 2 — object palette rail. */}
         <Palette />
 
-        {/* Region 3 — map canvas: dark-vector basemap + Terra Draw (07-06). */}
+        {/* Region 3 — map canvas: dark-vector basemap + Terra Draw (07-06) + the transient ground-zone
+            hard-reject banner (D-07, Surface B — map-anchored, never a validation-panel row). */}
         <main className="map-slot" data-testid="map-canvas" aria-label="Map canvas">
           <MapCanvas />
+          <RejectBanner />
         </main>
 
         {/* Region 4 — right rail: property inspector + validation panel. */}

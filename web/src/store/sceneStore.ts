@@ -22,6 +22,7 @@ import type { DrawTool, Kind } from "../draw/kinds";
 import { recordLast, seedProps, type KindProps } from "./inheritance";
 import { putScene, type SceneCollection } from "../api/client";
 import { initEdgeIds, ringDiff, type Coord } from "./edges";
+import { classifyGroundZone, type GroundZoneOutcome } from "../validate/groundZone";
 import type { AuthoredSpectrumDto } from "../generated/wire";
 
 // One authored isolation spectrum lives here, keyed by feature/edge id (D-02/D-06): a building's
@@ -42,12 +43,27 @@ export interface SceneState {
   // Current selection (feature id) and the debounced-autosave dirty flag (D-04).
   readonly selection: string | null;
   readonly dirty: boolean;
+  // A monotonically-increasing COMMITTED-edit counter (D-04): bumped ONLY on committed mutations — a
+  // finished shape (`tagCreatedFeature`/`commitFeature`), a released vertex drag (`noteCommit` from the
+  // Terra Draw `finish` handler), a property change, a spectrum edit, or an accepted ground_zone. It is
+  // NEVER bumped on the raw `applyTerraDrawChange` (change/drag) path, so autosave keys off THIS (not the
+  // dirty flag) and can never fire per drag frame.
+  readonly commitEpoch: number;
   // The active palette tool (pointer or a drawing kind). Terra Draw's mode tracks this (07-07); a
   // newly-finished feature is tagged with the active kind's `properties.kind`.
   readonly activeTool: DrawTool;
-  // The open project id (whole-scene PUT target). Project open/create lands in 07-10; until then a
-  // placeholder key is used so an explicit Save can exercise the PUT path.
+  // The open project id + display name (whole-scene PUT target / delete confirmation). Project
+  // open/create lands in 07-10; until then a placeholder key is used so Save can exercise the PUT path.
   readonly projectId: string | null;
+  readonly projectName: string | null;
+
+  // The transient ground-zone hard-reject signal (D-07, Surface B): a partial-cross reverts the geometry
+  // (never commits) and raises this carrying the id of the EXISTING crossed zone. `nonce` re-triggers the
+  // banner even when the same zone is crossed twice. Null when there is no active reject.
+  readonly groundReject: { readonly conflictId: string; readonly nonce: number } | null;
+  // A zoom-to-fit request (the map ZoomController fits the feature's bounds). `nonce` re-triggers a zoom
+  // to the same feature (e.g. clicking the same validation row twice). Null when nothing is pending.
+  readonly zoomRequest: { readonly featureId: string; readonly nonce: number } | null;
 
   // Which spectrum (feature or edge UUID) the isolation/L_W editor is open for, plus its display title.
   // Null when the editor is closed. Opened from the source / wall / façade "Edit spectrum" triggers.
@@ -71,6 +87,26 @@ export interface SceneState {
   // Place a complete feature (geometry + id) of `kind`: upsert its geometry, tag kind + seed inheritance,
   // select it. The single-call path used by programmatic placement / tests.
   commitFeature(kind: Kind, feature: GeoJSONStoreFeatures): void;
+  // Classify a just-upserted (still-untagged) ground_zone candidate against the existing zones (D-07) and
+  // either COMMIT it (`ok`/`contained` — tag + select + clear any reject) or HARD-REJECT it
+  // (`partial-cross` — remove the candidate geometry from the store so it never commits, and raise the
+  // transient `groundReject` referencing the crossed zone). Returns the outcome so the Terra Draw path can
+  // additionally remove the reverted feature from its own view.
+  commitGroundZoneCandidate(id: string): GroundZoneOutcome;
+  // Dismiss the transient ground-zone reject banner (auto-dismiss timeout / next action).
+  dismissGroundReject(): void;
+  // Request a zoom-to-fit of a feature's geometry (validation click-to-zoom + reject "zoom to conflict").
+  zoomToFeature(id: string): void;
+  // Select a feature AND zoom-to-fit it (a validation-panel row click: select + zoom + open inspector).
+  selectAndZoom(id: string): void;
+  // Note a committed edit that carries no property/kind change of its own (a released vertex drag): bump
+  // the commit epoch + mark dirty so autosave schedules (called from the Terra Draw `finish` handler).
+  noteCommit(): void;
+  // Set the open project identity (id + display name) — the delete-confirmation gate compares against the
+  // name. Clears dirty. (07-10 owns real open/create; this is the seam the delete dialog + tests use.)
+  setProject(id: string, name: string): void;
+  // Route to the empty/no-project state after a delete: clear the scene + project identity + selection.
+  resetProject(): void;
   // Merge a non-geometric property patch into a feature; every patched field clears its "inherited"
   // marker and updates the kind's last-object inheritance source. Marks the scene dirty.
   updateProperties(id: string, patch: KindProps): void;
@@ -226,8 +262,12 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   inheritedFields: {},
   selection: null,
   dirty: false,
+  commitEpoch: 0,
   activeTool: "select",
   projectId: null,
+  projectName: null,
+  groundReject: null,
+  zoomRequest: null,
   spectrumEditor: null,
   drawInstancesLive: 0,
   drawInstancesBuilt: 0,
@@ -266,7 +306,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       const features: Record<string, GeoJSONStoreFeatures> = { ...state.features };
       const inheritedFields: Record<string, readonly string[]> = { ...state.inheritedFields };
       tagFeature(features, inheritedFields, id, kind);
-      return { features, inheritedFields, selection: id, dirty: true };
+      return { features, inheritedFields, selection: id, dirty: true, commitEpoch: state.commitEpoch + 1 };
     }),
 
   commitFeature: (kind, feature) =>
@@ -275,7 +315,83 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       const features: Record<string, GeoJSONStoreFeatures> = { ...state.features, [id]: feature };
       const inheritedFields: Record<string, readonly string[]> = { ...state.inheritedFields };
       tagFeature(features, inheritedFields, id, kind);
-      return { features, inheritedFields, selection: id, dirty: true };
+      return { features, inheritedFields, selection: id, dirty: true, commitEpoch: state.commitEpoch + 1 };
+    }),
+
+  commitGroundZoneCandidate: (id) => {
+    const state = get();
+    const candidate = state.features[id];
+    if (!candidate) {
+      return "ok";
+    }
+    // The existing zones to test against: every OTHER feature already tagged `ground_zone`.
+    const existingZones = Object.entries(state.features)
+      .filter(([fid, f]) => fid !== id && f.properties?.["kind"] === "ground_zone")
+      .map(([fid, f]) => ({ id: fid, feature: f }));
+    const { outcome, conflictId } = classifyGroundZone(candidate, existingZones);
+
+    if (outcome === "partial-cross" && conflictId) {
+      // HARD REJECT (D-07): remove the candidate geometry so it never commits (revert to last-valid) and
+      // raise the transient banner referencing the EXISTING crossed zone. No commitEpoch bump → no PUT.
+      set((s) => {
+        const features: Record<string, GeoJSONStoreFeatures> = { ...s.features };
+        const inheritedFields: Record<string, readonly string[]> = { ...s.inheritedFields };
+        delete features[id];
+        delete inheritedFields[id];
+        const nonce = (s.groundReject?.nonce ?? 0) + 1;
+        return {
+          features,
+          inheritedFields,
+          selection: s.selection === id ? null : s.selection,
+          groundReject: { conflictId, nonce },
+        };
+      });
+      return "partial-cross";
+    }
+
+    // Accepted (disjoint or contained — innermost wins): tag + select + clear any stale reject banner.
+    set((s) => {
+      const features: Record<string, GeoJSONStoreFeatures> = { ...s.features };
+      const inheritedFields: Record<string, readonly string[]> = { ...s.inheritedFields };
+      tagFeature(features, inheritedFields, id, "ground_zone");
+      return {
+        features,
+        inheritedFields,
+        selection: id,
+        dirty: true,
+        commitEpoch: s.commitEpoch + 1,
+        groundReject: null,
+      };
+    });
+    return outcome;
+  },
+
+  dismissGroundReject: () => set({ groundReject: null }),
+
+  zoomToFeature: (id) =>
+    set((state) => ({ zoomRequest: { featureId: id, nonce: (state.zoomRequest?.nonce ?? 0) + 1 } })),
+
+  selectAndZoom: (id) =>
+    set((state) => ({
+      selection: id,
+      zoomRequest: { featureId: id, nonce: (state.zoomRequest?.nonce ?? 0) + 1 },
+    })),
+
+  noteCommit: () => set((state) => ({ dirty: true, commitEpoch: state.commitEpoch + 1 })),
+
+  setProject: (id, name) => set({ projectId: id, projectName: name, dirty: false }),
+
+  resetProject: () =>
+    set({
+      features: {},
+      spectra: {},
+      inheritedFields: {},
+      selection: null,
+      dirty: false,
+      projectId: null,
+      projectName: null,
+      groundReject: null,
+      zoomRequest: null,
     }),
 
   updateProperties: (id, patch) =>
@@ -312,7 +428,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
           recordLast(kind, nonGeom);
         }
       }
-      return { features, inheritedFields, dirty: true };
+      return { features, inheritedFields, dirty: true, commitEpoch: state.commitEpoch + 1 };
     }),
 
   setSpectrum: (key, authored) =>
@@ -323,7 +439,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       } else {
         spectra[key] = authored;
       }
-      return { spectra, dirty: true };
+      return { spectra, dirty: true, commitEpoch: state.commitEpoch + 1 };
     }),
 
   openSpectrumEditor: (key, title) => set({ spectrumEditor: { key, title } }),

@@ -87,16 +87,25 @@ export function useTerraDraw(): TerraDrawController {
         for (const raw of ids) {
           const id = String(raw);
           if (!known.has(id) && tagger.features[id]) {
-            tagger.tagCreatedFeature(id, active);
+            if (active === "ground_zone") {
+              // Draw-time topology check (D-07): a partial cross is hard-rejected — the store reverts the
+              // geometry and raises the transient banner, so remove the reverted feature from TD's view.
+              const outcome = tagger.commitGroundZoneCandidate(id);
+              if (outcome === "partial-cross") {
+                drawRef.current?.removeFeatures([id]);
+              }
+            } else {
+              tagger.tagCreatedFeature(id, active);
+            }
           }
         }
       }
     };
 
-    // Committed-edit trigger (D-04). Autosave scheduling lands in 07-09; here it only marks dirty so the
-    // trigger is proven to be `finish` (drag RELEASE), never `change` (every drag frame).
+    // Committed-edit trigger (D-04): a drag RELEASE (never the per-frame `change`). `noteCommit` bumps the
+    // committed-edit epoch that autosave keys off (07-09), so a released vertex drag schedules ONE PUT.
     const onFinish: TerraDrawEventListeners["finish"] = () => {
-      useSceneStore.getState().markDirty();
+      useSceneStore.getState().noteCommit();
     };
 
     // Create ONE Terra Draw instance bound to the current map style, wire its handlers, and re-add the

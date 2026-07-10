@@ -165,6 +165,31 @@
   color: var(--color-text);
 }
 
+/* Transient ground-zone hard-reject banner (D-07, Surface B) — map-anchored, top-center, crit-toned.
+   Distinct from the persistent validation panel; auto-dismisses. Crit text sits on --color-surface (not
+   surface-2), honoring the a11y usage rule. */
+.reject-banner {
+  position: absolute;
+  top: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: min(560px, 92%);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-crit);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+}
+.reject-text {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
 /* Region 4 — right rail. */
 .right-rail {
   display: flex;

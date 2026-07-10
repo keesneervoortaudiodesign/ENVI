@@ -13,7 +13,8 @@
 
 import { useEffect, type ReactElement } from "react";
 import { Map, useMap } from "react-map-gl/maplibre";
-import type { Map as MapLibreMap } from "maplibre-gl";
+import type { LngLatBoundsLike, Map as MapLibreMap } from "maplibre-gl";
+import type { GeoJSONStoreFeatures } from "terra-draw";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { DARK_BASEMAP_STYLE } from "./basemap";
@@ -34,6 +35,7 @@ function SceneOverlay(): ReactElement {
   const rehydrations = useSceneStore((s) => s.rehydrations);
   const tinTriangles = useDgmStore((s) => s.triangulation?.triangles.length ?? 0);
   const dgmReject = useDgmStore((s) => s.rejectReason);
+  const zoomTarget = useSceneStore((s) => s.zoomRequest?.featureId ?? null);
 
   return (
     <div className="map-overlay">
@@ -87,9 +89,74 @@ function SceneOverlay(): ReactElement {
           <dt>dgm-reject</dt>
           <dd data-testid="dgm-reject">{dgmReject ? String(dgmReject.status) : "none"}</dd>
         </div>
+        <div>
+          <dt>zoom</dt>
+          <dd data-testid="zoom-target">{zoomTarget ?? "none"}</dd>
+        </div>
       </dl>
     </div>
   );
+}
+
+// The [w, s, e, n] bounds of a feature's geometry (validation click-to-zoom + reject "zoom to conflict"),
+// or null if it has no usable coordinates. A degenerate (point / zero-area) extent is padded so
+// `fitBounds` still produces a sensible camera rather than throwing.
+function featureBounds(feature: GeoJSONStoreFeatures | undefined): LngLatBoundsLike | null {
+  const geometry = feature?.geometry;
+  if (!geometry) {
+    return null;
+  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const visit = (coords: unknown): void => {
+    if (typeof coords === "number") {
+      return;
+    }
+    if (Array.isArray(coords) && typeof coords[0] === "number" && typeof coords[1] === "number") {
+      const [x, y] = coords as [number, number];
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+      return;
+    }
+    if (Array.isArray(coords)) {
+      for (const c of coords) {
+        visit(c);
+      }
+    }
+  };
+  visit((geometry as { coordinates?: unknown }).coordinates);
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+    return null;
+  }
+  const pad = maxX === minX && maxY === minY ? 0.0008 : 0; // a lone point → a small window
+  return [
+    [minX - pad, minY - pad],
+    [maxX + pad, maxY + pad],
+  ];
+}
+
+// Fit the map to a requested feature's bounds whenever `zoomRequest` changes (store-canonical zoom, kept
+// off the panel/banner components so those never touch the map instance). Torn down implicitly by effect.
+function ZoomController(): null {
+  const map = useMap();
+  const zoomRequest = useSceneStore((s) => s.zoomRequest);
+  useEffect(() => {
+    if (!zoomRequest) {
+      return;
+    }
+    const instance = map.current?.getMap() as unknown as MapLibreMap | undefined;
+    const feature = useSceneStore.getState().features[zoomRequest.featureId];
+    const bounds = featureBounds(feature);
+    if (!instance || !bounds) {
+      return;
+    }
+    instance.fitBounds(bounds, { padding: 64, duration: 300, maxZoom: 18 });
+  }, [zoomRequest, map]);
+  return null;
 }
 
 // A one-shot resize nudge: the map mounts into a flex/grid slot whose final size settles after first
@@ -117,6 +184,7 @@ export function MapCanvas(): ReactElement {
       style={{ position: "absolute", inset: 0 }}
     >
       <ResizeOnMount />
+      <ZoomController />
       <DgmOverlay />
       <SceneOverlay />
     </Map>
