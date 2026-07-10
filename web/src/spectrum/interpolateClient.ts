@@ -7,7 +7,7 @@
 //   by `GET /meta/freq-axis`; this module only debounces, aborts superseded calls, and does band-INDEX
 //   arithmetic (which grid indices the octave/third/twelfth anchors land on — structural, not acoustic).
 // - Output `useFreqAxis()` (the 105-band axis, fetched once), `useSpectrumPreview(authored)` (a debounced
-//   dense `[105]` preview + loading/error state), and the pure `anchorIndices` / `anchorCount` /
+//   dense `[105]` preview + loading/error state), and the pure `anchorIndices` /
 //   `hzLabelForIndex` band-index helpers the curve + table render against.
 // - Valid input range: `values.length` must equal the resolution's anchor count (9 / 27 / 105); a wrong
 //   length or out-of-range `R` surfaces as the server's `4xx` `detail` string in the preview error state.
@@ -15,23 +15,11 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { AuthoredSpectrumDto, FreqAxisDto, Resolution } from "../generated/wire";
-import { ApiError, getFreqAxis, interpolateSpectrum } from "../api/client";
+import { errorText, getFreqAxis, interpolateSpectrum } from "../api/client";
 
 // The total 1/12-octave band count (mirrors envi_engine::freq::N_BANDS; the axis served at /meta/freq-axis
 // carries the authoritative value, this is only the array length the editor renders against).
 export const N_BANDS = 105;
-
-// How many authored anchors a resolution carries (RESEARCH Pattern 6).
-export function anchorCount(resolution: Resolution): number {
-  switch (resolution) {
-    case "octave":
-      return 9;
-    case "third":
-      return 27;
-    case "twelfth":
-      return N_BANDS;
-  }
-}
 
 // The exact band INDICES the anchors of a resolution land on — the "octave/third centres fall exactly on
 // 1/12-octave band indices" guarantee made structural (RESEARCH Pattern 6):
@@ -121,7 +109,7 @@ export function useSpectrumPreview(authored: AuthoredSpectrumDto | null, debounc
           if (controller.signal.aborted) {
             return;
           }
-          const detail = err instanceof ApiError ? err.detail : "Interpolation request failed.";
+          const detail = errorText(err, "Interpolation request failed.");
           setPreview((p) => ({ dense: p.dense, loading: false, error: detail })); // keep last-good curve
         });
     }, debounceMs);

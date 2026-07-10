@@ -22,7 +22,6 @@ import { useState, type ReactElement } from "react";
 import type { AuthoredSpectrumDto, Resolution } from "../generated/wire";
 import { useSceneStore } from "../store/sceneStore";
 import {
-  anchorCount,
   anchorIndices,
   hzLabelForIndex,
   N_BANDS,
@@ -70,7 +69,7 @@ export function SpectrumEditor({ spectrumKey, title, onClose }: SpectrumEditorPr
     setSwitchError(null);
     if (!authored) {
       // Empty start: seed zeroed anchors at the chosen resolution (not a promotion — nothing to promote).
-      setSpectrum(spectrumKey, { resolution: next, values: new Array(anchorCount(next)).fill(0) });
+      setSpectrum(spectrumKey, { resolution: next, values: new Array(anchorIndices(next).length).fill(0) });
       setJustPromoted(false);
       return;
     }
