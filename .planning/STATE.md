@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 07
 current_phase_name: frontend-shell-scene-editing
-status: executing
+status: verifying
 stopped_at: Phase 7 context gathered
-last_updated: "2026-07-10T18:05:11.435Z"
+last_updated: "2026-07-10T18:36:16.917Z"
 last_activity: 2026-07-10
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 11
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 33
-  completed_plans: 32
-  percent: 55
+  completed_plans: 33
+  percent: 64
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 07 (frontend-shell-scene-editing) — EXECUTING
 Plan: 10 of 10
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-10 — Phase 07 execution started
 
 Progress: [██████████] Phase 6 — 4/4 plans complete (06-01 ✅ envi-geo CRS seam, 06-02 ✅ envi-store persistence, 06-03 ✅ axum binary + project/scene, 06-04 ✅ jobs/SSE + recondition/recompute split)
@@ -81,6 +81,7 @@ Progress: [██████████] Phase 6 — 4/4 plans complete (06-01
 | Phase 07 P07 | 21min | 4 tasks | 25 files |
 | Phase 07 P08 | 21min | 3 tasks | 20 files |
 | Phase 07 P09 | 42min | 4 tasks | 15 files |
+| Phase 07 P10 | 17min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -139,6 +140,8 @@ Recent decisions affecting current work:
 - [Phase ?]: TS wire types generated from Rust serde DTOs via ts-rs (D-10)
 - [Phase ?]: 07-07: palette activeTool lives in the canonical store; drawn features tagged with kind via the shared commitFeature path (WEB-04 inheritance seeded there)
 - [Phase ?]: 07-07: DGM producer is debounced 750ms + decoupled from the raw TD change/drag path (SC1); closed-enum selects make out-of-vocabulary impedance/roughness impossible
+- [Phase ?]: 07-10: reopen-last on boot restores the last project; getLastProject maps 404/id-less to null so the boot GET is transparent to the offline test suite
+- [Phase ?]: 07-10: SC1-SC4 proven by integrated offline Playwright journeys; final web/dist committed (zero external assets); envi-dgm documented with its own quarantine gate
 
 ### Pending Todos
 
@@ -166,6 +169,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-10T18:05:02.068Z
+Last session: 2026-07-10T18:35:53.415Z
 Stopped at: Phase 7 context gathered
 Resume file: .planning/phases/07-frontend-shell-scene-editing/07-CONTEXT.md

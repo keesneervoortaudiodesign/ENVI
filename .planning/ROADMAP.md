@@ -156,7 +156,7 @@ Architecture per `.planning/research/ARCHITECTURE.md`: three new crates (`envi-g
 
 - [x] **Phase 5: Engine Extensions — Forest & Semi-Transparent Partitions** - Nord2000 forest attenuation A = d·a(f) and finite-transmission partitions via per-band isolation spectra R(f), phase-preserving, with the opaque limit regression-pinned to the standard screen (completed 2026-07-09)
 - [x] **Phase 6: Service Foundation & Persistence** - `envi-geo` + `envi-store` + `envi-service` skeleton: project-folder CRUD, single pure-Rust CRS boundary, band-index wire contract, recondition/recompute API split, job state machine, pure-Rust CRS startup self-check (GDAL/PROJ provisioning deferred to Phase 8 per D-01/D-02) (completed 2026-07-09)
-- [ ] **Phase 7: Frontend Shell & Scene Editing** - MapLibre/Terra Draw scene editor for all object kinds — including semi-transparent screens/buildings with the isolation-spectrum editor, forests, and elevation editing — with draw-time validation
+- [x] **Phase 7: Frontend Shell & Scene Editing** - MapLibre/Terra Draw scene editor for all object kinds — including semi-transparent screens/buildings with the isolation-spectrum editor, forests, and elevation editing — with draw-time validation (completed 2026-07-10)
 - [ ] **Phase 8: GIS Ingestion & DGM** - Viewport import of GLO-30/LiDAR terrain, WorldCover ground cover, and Overture/OSM buildings onto a triangulated DGM; local-cache compute path; check-and-complete editability
 - [ ] **Phase 9: Path Extraction & Weather** - DEM cut-profile extractor (GRASS oracle), impedance segmentation, screening edges, CDT receiver grids; Open-Meteo import → per-azimuth A/B/C; ERA5 groundwork
 - [ ] **Phase 10: Calculation Service** - Chunked tensor store + job runner wiring the promoted engine solver: submit/progress/abort with pre-run cost estimate, hash-keyed manifests, memory-bounded large grids
@@ -231,7 +231,7 @@ Plans:
   3. User can mark a screen semi-transparent and assign it an isolation spectrum, and assign per-façade isolation spectra on a building; the spectrum editor accepts direct 1/12-octave entry or 1/1- / 1/3-octave input linearly interpolated onto the 105-point grid, with octave and third-octave centres landing exactly on their band indices
   4. The drawn scene survives a basemap switch, a page reload, and a project close/re-open — Terra Draw re-hydrates from the store on `style.load`, and the persisted scene is what comes back
 
-**Plans**: 9/10 plans executed
+**Plans**: 10/10 plans complete
 **Wave 1**
 
 - [x] 07-01-PLAN.md — envi-store isolation/forest DTOs + shared band-index interpolation core + tested TryFrom (D-01/D-05/D-06)
@@ -261,7 +261,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 07-10-PLAN.md — SC1–SC4 end-to-end E2E journeys + final committed bundle + README docs
+- [x] 07-10-PLAN.md — SC1–SC4 end-to-end E2E journeys + final committed bundle + README docs
 
 **UI hint**: yes
 
