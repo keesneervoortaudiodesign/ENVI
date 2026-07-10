@@ -15,6 +15,7 @@ import type { GeoJSONStoreFeatures } from "terra-draw";
 
 import { KIND_META, isKind, type Kind } from "./draw/kinds";
 import { useSceneStore } from "./store/sceneStore";
+import type { GroundZoneOutcome } from "./validate/groundZone";
 import type { AuthoredSpectrumDto } from "./generated/wire";
 
 // Build a minimal valid geometry for a kind's Terra Draw geometry mode, offset around [lng, lat].
@@ -67,6 +68,18 @@ export interface EnviTestBridge {
   applyBuildingRing(id: string, ring: [number, number][]): void;
   // The current [x, y] endpoints of the edge whose UUID is `edgeId` on building `id` (for re-point checks).
   edgeSegment(id: string, edgeId: string): { from: [number, number]; to: [number, number] } | null;
+  // Draw a ground_zone from a CLOSED ring `[x, y][]` through the SAME draw-time classification path a
+  // finished Terra Draw polygon takes (D-07): the geometry is upserted then classified. Returns the
+  // outcome, the id (present only when committed), and the crossed zone's id on a partial-cross reject.
+  commitGroundZone(ring: [number, number][]): {
+    outcome: GroundZoneOutcome;
+    id: string | null;
+    conflictId: string | null;
+  };
+  // Merge a non-geometric property patch into a feature (a committed inspector edit path).
+  update(id: string, patch: Record<string, unknown>): void;
+  // Open a project (id + display name) — the Delete-project dialog compares the typed name to this.
+  openProject(id: string, name: string): void;
   // Trigger the whole-scene PUT.
   save(): Promise<void>;
 }
@@ -129,6 +142,26 @@ export function installTestBridge(): void {
       const from = verts[pos];
       const to = verts[(pos + 1) % verts.length];
       return { from: [from[0], from[1]], to: [to[0], to[1]] };
+    },
+    commitGroundZone(ring) {
+      const id = crypto.randomUUID();
+      const feature = {
+        id,
+        type: "Feature",
+        geometry: { type: "Polygon", coordinates: [ring] },
+        properties: {},
+      } as unknown as GeoJSONStoreFeatures;
+      // Upsert the raw geometry (the draw path), then run the D-07 draw-time classification.
+      useSceneStore.getState().applyTerraDrawChange([id], "create", [feature]);
+      const outcome = useSceneStore.getState().commitGroundZoneCandidate(id);
+      const conflictId = useSceneStore.getState().groundReject?.conflictId ?? null;
+      return { outcome, id: outcome === "partial-cross" ? null : id, conflictId };
+    },
+    update(id, patch) {
+      useSceneStore.getState().updateProperties(id, patch);
+    },
+    openProject(id, name) {
+      useSceneStore.getState().setProject(id, name);
     },
     save() {
       return useSceneStore.getState().saveScene();
