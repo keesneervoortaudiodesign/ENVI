@@ -17,16 +17,9 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 
 import { useSceneStore } from "../store/sceneStore";
-import { ApiError, deleteProject } from "../api/client";
+import { deleteProject, errorText } from "../api/client";
 
 type DeleteState = "idle" | "deleting" | "error";
-
-function errorText(err: unknown): string {
-  if (err instanceof ApiError) {
-    return err.detail;
-  }
-  return err instanceof Error ? err.message : "Delete failed.";
-}
 
 export function DeleteProjectDialog({
   projectName,
@@ -71,7 +64,7 @@ export function DeleteProjectDialog({
       resetProject(); // route to the empty/no-project state (success)
       onClose();
     } catch (err) {
-      setError(errorText(err));
+      setError(errorText(err, "Delete failed."));
       setState("error"); // dialog stays open, name field retained for a retry
     }
   }

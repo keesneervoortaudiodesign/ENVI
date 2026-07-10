@@ -14,7 +14,7 @@
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
 
-import { ApiError } from "../api/client";
+import { errorText } from "../api/client";
 import { createAndOpen, listProjectMetas, openProjectById } from "../store/projectActions";
 import type { OriginDto, ProjectMetaDto } from "../generated/wire";
 
@@ -22,13 +22,6 @@ type ListState =
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly detail: string }
   | { readonly kind: "loaded"; readonly projects: readonly ProjectMetaDto[] };
-
-function errorText(err: unknown): string {
-  if (err instanceof ApiError) {
-    return err.detail;
-  }
-  return err instanceof Error ? err.message : "Request failed.";
-}
 
 // A short local date-time for the "last modified" column (unix epoch SECONDS on the wire → ms).
 function modifiedLabel(meta: ProjectMetaDto): string {

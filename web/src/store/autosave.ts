@@ -18,7 +18,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 
 import { useSceneStore } from "./sceneStore";
-import { ApiError } from "../api/client";
+import { errorText, putScene } from "../api/client";
 
 const DEBOUNCE_MS = 750;
 
@@ -58,13 +58,6 @@ let pending = false;
 let inFlight: Promise<void> | null = null;
 let queued = false;
 
-function errorText(err: unknown): string {
-  if (err instanceof ApiError) {
-    return err.detail;
-  }
-  return err instanceof Error ? err.message : "Save failed.";
-}
-
 async function runSave(): Promise<void> {
   if (timer) {
     clearTimeout(timer);
@@ -84,7 +77,7 @@ async function runSave(): Promise<void> {
       pending = false; // cleared only on genuine success — the newest snapshot is now persisted
       useAutosaveStore.getState().setSaved(Date.now());
     } catch (err) {
-      useAutosaveStore.getState().setError(errorText(err));
+      useAutosaveStore.getState().setError(errorText(err, "Save failed."));
     }
   })();
   await inFlight;
@@ -127,14 +120,12 @@ export function flushAutosaveOnUnload(): void {
   }
   const state = useSceneStore.getState();
   const id = state.projectId ?? "current";
-  const url = `/api/v1/projects/${encodeURIComponent(id)}/scene`;
-  const body = JSON.stringify(state.sceneFeatureCollection());
   try {
-    void fetch(url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body,
-      keepalive: true,
+    // Reuse the client's scene-PUT seam (path/verb/base live only there) with `keepalive` so the browser
+    // completes it during unload. Fire-and-forget: not awaited, and any rejection is swallowed (the page is
+    // going away — nothing more can be done, and the indicator is deliberately NOT set to "saved").
+    void putScene(id, state.sceneFeatureCollection(), { keepalive: true }).catch(() => {
+      /* best-effort on unload */
     });
     pending = false;
   } catch {

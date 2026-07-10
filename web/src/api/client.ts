@@ -47,6 +47,16 @@ export class ApiError extends Error {
   }
 }
 
+// Extract a user-facing message from an unknown thrown value: an `ApiError`'s server `detail`, a plain
+// `Error`'s message, else the caller's `fallback`. The single shared shape for the panels/dialogs/editors
+// that render a failed request as TEXT (never innerHTML) — `client.ts` owns `ApiError`, so it owns this.
+export function errorText(err: unknown, fallback = "Request failed."): string {
+  if (err instanceof ApiError) {
+    return err.detail;
+  }
+  return err instanceof Error ? err.message : fallback;
+}
+
 // Extract a safe `detail` string from a (possibly non-JSON) error body without throwing.
 async function readDetail(res: Response): Promise<string> {
   try {
@@ -79,12 +89,19 @@ async function deleteResource(path: string, signal?: AbortSignal): Promise<void>
   }
 }
 
-async function sendJson<T>(method: "POST" | "PUT", path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+async function sendJson<T>(
+  method: "POST" | "PUT",
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+  keepalive?: boolean,
+): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body),
     signal,
+    keepalive,
   });
   if (!res.ok) {
     throw new ApiError(res.status, await readDetail(res));
@@ -153,8 +170,20 @@ export function getScene(projectId: string, signal?: AbortSignal): Promise<Scene
 }
 
 // PUT /api/v1/projects/{id}/scene — whole-scene save (no per-feature PATCH; D-04 coalesces to this).
-export function putScene(projectId: string, scene: SceneCollection, signal?: AbortSignal): Promise<void> {
-  return sendJson<void>("PUT", `/projects/${encodeURIComponent(projectId)}/scene`, scene, signal);
+// `keepalive` routes the D-04 flush-on-unload PUT so the browser completes it as the document tears down
+// (a plain fetch would be cancelled); the wire path/verb/base stay owned here, never rebuilt by callers.
+export function putScene(
+  projectId: string,
+  scene: SceneCollection,
+  opts?: { readonly signal?: AbortSignal; readonly keepalive?: boolean },
+): Promise<void> {
+  return sendJson<void>(
+    "PUT",
+    `/projects/${encodeURIComponent(projectId)}/scene`,
+    scene,
+    opts?.signal,
+    opts?.keepalive,
+  );
 }
 
 // DELETE /api/v1/projects/{id} — irreversibly removes the project folder (scene + settings + calc
