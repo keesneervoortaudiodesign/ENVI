@@ -439,12 +439,13 @@ export const useSceneStore = create<SceneState>((set, get) => ({
         }
       }
       // Keep the kind's inheritance source current, so the NEXT object inherits the edited values.
+      // `recordLast` strips the non-user-facing internal/geometry keys (kind/id/edge_ids/mode, LO-02), so
+      // the full property bag can be handed straight to it.
       const kind = get().kindOf(id);
       if (kind) {
         const props = features[id].properties as KindProps | null;
         if (props) {
-          const { kind: _k, id: _i, ...nonGeom } = props as Record<string, unknown>;
-          recordLast(kind, nonGeom);
+          recordLast(kind, props);
         }
       }
       return { features, inheritedFields, dirty: true, commitEpoch: state.commitEpoch + 1 };

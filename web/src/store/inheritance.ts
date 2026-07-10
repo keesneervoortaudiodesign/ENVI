@@ -34,15 +34,30 @@ export const KIND_DEFAULTS: Record<Kind, KindProps> = {
 // The session-scoped last-committed non-geometric properties, per kind.
 const lastByKind = new Map<Kind, KindProps>();
 
+// Internal / geometry-structural keys that are NOT user-editable inspector fields and must never become
+// "inherited" chips (LO-02): the semantic tag (`kind`), the feature `id`, and the building geometry
+// metadata (`edge_ids`, the Terra Draw `mode`). Seeding these onto the next object of a kind would show
+// spurious "inherited" chips and briefly seed a stale `edge_ids` array (harmless, since `tagFeature`
+// overwrites it, but it leaks non-editable metadata into the WEB-04 UI). Excluded at the inheritance
+// boundary so every caller of `recordLast` is covered.
+const NON_INHERITABLE_KEYS = new Set(["kind", "id", "edge_ids", "mode"]);
+
 export function lastOf(kind: Kind): KindProps | undefined {
   const prev = lastByKind.get(kind);
   return prev ? { ...prev } : undefined;
 }
 
 // Remember the just-committed (or just-edited) properties as the inheritance source for the NEXT object
-// of this kind. Stored as a shallow copy so later mutation of the caller's object cannot leak in.
+// of this kind. Stored as a shallow copy (so later mutation of the caller's object cannot leak in) with the
+// non-user-facing internal/geometry keys stripped (LO-02).
 export function recordLast(kind: Kind, props: KindProps): void {
-  lastByKind.set(kind, { ...props });
+  const clean: KindProps = {};
+  for (const [key, value] of Object.entries(props)) {
+    if (!NON_INHERITABLE_KEYS.has(key)) {
+      clean[key] = value;
+    }
+  }
+  lastByKind.set(kind, clean);
 }
 
 // The seed for a new object of `kind`: the previous object's properties (with every field marked
