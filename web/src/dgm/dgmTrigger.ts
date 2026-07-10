@@ -133,8 +133,17 @@ export function useDgmTrigger(): void {
       timer = setTimeout(run, DEBOUNCE_MS);
     };
 
-    let prevSig = elevationSignature(useSceneStore.getState().features);
+    // The store is NOT `subscribeWithSelector`, so this listener fires on EVERY mutation — selection, tool,
+    // dirty, and every drag frame of ANY object. Zustand replaces the `features` object only on a feature
+    // mutation, so a same-ref `features` guarantees the elevation set is unchanged: skip the per-frame
+    // `elevationSignature` scan (features iterate + `JSON.stringify`) unless `features` actually changed.
+    let prevFeatures = useSceneStore.getState().features;
+    let prevSig = elevationSignature(prevFeatures);
     const unsubscribe = useSceneStore.subscribe((state) => {
+      if (state.features === prevFeatures) {
+        return;
+      }
+      prevFeatures = state.features;
       const sig = elevationSignature(state.features);
       if (sig !== prevSig) {
         prevSig = sig;
