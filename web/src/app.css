@@ -114,19 +114,55 @@
   flex: 1;
 }
 
-/* Region 3 — map canvas slot (placeholder until 07-06). */
+/* Region 3 — map canvas: a positioned container the MapLibre <Map> fills (07-06). */
 .map-slot {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
   min-height: 0;
+  overflow: hidden;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
-.map-placeholder {
+/* Gate-1 spike overlay: temporary controls + store-canonical readouts (removed once the real drawing
+   UI lands in 07-07). Sits above the map canvas without capturing map interaction outside the chips. */
+.map-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: var(--space-2);
+  pointer-events: none;
+}
+.map-controls {
+  display: flex;
+  gap: var(--space-2);
+  pointer-events: auto;
+}
+.map-readout {
+  align-self: flex-start;
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  pointer-events: auto;
+}
+.map-readout div {
+  display: flex;
+  gap: var(--space-1);
+}
+.map-readout dt {
   color: var(--color-text-dim);
-  font-size: var(--text-sm);
+}
+.map-readout dd {
+  margin: 0;
+  color: var(--color-text);
 }
 
 /* Region 4 — right rail. */

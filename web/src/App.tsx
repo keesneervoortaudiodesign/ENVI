@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 
 import { svgIcon, type IconName } from "./icons";
+import { MapCanvas } from "./map/MapCanvas";
 
 // One palette entry: the Terra Draw tool identity, its label, and the kind-hue token used for the
 // leading `.dot` (UI-SPEC Object Palette — hue is an EXISTING token, never invented).
@@ -105,9 +106,9 @@ export function App(): ReactElement {
           </ul>
         </nav>
 
-        {/* Region 3 — map canvas slot (MapLibre lands in 07-06). */}
+        {/* Region 3 — map canvas: dark-vector basemap + Terra Draw (07-06). */}
         <main className="map-slot" data-testid="map-canvas" aria-label="Map canvas">
-          <p className="map-placeholder">Map canvas — basemap and drawing arrive in 07-06.</p>
+          <MapCanvas />
         </main>
 
         {/* Region 4 — right rail: property inspector + validation panel. */}
