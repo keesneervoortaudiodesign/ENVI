@@ -21,7 +21,9 @@ planned** (requirements + roadmap, phases 5–11); the engine (Milestone 1 Phase
 | `envi-harness` | All I/O: FORCE `.xls` parsing, synthetic TOML cases, capability gating, reference comparison, reporting. |
 | `envi-geo` | The one pure-Rust CRS reprojection seam (GEOX-04): WGS84 ↔ project-local UTM via `proj4rs` (no C toolchain). `LonLat`/`SceneXY` newtypes. |
 | `envi-store` | serde DTO mirror (keeps serde **out** of `envi-engine`) + project-as-folder flat-file persistence + the frozen tensor-identity hash (conditioning excluded, D-07). |
-| `envi-service` | The single deployable **axum** binary: `/api/v1` + the `web/dist` bundle, localhost-bound, refuse-to-start CRS self-check, job/SSE state machine, recondition/recompute split. Thin HTTP layer — no acoustics. |
+| `envi-dgm` | The server-side Digital Ground Model boundary (D-08): a pure-Rust constrained-Delaunay TIN (`spade`) from elevation points + breaklines. Deps: `spade`, `thiserror`. **No** `envi-engine` edge (keeps `spade` out of the engine quarantine), no C toolchain, no I/O. Backs `POST /dgm/triangulate`. |
+| `envi-service` | The single deployable **axum** binary: `/api/v1` + the committed `web/dist` bundle, localhost-bound, refuse-to-start CRS self-check, job/SSE state machine, recondition/recompute split. Thin HTTP layer — no acoustics. |
+| `web/` | Vite + React 19 + TSX single-page scene editor (MapLibre GL JS 5 + react-map-gl 8 + Terra Draw). Imports the generated wire-DTO mirror (D-10); Playwright-driven offline. The production build is committed at `web/dist/` and served by `envi-service`. |
 | `tools/nord2000_oracle` | Committed, independent Python (`scipy.special.wofz`) reference implementation that generates the pinned fixture curves. **Not** a build dependency. |
 
 See [`crates/README.md`](crates/README.md) for each crate's boundary rule, entry
@@ -225,8 +227,7 @@ serves both the `/api/v1` JSON/GeoJSON API and the `web/dist` frontend bundle:
 
 ```sh
 cargo run -p envi-service
-# then browse http://127.0.0.1:8080/  (placeholder shell; the real MapLibre/React
-# frontend arrives in Phase 7)
+# then browse http://127.0.0.1:8080/  (the Phase-7 MapLibre/React scene editor)
 ```
 
 It binds `127.0.0.1:8080` by default and **refuses to start** unless the D-08
@@ -239,6 +240,23 @@ Environment overrides:
 | `ENVI_BIND` | `127.0.0.1:8080` | Listen address (a non-loopback bind logs a prominent no-auth warning). |
 | `ENVI_PROJECTS_DIR` | `./projects` | The project-folder store root. |
 | `ENVI_WEB_DIST` | `web/dist` | The static frontend bundle served with SPA fallback. |
+
+### Build the frontend
+
+The `web/` scene editor is built with Vite; the output is committed at
+`web/dist/` and served by `envi-service`, so a plain `cargo run -p envi-service`
+needs no Node step. To rebuild the bundle after changing `web/src`:
+
+```sh
+cd web
+npm install          # first time only
+npm run build        # emits the committed web/dist/ (shell + map + panels + spectrum)
+```
+
+The dark OpenFreeMap basemap (MIT, no API key) is fetched from the network **at
+runtime** in the browser; the Playwright UAT, by contrast, route-intercepts the
+basemap + every `/api/v1` call so `npx playwright test` runs **fully offline**.
+All frontend tooling is a `devDependency` only — none of it ships in `web/dist`.
 
 ## Why phase-preserving? (the fast-recalc tensor)
 
