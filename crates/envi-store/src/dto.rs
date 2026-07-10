@@ -19,6 +19,7 @@
 //! `#[serde(default)]` so new fields can be added without breaking old files.
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use uuid::Uuid;
 
 use envi_engine::forest::ForestCrossing;
@@ -34,10 +35,16 @@ use crate::interpolate::{Resolution, interpolate};
 /// Dense per-band sound-power spectrum, keyed by band **INDEX** `0..=104` — never
 /// nominal Hz (the SVC-07 wire contract; the 1/12-octave axis is served once at
 /// `GET /meta/freq-axis`). Length must equal [`N_BANDS`] (= 105).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct BandSpectrumDto {
     /// The 105 per-band `L_W` values (dB), indexed by band position.
+    ///
+    /// Generated TS is `number[]` — ts-rs erases the fixed 105 length (Pitfall 5).
+    /// That is accepted by design: the length invariant is enforced server-side by
+    /// the `BadBandCount` check in [`envi_engine::scene::BandSpectrum`]'s `TryFrom`
+    /// (above), so the wire type alone can never forge a valid 105-length spectrum.
     pub band_db: Vec<f64>,
 }
 
@@ -71,8 +78,9 @@ impl TryFrom<&BandSpectrumDto> for envi_engine::scene::BandSpectrum {
 }
 
 /// Serde twin of `envi_engine::scene::SubSource`: a position + its spectrum.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct SubSourceDto {
     /// `[x, y, z]` in SceneXY meters (Z-up).
     pub position: [f64; 3],
@@ -93,8 +101,9 @@ impl TryFrom<&SubSourceDto> for SubSource {
 }
 
 /// Serde twin of `envi_engine::scene::Source`, plus a stable feature `id`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct SourceDto {
     /// Stable feature id (doubles as the path-safe key on the wire).
     pub id: Uuid,
@@ -116,8 +125,9 @@ impl TryFrom<&SourceDto> for Source {
 }
 
 /// Serde twin of `envi_engine::scene::Receiver`, plus a stable feature `id`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct ReceiverDto {
     /// Stable feature id.
     pub id: Uuid,
@@ -140,8 +150,9 @@ impl TryFrom<&ReceiverDto> for Receiver {
 ///
 /// `thickness_m` is load-bearing: JSON `null` (`None`) is a **thin** screen,
 /// `Some(t)` a thick screen of thickness `t`. `null != 0.0`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct BarrierDto {
     /// Polyline of top-edge vertices `[x, y, z]`.
     pub top_edge: Vec<[f64; 3]>,
@@ -172,8 +183,9 @@ impl TryFrom<&BarrierDto> for Barrier {
 }
 
 /// Serde twin of `envi_engine::scene::Building`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct BuildingDto {
     /// Footprint polygon vertices `[x, y]` in SceneXY meters.
     pub footprint: Vec<[f64; 2]>,
@@ -205,8 +217,9 @@ impl TryFrom<&BuildingDto> for Building {
 }
 
 /// Serde twin of `envi_engine::scene::GroundSegment`.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct GroundSegmentDto {
     /// Ground flow resistivity, kNs·m⁻⁴ (Nordtest σ).
     pub flow_resistivity: f64,
@@ -228,8 +241,9 @@ impl From<&GroundSegmentDto> for GroundSegment {
 /// Conversion is inherently `TryFrom`: the engine's `TerrainProfile::new`
 /// validates (non-empty, strictly-ascending X, `N-1` segments, finite) and its
 /// fields are private, so untrusted DTO input cannot bypass the check.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct TerrainProfileDto {
     /// Profile points `(x, z)`.
     pub points: Vec<[f64; 2]>,
@@ -255,8 +269,9 @@ impl TryFrom<&TerrainProfileDto> for TerrainProfile {
 /// `r_db[105]` grid is **DERIVED on read** via [`crate::interpolate::interpolate`],
 /// never a second persisted field: storing both would reintroduce the Phase-6
 /// `CalcRecord.tensor_hash` shadow-cache anti-pattern that was deleted.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct AuthoredSpectrumDto {
     /// Authoring resolution (how many anchors `values` carries and where they land).
     pub resolution: Resolution,
@@ -274,8 +289,9 @@ pub struct AuthoredSpectrumDto {
 /// constructor. The engine's private `r_db` field forces that path, so an
 /// out-of-range authored value (`R > MAX_R_DB`, negative, non-finite) is
 /// REJECTED, never silently clamped (threat T-07-01-02).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct IsolationSpectrumDto {
     /// The authored coarse spectrum (`r_db[105]` is derived on read).
     pub authored: AuthoredSpectrumDto,
@@ -303,8 +319,9 @@ impl TryFrom<&IsolationSpectrumDto> for IsolationSpectrum {
 /// placeholder purely so the tested conversion proves the authored fields
 /// validate through `ForestCrossing::new`. `absorption` defaults to `0.0` when
 /// unauthored (the engine edge-clamps to the table domain `[0, 0.4]` at lookup).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct ForestParamsDto {
     /// `n″` — mean tree density, m⁻². Zero is a valid persisted value (the UI
     /// marks it a `warn`, not a store rejection); negative is rejected.
@@ -342,8 +359,9 @@ impl TryFrom<&ForestParamsDto> for ForestCrossing {
 /// Descriptive persistence form: `utm_zone` + hemisphere + a human-readable
 /// `label` (e.g. `"utm-31n"`). Round-trips to a live `ProjectCrs` via
 /// [`CrsDto::to_project_crs`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct CrsDto {
     /// UTM zone `1..=60`.
     pub utm_zone: u8,
@@ -375,7 +393,8 @@ impl CrsDto {
 
 /// Meteorological readout parameters. Extensible via `#[serde(default)]`:
 /// deserializing `{}` yields the Nord2000 reference atmosphere (15 °C / 70 %).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export_to = "wire.ts")]
 pub struct MetDto {
     /// Air temperature, °C (default 15.0).
     #[serde(default = "default_temperature_c")]
@@ -403,7 +422,8 @@ impl Default for MetDto {
 }
 
 /// Project-level settings. Extensible via `#[serde(default)]`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export_to = "wire.ts")]
 pub struct SettingsDto {
     /// Atmosphere readout parameters.
     #[serde(default)]
@@ -430,8 +450,9 @@ impl Default for SettingsDto {
 ///
 /// Timestamps are unix epoch **seconds** (`u64`) — dependency-free, monotone,
 /// and human-inspectable.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct ProjectMetaDto {
     /// Project id (also the folder name under `projects/`).
     pub id: Uuid,
@@ -457,7 +478,8 @@ pub struct ProjectMetaDto {
 /// hashing it would make Tier-1 recondition requests self-invalidating. See
 /// [`crate::hash::tensor_hash`] — its signature cannot accept this type.
 /// Extensible via `#[serde(default)]`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export_to = "wire.ts")]
 pub struct ConditioningDto {
     /// Broadband gain, dB (default 0.0).
     #[serde(default)]

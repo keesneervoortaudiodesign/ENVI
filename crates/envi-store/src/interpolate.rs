@@ -52,6 +52,7 @@
 
 use envi_engine::freq::N_BANDS;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::StoreError;
 
@@ -60,8 +61,9 @@ use crate::StoreError;
 ///
 /// Serialized lowercase (`"octave"` / `"third"` / `"twelfth"`) so the persisted
 /// [`crate::dto::AuthoredSpectrumDto`] is human-inspectable (D-06).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export_to = "wire.ts")]
 pub enum Resolution {
     /// 1/1-octave — 9 anchors at band indices 4, 16, …, 100.
     Octave,
