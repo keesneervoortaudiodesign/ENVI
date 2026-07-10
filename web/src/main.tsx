@@ -18,6 +18,13 @@ if (!rootEl) {
   throw new Error("ENVI: #root mount node missing from index.html");
 }
 
+// DEV-only: expose the offline E2E's programmatic-commit bridge. Vite statically replaces
+// `import.meta.env.DEV` with `false` in the production `vite build`, so rollup drops this whole branch
+// (and the `./testBridge` chunk) — it never ships in web/dist. Present only under the dev server.
+if (import.meta.env.DEV) {
+  void import("./testBridge").then((m) => m.installTestBridge());
+}
+
 createRoot(rootEl).render(
   <StrictMode>
     <App />

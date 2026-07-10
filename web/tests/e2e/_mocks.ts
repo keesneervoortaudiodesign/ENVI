@@ -37,11 +37,12 @@ export async function installBasemapMocks(page: Page): Promise<void> {
   );
 }
 
-// Fulfill same-origin /api/* requests. This plan's map surface makes no API calls yet, but the house
-// pattern installs the API layer so later specs (scene GET/PUT, freq-axis) inherit it. Unknown /api
-// routes return an empty JSON object rather than hitting a backend.
+// Fulfill same-origin backend requests. Scoped to the real `/api/v1/` prefix — NOT a broad `**/api/**`,
+// which would also swallow the dev server's own module requests for `src/api/*.ts` (the fetch client),
+// serving them as `application/json` and breaking the ES module graph. Unknown `/api/v1` routes return
+// an empty JSON object rather than hitting a backend; specs override specific routes for real payloads.
 export async function installApiMocks(page: Page): Promise<void> {
-  await page.route("**/api/**", (route: Route) =>
+  await page.route("**/api/v1/**", (route: Route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
   );
 }
