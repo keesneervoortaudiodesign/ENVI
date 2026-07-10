@@ -20,6 +20,7 @@
 
 use axum::Json;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use envi_dgm::tin::build_tin;
 
@@ -33,8 +34,9 @@ use crate::error::ApiError;
 /// authored). `deny_unknown_fields` (request-facing) so a typo'd key is a loud
 /// `4xx`. Count / finiteness / crossing bounds are enforced by `build_tin`, not
 /// re-implemented here (SVC-07).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct DgmReq {
     /// Elevation points `[x, y, z]` (meters).
     pub points: Vec<[f64; 3]>,
@@ -49,7 +51,8 @@ pub struct DgmReq {
 /// `vertices` are `[x, y, z]` triples in TIN vertex-index order (elevation points
 /// plus breakline vertices with their sampled Z); each entry of `triangles` is a
 /// vertex-index triple into `vertices`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
 pub struct DgmResp {
     /// Distinct surface vertices `[x, y, z]`, in vertex-index order.
     pub vertices: Vec<[f64; 3]>,

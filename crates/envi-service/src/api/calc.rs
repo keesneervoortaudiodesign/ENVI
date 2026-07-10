@@ -42,6 +42,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use ts_rs::TS;
 use uuid::Uuid;
 
 use envi_store::dto::{BandSpectrumDto, ConditioningDto, ReceiverDto};
@@ -74,8 +75,9 @@ const CALC_JOB_SPEC: StubJobSpec = StubJobSpec {
 /// validated (filter arrays must be dense `[105]` when present) but influences
 /// NOTHING in Phase 6 (D-07: it never enters tensor identity; the MAC readout is
 /// Phase 11).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct ReconditionRequest {
     /// The tensor identity the client believes it is reconditioning.
     pub tensor_hash: String,
@@ -86,8 +88,9 @@ pub struct ReconditionRequest {
 
 /// The reason a `recompute` was requested. Minimal + extensible: new reasons can
 /// be added without breaking old clients (06-RESEARCH Open Q1). `snake_case` wire.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(export_to = "wire.ts")]
 pub enum RecomputeReason {
     /// Scene geometry changed.
     Geometry,
@@ -99,15 +102,17 @@ pub enum RecomputeReason {
 
 /// `POST /calculations/{cid}/recompute` body — minimal frozen shape. Extensible
 /// via future `#[serde(default)]` fields (never breaking).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct RecomputeRequest {
     /// Why the recompute was requested (drives the Phase-10/11 tier router later).
     pub reason: RecomputeReason,
 }
 
 /// `POST /projects/{id}/calculations` -> 202 body.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
 pub struct SubmitResponse {
     /// The new calculation id (also the `calc/<id>/` folder name).
     pub calc_id: Uuid,
@@ -118,7 +123,8 @@ pub struct SubmitResponse {
 }
 
 /// `POST /calculations/{cid}/recondition` -> 200 body (match path).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
 pub struct ReconditionResponse {
     /// One canned dense `[105]` band-index spectrum per scene receiver uuid.
     pub spectra: HashMap<Uuid, BandSpectrumDto>,
@@ -129,7 +135,8 @@ pub struct ReconditionResponse {
 }
 
 /// `POST /calculations/{cid}/recompute` -> 202 body.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
 pub struct RecomputeResponse {
     /// The stub job driving the re-computation.
     pub job_id: Uuid,

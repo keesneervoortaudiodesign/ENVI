@@ -12,6 +12,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
+use ts_rs::TS;
 use uuid::Uuid;
 
 use envi_geo::LonLat;
@@ -22,8 +23,9 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 /// A WGS84 origin for a new project — the point whose UTM zone gets pinned (D-03).
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct OriginDto {
     /// Longitude, degrees east.
     pub lon_deg: f64,
@@ -32,8 +34,9 @@ pub struct OriginDto {
 }
 
 /// `POST /projects` body. Strict (`deny_unknown_fields`) so client drift is loud.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct CreateProjectRequest {
     /// Human-readable project name.
     pub name: String,
@@ -46,8 +49,9 @@ pub struct CreateProjectRequest {
 
 /// `PUT /projects/{id}` body — metadata/settings patch. All fields optional;
 /// absent fields are left unchanged. Strict against unknown fields.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct UpdateProjectRequest {
     /// New name (unchanged if absent).
     #[serde(default)]

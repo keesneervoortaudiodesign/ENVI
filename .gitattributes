@@ -1,0 +1,4 @@
+# Keep the generated TS wire contract (D-10) as LF regardless of core.autocrlf,
+# so the wire_no_drift byte-equality test stays stable on Windows checkouts:
+# ts-rs emits LF, and this pins the working-tree copy to LF too.
+web/src/generated/wire.ts text eol=lf

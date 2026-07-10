@@ -31,14 +31,16 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
+use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::state::AppState;
 
 /// A job identifier. Serializes transparently as its inner UUID (the wire shape
 /// for `job_id` in the 202 calc responses).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(transparent)]
+#[ts(export_to = "wire.ts")]
 pub struct JobId(pub Uuid);
 
 /// The SC5 job status — the **frozen wire shape**. Internally tagged on `state`
@@ -46,8 +48,9 @@ pub struct JobId(pub Uuid);
 /// "step 4"}` / `{"state":"done"}` / `{"state":"failed","reason":".."}` etc. The
 /// literal tag values `queued`/`running`/`done`/`failed`/`cancelled` are the
 /// contract Phase-7 binds its EventSource handling to.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "state", rename_all = "snake_case")]
+#[ts(export_to = "wire.ts")]
 pub enum JobStatus {
     /// Submitted, worker not yet started.
     Queued,

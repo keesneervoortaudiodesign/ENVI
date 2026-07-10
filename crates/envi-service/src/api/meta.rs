@@ -24,6 +24,7 @@ use std::sync::LazyLock;
 
 use axum::Json;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use envi_engine::freq::{FREQ_AXIS, N_BANDS, N_THIRD_OCT, NOMINAL_THIRD_OCT};
 use envi_engine::propagation::transmission::IsolationSpectrum;
@@ -42,7 +43,8 @@ static FREQ_AXIS_DTO: LazyLock<FreqAxisDto> = LazyLock::new(FreqAxisDto::from_en
 /// `centres_hz` and `nominal_third_octave_hz` are the only Hz values that ever
 /// cross the network; they are display/charting data, never keys. Spectra are
 /// keyed by position in the 105-point grid (`centres_hz[i]` is band index `i`).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
 pub struct FreqAxisDto {
     /// Number of 1/12-octave bands (105).
     pub n_bands: usize,
@@ -80,8 +82,9 @@ pub async fn freq_axis() -> Json<FreqAxisDto> {
 /// `[0, MAX_R_DB]` range gate rejects surfaces as a structured `4xx`.
 /// `deny_unknown_fields` (request-facing DTO) so a typo'd key is a loud 4xx, not
 /// a silently-ignored field.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
 pub struct InterpolateReq {
     /// The authoring resolution the `values` anchors were drawn at.
     pub resolution: Resolution,
@@ -92,7 +95,8 @@ pub struct InterpolateReq {
 
 /// Response body for `POST /meta/interpolate-spectrum`: the dense `[105]`
 /// band-index grid (`r_db[i]` is band index `i`, never nominal Hz).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
 pub struct InterpolateResp {
     /// The dense sound-reduction spectrum, one value per 1/12-octave band index
     /// `0..=104`.

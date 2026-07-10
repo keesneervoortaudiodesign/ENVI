@@ -20,7 +20,11 @@ uuid = { version = "1", features = ["v4", "serde"] }
 tempfile = "3"
 blake3 = "1"
 thiserror = "2"
-ts-rs = { version = "12.0.1", features = ["uuid-impl"] }
+# ts-rs (D-10): generate the committed TS wire mirror from these serde DTOs.
+# uuid-impl maps `Uuid -> string`; serde-compat (default) honors #[serde(tag/
+# rename_all)] so tagged enums render as real TS discriminated unions. This is
+# the ONLY crate-graph ts-rs enters besides envi-service — NEVER envi-engine.
+ts-rs = { version = "12", features = ["uuid-impl"] }
 
 [dev-dependencies]
 approx = "0.5"

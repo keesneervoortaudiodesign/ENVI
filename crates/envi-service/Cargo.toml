@@ -42,6 +42,11 @@ tracing = "0.1"
 # `info`) per the D-08 startup-logging requirement.
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2"
+# ts-rs (D-10): derive the TS wire mirror on the service request/response DTOs +
+# JobStatus. uuid-impl maps `Uuid -> string`; no-serde-warnings silences the
+# benign "cannot parse `transparent`" note on JobId (ts-rs inlines the newtype to
+# `type JobId = string` regardless — the no-drift test verifies the output).
+ts-rs = { version = "12", features = ["uuid-impl", "no-serde-warnings"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
