@@ -14,6 +14,7 @@ import { MapCanvas } from "./map/MapCanvas";
 import { Palette } from "./panels/Palette";
 import { Inspector } from "./panels/Inspector";
 import { RejectBanner } from "./panels/RejectBanner";
+import { ValidationPanel } from "./panels/ValidationPanel";
 import { SpectrumEditor } from "./spectrum/SpectrumEditor";
 import { useSceneStore } from "./store/sceneStore";
 
@@ -71,10 +72,7 @@ export function App(): ReactElement {
         {/* Region 4 — right rail: property inspector + validation panel. */}
         <aside className="right-rail" data-testid="right-rail" aria-label="Inspector and validation">
           <Inspector />
-          <section className="panel" data-testid="validation">
-            <div className="panel-header">Validation</div>
-            <div className="empty-state">No issues — the scene is valid.</div>
-          </section>
+          <ValidationPanel />
         </aside>
       </div>
 
