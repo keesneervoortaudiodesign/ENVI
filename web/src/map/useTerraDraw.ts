@@ -20,10 +20,6 @@ import { useMap } from "react-map-gl/maplibre";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import {
   TerraDraw,
-  TerraDrawLineStringMode,
-  TerraDrawPointMode,
-  TerraDrawPolygonMode,
-  TerraDrawSelectMode,
   type GeoJSONStoreFeatures,
   type TerraDrawEventListeners,
 } from "terra-draw";
@@ -31,6 +27,8 @@ import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 
 import { ALT_BASEMAP_STYLE, DARK_BASEMAP_STYLE, attachOsmAttribution } from "./basemap";
 import { useSceneStore } from "../store/sceneStore";
+import { buildModes, tdModeName } from "../draw/modes";
+import { isKind } from "../draw/kinds";
 
 export interface TerraDrawController {
   // Toggle the basemap style — exercises `map.setStyle()` + `style.load` re-hydration (Gate-1/SC4).
@@ -51,6 +49,13 @@ export function useTerraDraw(): TerraDrawController {
   const mapRef = map.current;
   const [tdFeatureCount, setTdFeatureCount] = useState(0);
   const [ready, setReady] = useState(false);
+  const activeTool = useSceneStore((s) => s.activeTool);
+
+  // Track the palette tool: switch the live Terra Draw instance to the matching geometry mode (07-07).
+  // Runs after the build effect (drawRef populated); a no-op until the instance exists.
+  useEffect(() => {
+    drawRef.current?.setMode(tdModeName(activeTool));
+  }, [activeTool]);
 
   useEffect(() => {
     // react-map-gl's MapRef.getMap() returns its MapInstance; structurally it is the maplibre-gl Map
@@ -70,7 +75,22 @@ export function useTerraDraw(): TerraDrawController {
       if (context && "origin" in context && context.origin === "api") {
         return; // our own addFeatures echo — do NOT write back (no feedback loop, D-03)
       }
-      useSceneStore.getState().applyTerraDrawChange(ids, type, snapshot);
+      const store = useSceneStore.getState();
+      const known = new Set(Object.keys(store.features));
+      store.applyTerraDrawChange(ids, type, snapshot);
+      // Tag every NEWLY-created feature with the active kind (`properties.kind`) + seed last-object
+      // inheritance (WEB-04). Detected by "not previously in the store" so it is robust to TD's `type`
+      // string. When the pointer tool is active, a drawn shape stays untagged (select-mode edits).
+      const active = store.activeTool;
+      if (isKind(active)) {
+        const tagger = useSceneStore.getState();
+        for (const raw of ids) {
+          const id = String(raw);
+          if (!known.has(id) && tagger.features[id]) {
+            tagger.tagCreatedFeature(id, active);
+          }
+        }
+      }
     };
 
     // Committed-edit trigger (D-04). Autosave scheduling lands in 07-09; here it only marks dirty so the
@@ -88,14 +108,10 @@ export function useTerraDraw(): TerraDrawController {
       }
       const draw = new TerraDraw({
         adapter: new TerraDrawMapLibreGLAdapter({ map: instance }),
-        modes: [
-          new TerraDrawSelectMode(),
-          new TerraDrawPointMode(),
-          new TerraDrawLineStringMode(),
-          new TerraDrawPolygonMode(),
-        ],
+        modes: buildModes(),
       });
       draw.start();
+      draw.setMode(tdModeName(useSceneStore.getState().activeTool));
       draw.on("change", onChange);
       draw.on("finish", onFinish);
       drawRef.current = draw;
