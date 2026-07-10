@@ -232,16 +232,37 @@ Plans:
   4. The drawn scene survives a basemap switch, a page reload, and a project close/re-open — Terra Draw re-hydrates from the store on `style.load`, and the persisted scene is what comes back
 
 **Plans**: 10 plans
+**Wave 1**
+
 - [ ] 07-01-PLAN.md — envi-store isolation/forest DTOs + shared band-index interpolation core + tested TryFrom (D-01/D-05/D-06)
 - [ ] 07-02-PLAN.md — new envi-dgm crate: spade constrained-Delaunay TIN + DgmError, panic-proof pre-checks (D-08)
-- [ ] 07-03-PLAN.md — envi-service endpoints: POST /meta/interpolate-spectrum + POST /dgm/triangulate + DgmError→ApiError + contract tests
-- [ ] 07-04-PLAN.md — ts-rs generated wire types (committed wire.ts) + no-drift test (D-10)
 - [ ] 07-05-PLAN.md — web/ React+Vite+TSX scaffold + metrao3 theme + app shell + real web/dist bundle (D-09/D-11/D-12/D-13a)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 07-03-PLAN.md — envi-service endpoints: POST /meta/interpolate-spectrum + POST /dgm/triangulate + DgmError→ApiError + contract tests
 - [ ] 07-06-PLAN.md — Gate-1 Terra Draw ⇄ react-map-gl lifecycle spike: store-canonical, style.load rehydrate, dark basemap (D-03/D-13a)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 07-04-PLAN.md — ts-rs generated wire types (committed wire.ts) + no-drift test (D-10)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 07-07-PLAN.md — object palette + all 9 kinds + property inspector + last-object inheritance + typed fetch client + DGM re-triangulation producer (trigger + TIN overlay)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 07-08-PLAN.md — isolation-spectrum editor + per-façade UUID ring-diff + semi-transparent screen + SPL calibration (D-02/D-06)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 07-09-PLAN.md — draw-time ground-zone hard reject + validation panel + debounced autosave + delete-project dialog (D-04/D-07)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 07-10-PLAN.md — SC1–SC4 end-to-end E2E journeys + final committed bundle + README docs
+
 **UI hint**: yes
 
 ### Phase 8: GIS Ingestion & DGM
