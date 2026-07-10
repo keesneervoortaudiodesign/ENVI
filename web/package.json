@@ -1,0 +1,37 @@
+{
+  "name": "envi-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "ENVI Nord2000 map-authoring frontend (React 19 + Vite + MapLibre). Build/test tooling is devDependencies ONLY — nothing tooling ships in the bundle; the served web/dist is self-contained and fully offline (D-11, zero external assets). Runtime deps (react/maplibre/react-map-gl/terra-draw/zustand/turf) are the only code that reaches the browser.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium"
+  },
+  "dependencies": {
+    "@turf/turf": "^7.3.5",
+    "maplibre-gl": "^5.24.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-map-gl": "^8.1.1",
+    "terra-draw": "^1.31.2",
+    "terra-draw-maplibre-gl-adapter": "^1.4.1",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^8.1.4",
+    "vitest": "^4.0.0"
+  }
+}

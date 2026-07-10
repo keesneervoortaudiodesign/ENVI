@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      ENVI SPA build root (Vite). ZERO external assets: no CDN, no web font, no external
+      stylesheet/script (D-11 offline gate — envi-service's static-bundle contract test asserts
+      GET / has no external references). The system-font stack lives in src/theme.css. Vite injects
+      the LOCAL hashed bundle script/link below at build time (relative to base './'); those are not
+      external. A runtime MapLibre basemap XHR is not an index.html asset (D-13a) — and no basemap
+      is wired in this plan anyway. Stable markers for the contract test: the <title>ENVI string and
+      the <div id="root"> mount point (never coupled to hashed asset names).
+    -->
+    <title>ENVI</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

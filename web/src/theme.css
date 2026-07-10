@@ -1,0 +1,183 @@
+/* Metrao3 ops-console theme — token_source = portal/src/theme.css (UI-SPEC, do not invent tokens).
+   Reused VERBATIM except the font stack: this embedded build OMITS the 'Inter'/'JetBrains Mono'
+   web-font names (the portal lists them first) so the kiosk/phone never blocks on an absent font
+   and stays fully offline (P5). Dark-only. */
+:root {
+  /* Surfaces — layered dark */
+  --color-bg:        #0b0d10;
+  --color-surface:   #14171c;
+  --color-surface-2: #1b1f26;
+  --color-surface-3: #232831;
+  --color-border:    #2a3038;
+  --color-border-strong: #3a424d;
+
+  /* Text */
+  --color-text:        #e4e6eb;
+  --color-text-muted:  #8b94a3;
+  --color-text-dim:    #5a6270;
+  --color-text-strong: #ffffff;
+
+  /* Brand / accents */
+  --color-primary:       #4ea8ff;   /* metrao blue — links, focused row */
+  --color-primary-hover: #79bcff;
+
+  /* Severity — escalation ladder */
+  --color-ok:    #22c55e;
+  --color-warn:  #f59e0b;
+  --color-crit:  #ef4444;
+  --color-off:   #5a6270;
+  --color-info:  #4ea8ff;
+
+  --color-ok-bg:    rgba(34, 197, 94, 0.12);
+  --color-warn-bg:  rgba(245, 158, 11, 0.14);
+  --color-crit-bg:  rgba(239, 68, 68, 0.14);
+  --color-off-bg:   rgba(90, 98, 112, 0.18);
+
+  /* Typography — system stack ONLY (no web-font fetch; offline). */
+  --font-sans: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Consolas', 'DejaVu Sans Mono', monospace;
+  --text-xxs: 0.6875rem;  /* 11px */
+  --text-xs:  0.75rem;    /* 12px */
+  --text-sm:  0.8125rem;  /* 13px */
+  --text-base:0.9375rem;  /* 15px */
+  --text-lg:  1.0625rem;
+  --text-xl:  1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 2rem;
+
+  /* Spacing */
+  --space-0: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* Shapes */
+  --radius-sm:   3px;
+  --radius-md:   5px;
+  --radius-lg:   8px;
+  --radius-full: 9999px;
+
+  /* Borders + shadows */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+  --shadow-lg: 0 16px 48px rgba(0,0,0,0.6);
+
+  /* Layout knobs */
+  --row-h:  28px;
+  --row-h-lg: 36px;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--color-primary); text-decoration: none; }
+a:hover { color: var(--color-primary-hover); }
+
+.mono, code, kbd { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Severity dots */
+.dot { display:inline-block; width:8px; height:8px; border-radius:var(--radius-full); margin-right:6px; vertical-align: 1px; }
+.dot.ok   { background: var(--color-ok);   box-shadow: 0 0 6px var(--color-ok); }
+.dot.warn { background: var(--color-warn); box-shadow: 0 0 6px var(--color-warn); }
+.dot.crit { background: var(--color-crit); box-shadow: 0 0 8px var(--color-crit); animation: pulse 1.6s ease-in-out infinite; }
+.dot.off  { background: var(--color-off); }
+.dot.info { background: var(--color-info); box-shadow: 0 0 6px var(--color-info); }  /* Phase 56: onboarding-window active (D-15) */
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* Severity chips */
+.chip {
+  display:inline-flex; align-items:center; gap:4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xxs);
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+.chip.ok   { color: var(--color-ok);   background: var(--color-ok-bg);   border-color: rgba(34,197,94,0.35); }
+.chip.warn { color: var(--color-warn); background: var(--color-warn-bg); border-color: rgba(245,158,11,0.35); }
+.chip.crit { color: var(--color-crit); background: var(--color-crit-bg); border-color: rgba(239,68,68,0.45); }
+.chip.off  { color: var(--color-text-muted); background: var(--color-off-bg); }
+/* Phase 56: the accent "info" chip for the intentional operator-action states (ladder_up / manual, D-15).
+   The rgba is the --color-info (#4ea8ff) value at the same alpha convention as the other --color-*-bg. */
+.chip.info { color: var(--color-info); background: rgba(78,168,255,0.14); border-color: rgba(78,168,255,0.35); }
+
+/* Buttons */
+.btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  min-height: 44px;            /* ≥44px touch target (kiosk/phone) */
+  padding: 8px 14px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.btn:hover { background: var(--color-surface-3); border-color: var(--color-border-strong); }
+.btn.primary { background: var(--color-primary); color: #06121e; border-color: var(--color-primary); }
+.btn.primary:hover { background: var(--color-primary-hover); }
+.btn.danger { color: var(--color-crit); border-color: rgba(239,68,68,0.45); background: var(--color-crit-bg); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }  /* Phase 56: the disabled affordance (e.g. Retract now in online/grace) */
+.btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+/* Phase 56: a wrapping button row for the symmetric onboarding controls (buttons keep intrinsic width). */
+.btn-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+/* Inputs */
+.input, input[type=text], input[type=password] {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  min-height: 44px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  outline: none;
+}
+.input:focus, input:focus { border-color: var(--color-primary); }
+
+/* Cards / panels */
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.panel-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.section-title {
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--color-text);
+  margin: 0;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--color-bg); }
+::-webkit-scrollbar-thumb { background: var(--color-surface-3); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); }

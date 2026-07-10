@@ -13,3 +13,11 @@ __pycache__/
 # User project data (envi-service ProjectStore root) — never repo content
 # (06-RESEARCH Open Q2). The ENVI_PROJECTS_DIR override points elsewhere in prod.
 projects/
+
+# Frontend (web/) build/test noise. web/dist STAYS TRACKED — it is the shipped
+# artifact served from disk by envi-service (ServeDir(web/dist), SVC-03); the
+# static-bundle contract test + repo_web_dist() both require it. Only the
+# node_modules install tree and the Playwright run artifacts are ignored.
+web/node_modules/
+web/test-results/
+web/playwright-report/
