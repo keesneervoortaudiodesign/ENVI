@@ -13,42 +13,13 @@
 //   PROMOTES (visible notice + resolution twelfth); and a façade override survives a vertex insert
 //   ELSEWHERE in the ring (the override edge keeps its UUID, spectrum, and geometric segment).
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-import { installOffline } from "./_mocks";
-
-// A valid 105-band freq axis (band-index keyed; nominal Hz display-only). Generated from the x/12 grid so
-// the editor's Hz tick labels resolve; the tests assert by band INDEX, never these Hz values.
-function freqAxisFixture(): unknown {
-  const G = Math.pow(10, 3 / 10);
-  const centres = Array.from({ length: 105 }, (_, i) => 1000 * Math.pow(G, (i - 64) / 12));
-  const thirdIdx = Array.from({ length: 27 }, (_, k) => 4 * k);
-  return {
-    n_bands: 105,
-    centres_hz: centres,
-    third_octave_indices: thirdIdx,
-    nominal_third_octave_hz: thirdIdx.map((i) => Math.round(centres[i])),
-  };
-}
-
-// Install the offline stack + the two meta endpoints the editor needs (registered AFTER installOffline so
-// the specific routes win the match). The interpolate mock echoes a deterministic dense [105] ramp.
-async function installSpectrumMocks(page: Page): Promise<string[]> {
-  const unmocked = await installOffline(page);
-  await page.route(/\/api\/v1\/meta\/freq-axis$/, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(freqAxisFixture()) }),
-  );
-  await page.route(/\/api\/v1\/meta\/interpolate-spectrum$/, (route) => {
-    const r_db = Array.from({ length: 105 }, (_, i) => 20 + (i % 12));
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ r_db }) });
-  });
-  return unmocked;
-}
+import { bootOffline, installMetaMocks } from "./_mocks";
 
 test("semi-transparent screen: warn without a spectrum, info (acoustic screen) once assigned", async ({ page }) => {
-  const unmocked = await installSpectrumMocks(page);
-  await page.goto("/");
-  await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
+  const unmocked = await bootOffline(page);
+  await installMetaMocks(page);
 
   // Place a wall/screen (selected on commit) and mark it semi-transparent.
   const wallId = await page.evaluate(() => window.__enviTest.commit("wall", 4.9, 52.36));
@@ -73,9 +44,8 @@ test("semi-transparent screen: warn without a spectrum, info (acoustic screen) o
 test("editor: octave anchors land on exact band indices, server preview renders, promote-to-twelfth is explicit", async ({
   page,
 }) => {
-  const unmocked = await installSpectrumMocks(page);
-  await page.goto("/");
-  await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
+  const unmocked = await bootOffline(page);
+  await installMetaMocks(page);
 
   // A source, selected → open its sound-power editor.
   await page.evaluate(() => window.__enviTest.commit("source", 4.91, 52.37));
@@ -110,9 +80,8 @@ test("editor: octave anchors land on exact band indices, server preview renders,
 test("façade override survives a vertex insert ELSEWHERE in the ring (D-02, no silent re-point)", async ({
   page,
 }) => {
-  const unmocked = await installSpectrumMocks(page);
-  await page.goto("/");
-  await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
+  const unmocked = await bootOffline(page);
+  await installMetaMocks(page);
 
   // A building gets per-edge UUIDs at draw time.
   const buildingId = await page.evaluate(() => window.__enviTest.commit("building", 4.92, 52.38));

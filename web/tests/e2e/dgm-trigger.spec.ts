@@ -8,9 +8,9 @@
 //   readout becomes non-zero); and a 4xx reject is written into the dgm slice (the reject readout shows
 //   the status — the 07-09 crit source), never a silent swallow. No request escapes to the live network.
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-import { installOffline } from "./_mocks";
+import { bootOffline } from "./_mocks";
 
 const MESH = {
   vertices: [
@@ -21,21 +21,15 @@ const MESH = {
   triangles: [[0, 1, 2]],
 };
 
-async function ready(page: Page): Promise<void> {
-  await page.goto("/");
-  await expect(page.getByTestId("object-palette")).toBeVisible();
-  await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
-}
-
 test("≥3 non-collinear elevation points fire one debounced triangulate → TIN renders", async ({ page }) => {
-  const unmocked = await installOffline(page);
+  const unmocked = await bootOffline(page);
   let calls = 0;
+  // The triangulate route only fires on a post-boot commit, so registering it after navigation is safe.
   await page.route(/\/api\/v1\/dgm\/triangulate$/, async (route) => {
     calls += 1;
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(MESH) });
   });
-
-  await ready(page);
+  await expect(page.getByTestId("object-palette")).toBeVisible();
 
   // Commit three non-collinear elevation points in quick succession (simulates committed edits).
   await page.evaluate(() => {
@@ -52,7 +46,7 @@ test("≥3 non-collinear elevation points fire one debounced triangulate → TIN
 });
 
 test("a 4xx triangulate reject is stored (crit source), not silently swallowed", async ({ page }) => {
-  const unmocked = await installOffline(page);
+  const unmocked = await bootOffline(page);
   await page.route(/\/api\/v1\/dgm\/triangulate$/, async (route) => {
     await route.fulfill({
       status: 400,
@@ -60,8 +54,7 @@ test("a 4xx triangulate reject is stored (crit source), not silently swallowed",
       body: JSON.stringify({ detail: "breaklines interior-cross" }),
     });
   });
-
-  await ready(page);
+  await expect(page.getByTestId("object-palette")).toBeVisible();
 
   await page.evaluate(() => {
     window.__enviTest.commit("elevation_point", 4.90, 52.36);

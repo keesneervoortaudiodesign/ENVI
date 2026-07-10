@@ -12,7 +12,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { installOffline } from "./_mocks";
+import { bootOffline } from "./_mocks";
 
 const KINDS = [
   "source",
@@ -38,9 +38,10 @@ async function placeKind(page: Page, kind: string, i: number): Promise<void> {
 }
 
 test("places all 9 kinds into the store + PUT payload, with last-object inheritance", async ({ page }) => {
-  const unmocked = await installOffline(page);
+  const unmocked = await bootOffline(page);
 
-  // Capture the outbound whole-scene PUT (registered AFTER installOffline so it wins the route match).
+  // Capture the outbound whole-scene PUT (registered AFTER the offline stack so it wins the route match; the
+  // PUT only fires on a post-boot Save, so registering it after navigation is safe).
   let putBody: { features: { properties?: { kind?: string } }[] } | null = null;
   await page.route(/\/api\/v1\/projects\/[^/]+\/scene$/, async (route) => {
     if (route.request().method() === "PUT") {
@@ -51,10 +52,7 @@ test("places all 9 kinds into the store + PUT payload, with last-object inherita
     }
   });
 
-  await page.goto("/");
   await expect(page.getByTestId("object-palette")).toBeVisible();
-  // The DEV commit bridge installs via an async dynamic import — wait for it before driving commits.
-  await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
 
   // 1) Place each of the 9 kinds.
   for (let i = 0; i < KINDS.length; i++) {

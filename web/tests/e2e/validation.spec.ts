@@ -13,21 +13,14 @@
 //   committed edit after the debounce with the indicator transitioning Dirty→Saving→Saved; and the delete
 //   danger button enables only on an exact typed-name match.
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-import { installOffline } from "./_mocks";
-
-async function boot(page: Page): Promise<string[]> {
-  const unmocked = await installOffline(page);
-  await page.goto("/");
-  await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
-  return unmocked;
-}
+import { bootOffline } from "./_mocks";
 
 test("ground_zone topology: contained commits; partial cross reverts + banner + zoom-to-existing (D-07)", async ({
   page,
 }) => {
-  const unmocked = await boot(page);
+  const unmocked = await bootOffline(page);
 
   // Zone A — the reference square.
   const a = await page.evaluate(() =>
@@ -84,8 +77,9 @@ test("ground_zone topology: contained commits; partial cross reverts + banner + 
 test("validation panel: warn rows + crit row (mocked triangulate 4xx); click-to-select + zoom (WEB-04)", async ({
   page,
 }) => {
-  const unmocked = await installOffline(page);
-  // The interior-crossing breaklines reject — the server 4xx the dgm producer stores as the crit source.
+  const unmocked = await bootOffline(page);
+  // The interior-crossing breaklines reject — the server 4xx the dgm producer stores as the crit source
+  // (only hit on a post-boot commit, so registering it after navigation is safe).
   await page.route(/\/api\/v1\/dgm\/triangulate$/, (route) =>
     route.fulfill({
       status: 400,
@@ -93,8 +87,6 @@ test("validation panel: warn rows + crit row (mocked triangulate 4xx); click-to-
       body: JSON.stringify({ detail: "breaklines intersect in their interior" }),
     }),
   );
-  await page.goto("/");
-  await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
 
   // (a) A semi-transparent wall WITHOUT a spectrum → a warn row.
   const wallId = await page.evaluate(() => window.__enviTest.commit("wall", 4.9, 52.36));
@@ -140,7 +132,7 @@ test("validation panel: warn rows + crit row (mocked triangulate 4xx); click-to-
 test("autosave: exactly ONE coalesced PUT per committed edit after debounce; Dirty→Saving→Saved (D-04)", async ({
   page,
 }) => {
-  const unmocked = await installOffline(page);
+  const unmocked = await bootOffline(page);
   let putCount = 0;
   await page.route(/\/api\/v1\/projects\/[^/]+\/scene$/, (route) => {
     if (route.request().method() === "PUT") {
@@ -149,8 +141,6 @@ test("autosave: exactly ONE coalesced PUT per committed edit after debounce; Dir
     }
     return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
-  await page.goto("/");
-  await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
 
   // A single committed edit.
   await page.evaluate(() => window.__enviTest.commit("source", 4.9, 52.36));
@@ -169,15 +159,13 @@ test("autosave: exactly ONE coalesced PUT per committed edit after debounce; Dir
 test("delete project: typed-name gate — danger enabled ONLY on an exact match; success resets", async ({
   page,
 }) => {
-  const unmocked = await installOffline(page);
+  const unmocked = await bootOffline(page);
   await page.route(/\/api\/v1\/projects\/proj-1$/, (route) => {
     if (route.request().method() === "DELETE") {
       return route.fulfill({ status: 204, body: "" });
     }
     return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
-  await page.goto("/");
-  await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
   await page.evaluate(() => window.__enviTest.openProject("proj-1", "My Project"));
 
   // Open the dialog from the overflow menu.

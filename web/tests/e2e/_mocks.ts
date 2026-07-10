@@ -75,6 +75,18 @@ export async function installOffline(page: Page): Promise<string[]> {
   return unmocked;
 }
 
+// Boot the app fully offline: install the offline route stack (guard + basemap + /api mocks), navigate to
+// the SPA, and wait for the DEV `window.__enviTest` bridge (installed via an async dynamic import) before a
+// spec drives store commits. Returns the unmocked-request collector — it MUST stay empty for an offline run.
+// Specs that need extra route mocks (meta/interpolate, triangulate, PUT capture) register them AFTER this
+// call: those endpoints are only hit on post-boot user actions, and a later `page.route` wins the match.
+export async function bootOffline(page: Page): Promise<string[]> {
+  const unmocked = await installOffline(page);
+  await page.goto("/");
+  await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
+  return unmocked;
+}
+
 // A valid 105-band 1/12-octave freq axis (band-index keyed; nominal Hz display-only). Built from the x/12
 // grid so the spectrum editor's Hz tick labels resolve; assertions are always by band INDEX, never Hz. The
 // 27 third-octave centres land on indices 0, 4, 8, …, 104 (the octave centres are the subset 4, 16, … 100).

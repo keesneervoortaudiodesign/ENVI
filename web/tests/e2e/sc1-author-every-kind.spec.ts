@@ -18,7 +18,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { installMetaMocks, installOffline, installTriangulateMock } from "./_mocks";
+import { bootOffline, installMetaMocks, installTriangulateMock } from "./_mocks";
 
 // The 9 locked scene kinds (SC1). `calc_area` is the calculation domain; the rest are authored objects.
 const KINDS = [
@@ -34,7 +34,7 @@ const KINDS = [
 ] as const;
 
 async function boot(page: Page): Promise<string[]> {
-  const unmocked = await installOffline(page);
+  const unmocked = await bootOffline(page);
   await installMetaMocks(page);
   await installTriangulateMock(page);
   return unmocked;
@@ -54,9 +54,7 @@ test("SC1+SC3: authors every kind (+inheritance +TIN +crit) and edits an isolati
     await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
 
-  await page.goto("/");
   await expect(page.getByTestId("object-palette")).toBeVisible();
-  await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
 
   // 1) Place all 9 kinds through the palette + DEV commit bridge (proves palette tool → active kind tag).
   for (let i = 0; i < KINDS.length; i++) {
