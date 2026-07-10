@@ -231,7 +231,17 @@ Plans:
   3. User can mark a screen semi-transparent and assign it an isolation spectrum, and assign per-façade isolation spectra on a building; the spectrum editor accepts direct 1/12-octave entry or 1/1- / 1/3-octave input linearly interpolated onto the 105-point grid, with octave and third-octave centres landing exactly on their band indices
   4. The drawn scene survives a basemap switch, a page reload, and a project close/re-open — Terra Draw re-hydrates from the store on `style.load`, and the persisted scene is what comes back
 
-**Plans**: TBD
+**Plans**: 10 plans
+- [ ] 07-01-PLAN.md — envi-store isolation/forest DTOs + shared band-index interpolation core + tested TryFrom (D-01/D-05/D-06)
+- [ ] 07-02-PLAN.md — new envi-dgm crate: spade constrained-Delaunay TIN + DgmError, panic-proof pre-checks (D-08)
+- [ ] 07-03-PLAN.md — envi-service endpoints: POST /meta/interpolate-spectrum + POST /dgm/triangulate + DgmError→ApiError + contract tests
+- [ ] 07-04-PLAN.md — ts-rs generated wire types (committed wire.ts) + no-drift test (D-10)
+- [ ] 07-05-PLAN.md — web/ React+Vite+TSX scaffold + metrao3 theme + app shell + real web/dist bundle (D-09/D-11/D-12/D-13a)
+- [ ] 07-06-PLAN.md — Gate-1 Terra Draw ⇄ react-map-gl lifecycle spike: store-canonical, style.load rehydrate, dark basemap (D-03/D-13a)
+- [ ] 07-07-PLAN.md — object palette + all 9 kinds + property inspector + last-object inheritance + typed fetch client
+- [ ] 07-08-PLAN.md — isolation-spectrum editor + per-façade UUID ring-diff + semi-transparent screen + SPL calibration (D-02/D-06)
+- [ ] 07-09-PLAN.md — draw-time ground-zone hard reject + validation panel + debounced autosave + delete-project dialog (D-04/D-07)
+- [ ] 07-10-PLAN.md — SC1–SC4 end-to-end E2E journeys + final committed bundle + README docs
 **UI hint**: yes
 
 ### Phase 8: GIS Ingestion & DGM
