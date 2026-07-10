@@ -231,16 +231,16 @@ Plans:
   3. User can mark a screen semi-transparent and assign it an isolation spectrum, and assign per-façade isolation spectra on a building; the spectrum editor accepts direct 1/12-octave entry or 1/1- / 1/3-octave input linearly interpolated onto the 105-point grid, with octave and third-octave centres landing exactly on their band indices
   4. The drawn scene survives a basemap switch, a page reload, and a project close/re-open — Terra Draw re-hydrates from the store on `style.load`, and the persisted scene is what comes back
 
-**Plans**: 2/10 plans executed
+**Plans**: 4/10 plans executed
 **Wave 1**
 
 - [x] 07-01-PLAN.md — envi-store isolation/forest DTOs + shared band-index interpolation core + tested TryFrom (D-01/D-05/D-06)
 - [x] 07-02-PLAN.md — new envi-dgm crate: spade constrained-Delaunay TIN + DgmError, panic-proof pre-checks (D-08)
-- [ ] 07-05-PLAN.md — web/ React+Vite+TSX scaffold + metrao3 theme + app shell + real web/dist bundle (D-09/D-11/D-12/D-13a)
+- [x] 07-05-PLAN.md — web/ React+Vite+TSX scaffold + metrao3 theme + app shell + real web/dist bundle (D-09/D-11/D-12/D-13a)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 07-03-PLAN.md — envi-service endpoints: POST /meta/interpolate-spectrum + POST /dgm/triangulate + DgmError→ApiError + contract tests
+- [x] 07-03-PLAN.md — envi-service endpoints: POST /meta/interpolate-spectrum + POST /dgm/triangulate + DgmError→ApiError + contract tests
 - [ ] 07-06-PLAN.md — Gate-1 Terra Draw ⇄ react-map-gl lifecycle spike: store-canonical, style.load rehydrate, dark basemap (D-03/D-13a)
 
 **Wave 3** *(blocked on Wave 2 completion)*
