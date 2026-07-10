@@ -92,6 +92,32 @@ impl Tin {
     pub fn num_vertices(&self) -> usize {
         self.cdt.num_vertices()
     }
+
+    /// The distinct surface vertices as `[x, y, z]` triples, in `spade`
+    /// vertex-index order — so an index returned by [`Tin::triangles`] refers
+    /// directly into this slice. Breakline vertices (inserted with a Z sampled
+    /// from the point surface) are included alongside the elevation points.
+    pub fn vertices(&self) -> Vec<[f64; 3]> {
+        let mut out = vec![[0.0_f64; 3]; self.cdt.num_vertices()];
+        for v in self.cdt.vertices() {
+            let p = v.position();
+            out[v.index()] = [p.x, p.y, v.data().z];
+        }
+        out
+    }
+
+    /// The inner triangles as vertex-index triples into [`Tin::vertices`]
+    /// (outer/unbounded face excluded). Order is unspecified but every index is
+    /// `< num_vertices()`; a renderable, self-contained mesh with the vertex list.
+    pub fn triangles(&self) -> Vec<[usize; 3]> {
+        self.cdt
+            .inner_faces()
+            .map(|face| {
+                let [a, b, c] = face.vertices();
+                [a.index(), b.index(), c.index()]
+            })
+            .collect()
+    }
 }
 
 /// Barycentric Z at `pos` over the current triangulation, falling back to the

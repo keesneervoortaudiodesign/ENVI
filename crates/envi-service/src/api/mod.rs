@@ -21,6 +21,7 @@
 //! return structured JSON, never the HTML shell.
 
 pub mod calc;
+pub mod dgm;
 pub mod jobs;
 pub mod meta;
 pub mod projects;
@@ -50,6 +51,7 @@ pub fn api_router() -> Router<Arc<AppState>> {
             "/meta/interpolate-spectrum",
             post(meta::interpolate_spectrum),
         )
+        .route("/dgm/triangulate", post(dgm::triangulate))
         .route("/projects", get(projects::list).post(projects::create))
         .route("/projects/last", get(projects::last))
         .route(

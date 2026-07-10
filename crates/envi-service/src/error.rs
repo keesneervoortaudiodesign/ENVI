@@ -12,6 +12,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
 
+use envi_dgm::DgmError;
 use envi_store::StoreError;
 
 /// A typed API error that renders as a structured JSON body with the right HTTP
@@ -98,6 +99,29 @@ impl From<StoreError> for ApiError {
                     detail: "internal error".to_string(),
                 }
             }
+        }
+    }
+}
+
+impl From<DgmError> for ApiError {
+    /// Map a digital-ground-model failure to HTTP status (D-08, Pitfall 3).
+    ///
+    /// EVERY `DgmError` variant is a **client fault** — the untrusted elevation
+    /// points / breaklines were degenerate, non-finite, oversized, or
+    /// self-crossing — so all map to `400`, never `500` and never a panic. The
+    /// `Display` text carries only offending coordinates / counts (no filesystem
+    /// paths), so it is safe to surface verbatim in the `BadRequest { detail }`
+    /// body. `envi_dgm::build_tin` already pre-checks crossing breaklines
+    /// (`can_add_constraint`) so `spade` never panics the request thread.
+    fn from(e: DgmError) -> Self {
+        match e {
+            DgmError::TooFewPoints { .. }
+            | DgmError::IntersectingConstraint { .. }
+            | DgmError::NonFinite { .. }
+            | DgmError::TooLarge { .. }
+            | DgmError::Triangulation { .. } => ApiError::BadRequest {
+                detail: e.to_string(),
+            },
         }
     }
 }

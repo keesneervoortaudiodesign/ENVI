@@ -13,6 +13,10 @@ rust-version.workspace = true
 envi-engine = { path = "../envi-engine" }
 envi-geo = { path = "../envi-geo" }
 envi-store = { path = "../envi-store" }
+# envi-dgm: the POST /dgm/triangulate handler delegates to envi_dgm::tin::build_tin
+# (server-side digital-ground-model TIN, D-08). Geometry math lives THERE, never in
+# this thin HTTP layer (SVC-07); the service only maps DgmError -> ApiError 4xx.
+envi-dgm = { path = "../envi-dgm" }
 axum = "0.8"
 tokio = { version = "1", features = [
     "rt-multi-thread",
