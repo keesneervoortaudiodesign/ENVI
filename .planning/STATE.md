@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 07
 current_phase_name: frontend-shell-scene-editing
-status: verifying
-stopped_at: Phase 7 context gathered
-last_updated: "2026-07-10T18:36:16.917Z"
+status: complete
+stopped_at: Phase 7 complete — 5 completion gates closed
+last_updated: "2026-07-10T20:15:00.000Z"
 last_activity: 2026-07-10
-last_activity_desc: Phase 07 execution started
+last_activity_desc: "Phase 7 closed: 5 completion gates green (07-REVIEW 6 fixed/1 accepted, simplify 8 cleanups, 07-SECURITY SECURED 39/39, 07-VERIFICATION passed 4/4, doc-consistency)"
 progress:
   total_phases: 11
   completed_phases: 7
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** A numerically faithful Nord2000 engine — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain.
-**Current focus:** Phase 07 — frontend-shell-scene-editing
+**Current focus:** Phase 07 — frontend-shell-scene-editing (COMPLETE)
 
 ## Current Position
 
-Phase: 07 (frontend-shell-scene-editing) — EXECUTING
-Plan: 10 of 10
-Status: Phase complete — ready for verification
-Last activity: 2026-07-10 — Phase 07 execution started
+Phase: 07 (frontend-shell-scene-editing) — COMPLETE
+Plan: 10 of 10 complete (07-01 … 07-10)
+Status: Phase 7 COMPLETE — all 5 completion gates closed (code-review + simplify + secure + verify + doc-consistency). WEB-01/02/03/04/08/09/10 and SCN-01/02/03/04 delivered for Phase-7 authoring scope (authored isolation/source spectra are session-only; persistence + engine transmission land in Phases 9–11). Next: Phase 8 (GIS Ingestion & DGM).
+Last activity: 2026-07-10 — Phase 7 closed: 5 completion gates green (07-REVIEW fixed, 07-SECURITY SECURED 39/39, 07-VERIFICATION passed 4/4, simplify applied, doc-consistency)
 
-Progress: [██████████] Phase 6 — 4/4 plans complete (06-01 ✅ envi-geo CRS seam, 06-02 ✅ envi-store persistence, 06-03 ✅ axum binary + project/scene, 06-04 ✅ jobs/SSE + recondition/recompute split)
+Progress: [██████████] Phase 7 — 10/10 plans complete (envi-store DTOs · envi-dgm TIN · endpoints · web scaffold+theme · Terra Draw lifecycle · generated wire types · 9-kind palette+DGM producer · spectrum editor+ring-diff · validation+autosave · SC1–SC4 E2E)
 
 ## Performance Metrics
 

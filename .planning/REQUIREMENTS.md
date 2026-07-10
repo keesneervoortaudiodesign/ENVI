@@ -68,8 +68,8 @@
 
 ### Scene model extensions (SCN)
 
-- [x] **SCN-01**: Semi-transparent **screen** object — a screen carrying an assigned isolation spectrum; transmission via ENG-10, diffraction/reflection unchanged
-- [x] **SCN-02**: Semi-transparent **building** object — a 3D building where each façade (footprint edge) can be assigned its own isolation spectrum; transmission through a façade uses that façade's `R(f)`
+- [x] **SCN-01**: Semi-transparent **screen** object — a screen carrying an assigned isolation spectrum; transmission via ENG-10, diffraction/reflection unchanged — *Phase 7 delivers the authoring (mark semi-transparent + assign spectrum via per-edge UUID); the **ENG-10 transmission path at solve time and spectrum persistence land in Phases 9–11** — authored spectra are session-only in Phase 7 (surfaced by the "Spectra session-only" UI chip)*
+- [x] **SCN-02**: Semi-transparent **building** object — a 3D building where each façade (footprint edge) can be assigned its own isolation spectrum; transmission through a façade uses that façade's `R(f)` — *Phase 7 delivers per-façade authoring via stable edge-UUID assignment; **engine transmission + persistence land in Phases 9–11** (spectra session-only in Phase 7)*
 - [x] **SCN-03**: **Isolation-spectrum** data type on the 105-point 1/12-octave grid; accept 1/1-octave or 1/3-octave input and **linearly interpolate** (dB across band index = linear in log-frequency; octave/third-octave centres fall exactly on 1/12-octave band indices) to the full grid
 - [x] **SCN-04**: **Forest** object with editable mean tree density / mean stem radius / height (feeds ENG-09); single trees and tree lines have no effect
 
