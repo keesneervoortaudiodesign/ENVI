@@ -6,14 +6,14 @@ current_phase: 07
 current_phase_name: frontend-shell-scene-editing
 status: executing
 stopped_at: Phase 7 context gathered
-last_updated: "2026-07-10T11:43:16.018Z"
+last_updated: "2026-07-10T11:58:39.855Z"
 last_activity: 2026-07-10
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 33
-  completed_plans: 24
+  completed_plans: 25
   percent: 55
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 07 (frontend-shell-scene-editing) — EXECUTING
-Plan: 2 of 10
+Plan: 3 of 10
 Status: Ready to execute
 Last activity: 2026-07-10 — Phase 07 execution started
 
@@ -73,6 +73,7 @@ Progress: [██████████] Phase 6 — 4/4 plans complete (06-01
 | Phase 06 P03 | 13min | 3 tasks | 13 files |
 | Phase 06 P04 | 25min | 3 tasks | 12 files |
 | Phase 07 P01 | 35 min | 2 tasks | 3 files |
+| Phase 07 P02 | ~25 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,8 @@ Recent decisions affecting current work:
 - [Phase 06]: envi-geo is the milestone's ONE reprojection boundary (GEOX-04) on pure-Rust proj4rs 0.1.10 — zero C toolchain (D-01/D-02); radians quarantined to transform.rs; pinned to pyproj oracle <=1e-3 m
 - [Phase ?]: [Phase 06, 06-03] envi-service = the single deployable axum binary (SVC-03/04): /api/v1 + web/dist, 127.0.0.1:8080 default (warn on non-loopback ENVI_BIND), refuse-to-start on the D-08 pure-Rust CRS round-trip self-check (SC2 adjusted, GDAL deferred to Phase 8); thin handlers delegate to envi-store; freq-axis served once from envi_engine::freq (band-index wire, SVC-07); scene GET/PUT round-trips WGS84 GeoJSON and survives restart (SC1); lib+bin split so oneshot tests reach api::app
 - [Phase ?]: [Phase 06, 06-04] SC5 job machine runs on a dedicated std::thread (Anti-Pattern 5/D-08, grep-gated zero spawn_blocking) with watch::channel progress + CancellationToken, bridged to SSE via WatchStream + 15s keep-alive; SC4 recondition/recompute split ENFORCES a real 409 tensor_hash_mismatch ({error,expected,got,hint} served verbatim, top-level) against the in-memory CalcRecord; D-07 conditioning-exclusion proven (same identity under any conditioning); honest all-zero [105] stubs (stub:true); tier router + registry eviction deferred to Phase 10/11
+- [Phase 07]: envi-dgm TIN: added DgmError::TooLarge (5th variant) for the DoS cap mandated by threat T-07-02-02
+- [Phase 07]: Breakline vertex Z interpolated from the point surface (nearest-vertex fallback outside hull) — never a silent 0.0
 
 ### Pending Todos
 
@@ -149,6 +152,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-10T11:42:57.501Z
+Last session: 2026-07-10T11:58:00.566Z
 Stopped at: Phase 7 context gathered
 Resume file: .planning/phases/07-frontend-shell-scene-editing/07-CONTEXT.md
