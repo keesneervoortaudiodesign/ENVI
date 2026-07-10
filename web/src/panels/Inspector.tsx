@@ -19,6 +19,7 @@ import { useSceneStore } from "../store/sceneStore";
 import { GroundZoneFields, type FieldsProps } from "./fields/GroundZoneFields";
 import { ForestFields } from "./fields/ForestFields";
 import { SourceFields } from "./fields/SourceFields";
+import { FacadePanel } from "./FacadePanel";
 
 // Render the field body for a kind. Exhaustive over the 9 kinds — `assertNeverKind` makes a missing
 // case a compile error (D-09).
@@ -37,7 +38,7 @@ function KindFields({ kind, props }: { kind: Kind; props: FieldsProps }): ReactE
     case "wall":
       return <WallFields {...props} />;
     case "building":
-      return <BasicNote text="Building — per-façade isolation is authored in the 07-08 editor." />;
+      return <FacadePanel {...props} />;
     case "elevation_line":
       return <BasicNote text="Elevation line — a DGM breakline. Its Z comes from its endpoints." />;
     case "calc_area":
@@ -73,8 +74,20 @@ function ElevationPointFields({ properties, update }: FieldsProps): ReactElement
   );
 }
 
-function WallFields({ properties, update }: FieldsProps): ReactElement {
+// A wall/screen (WEB-08/SCN-01). Marking it semi-transparent turns it into an acoustic screen that needs
+// an isolation spectrum: WITH a spectrum it is the acoustically-special "info" state (double-stroke
+// --color-info on the map); semi-transparent WITHOUT a spectrum is the "warn" state (--color-warn), the
+// same severity language the 07-09 validation panel will list. The state is exposed here as a chip (and
+// `data-treatment`) — the map paint keys off the identical store state.
+function WallFields({ id, properties }: FieldsProps): ReactElement {
   const semiTransparent = properties["semi_transparent"] === true;
+  const updateProperties = useSceneStore((s) => s.updateProperties);
+  const hasSpectrum = useSceneStore((s) => Object.prototype.hasOwnProperty.call(s.spectra, id));
+  const openSpectrumEditor = useSceneStore((s) => s.openSpectrumEditor);
+
+  // The map treatment / severity state (UI-SPEC): opaque, acoustic-screen (info), or missing-spectrum (warn).
+  const treatment = !semiTransparent ? "opaque" : hasSpectrum ? "info" : "warn";
+
   return (
     <div className="field-group">
       <label className="field-row">
@@ -83,12 +96,29 @@ function WallFields({ properties, update }: FieldsProps): ReactElement {
           type="checkbox"
           data-testid="wall-semitransparent"
           checked={semiTransparent}
-          onChange={(e) => update({ semi_transparent: e.target.checked })}
+          onChange={(e) => updateProperties(id, { semi_transparent: e.target.checked })}
         />
       </label>
+      {semiTransparent ? (
+        <div className="field-row">
+          <span className="field-label">Screen state</span>
+          <span
+            className={`chip ${treatment === "info" ? "info" : "warn"}`}
+            data-testid="wall-treatment"
+            data-treatment={treatment}
+          >
+            {treatment === "info" ? "acoustic screen" : "no spectrum"}
+          </span>
+        </div>
+      ) : null}
       <div className="field-row">
         <span className="field-label">Isolation spectrum</span>
-        <button type="button" className="btn dense" data-testid="wall-edit-spectrum" disabled>
+        <button
+          type="button"
+          className="btn dense"
+          data-testid="wall-edit-spectrum"
+          onClick={() => openSpectrumEditor(id, "Screen isolation spectrum")}
+        >
           Edit spectrum
         </button>
       </div>

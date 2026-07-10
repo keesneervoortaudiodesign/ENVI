@@ -37,6 +37,7 @@
 //!
 #![deny(unsafe_code)]
 
+pub mod calibrate;
 pub mod dto;
 pub mod geojson;
 pub mod hash;

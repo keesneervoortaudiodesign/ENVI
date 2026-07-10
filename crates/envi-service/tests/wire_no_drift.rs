@@ -46,7 +46,7 @@ use envi_service::api::calc::{
     SubmitResponse,
 };
 use envi_service::api::dgm::{DgmReq, DgmResp};
-use envi_service::api::meta::{FreqAxisDto, InterpolateReq, InterpolateResp};
+use envi_service::api::meta::{FreqAxisDto, InterpolateReq, InterpolateResp, SplToLwReq, SplToLwResp};
 use envi_service::api::projects::{CreateProjectRequest, OriginDto, UpdateProjectRequest};
 use envi_service::jobs::{JobId, JobStatus};
 use envi_store::dto::{
@@ -95,6 +95,8 @@ fn export_all_wire_types(cfg: &Config) {
     FreqAxisDto::export_all(cfg).unwrap();
     InterpolateReq::export_all(cfg).unwrap();
     InterpolateResp::export_all(cfg).unwrap();
+    SplToLwReq::export_all(cfg).unwrap();
+    SplToLwResp::export_all(cfg).unwrap();
     DgmReq::export_all(cfg).unwrap();
     DgmResp::export_all(cfg).unwrap();
     OriginDto::export_all(cfg).unwrap();

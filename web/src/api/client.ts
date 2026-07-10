@@ -18,6 +18,8 @@ import type {
   FreqAxisDto,
   InterpolateReq,
   InterpolateResp,
+  SplToLwReq,
+  SplToLwResp,
 } from "../generated/wire";
 import type { GeoJSONStoreFeatures } from "terra-draw";
 
@@ -90,6 +92,12 @@ export function getFreqAxis(signal?: AbortSignal): Promise<FreqAxisDto> {
 // POST /api/v1/meta/interpolate-spectrum — expand authored anchors onto the dense grid (D-05 preview).
 export function interpolateSpectrum(req: InterpolateReq, signal?: AbortSignal): Promise<InterpolateResp> {
   return sendJson<InterpolateResp>("POST", "/meta/interpolate-spectrum", req, signal);
+}
+
+// POST /api/v1/meta/spl-to-lw — back-calculate sound power L_W from a free-field SPL-at-reference (WEB-02).
+// The acoustic free-field correction is SERVER-side (SVC-07) — the client never does Hz/log arithmetic.
+export function splToLw(req: SplToLwReq, signal?: AbortSignal): Promise<SplToLwResp> {
+  return sendJson<SplToLwResp>("POST", "/meta/spl-to-lw", req, signal);
 }
 
 // POST /api/v1/dgm/triangulate — server-side constrained-Delaunay TIN from elevation points/breaklines

@@ -51,6 +51,7 @@ pub fn api_router() -> Router<Arc<AppState>> {
             "/meta/interpolate-spectrum",
             post(meta::interpolate_spectrum),
         )
+        .route("/meta/spl-to-lw", post(meta::spl_to_lw_handler))
         .route("/dgm/triangulate", post(dgm::triangulate))
         .route("/projects", get(projects::list).post(projects::create))
         .route("/projects/last", get(projects::last))

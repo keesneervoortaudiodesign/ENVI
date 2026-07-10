@@ -492,6 +492,36 @@ id: string,
 sub_sources: Array<SubSourceDto>, };
 
 /**
+ * Request body for `POST /meta/spl-to-lw`: a free-field SPL spectrum measured at
+ * a reference distance, to back-calculate into sound power `L_W` (WEB-02).
+ *
+ * `spl_db` is dense `[105]` by band **index** (never nominal Hz — SVC-07 wire
+ * contract); `reference_distance_m` is the positive distance the SPL was
+ * specified at. `deny_unknown_fields` (request-facing) so a typo'd key is a loud
+ * `4xx`. Length / finiteness / positivity are enforced by [`spl_to_lw`], not
+ * re-implemented here (the store owns the acoustic back-calc, SVC-07).
+ */
+export type SplToLwReq = { 
+/**
+ * Free-field SPL per band index `0..=104` (dB), dense `[105]`.
+ */
+spl_db: Array<number>, 
+/**
+ * The reference distance the SPL was specified at, meters (must be `> 0`).
+ */
+reference_distance_m: number, };
+
+/**
+ * Response body for `POST /meta/spl-to-lw`: the dense `[105]` sound-power grid
+ * (`l_w_db[i]` is band index `i`, never nominal Hz).
+ */
+export type SplToLwResp = { 
+/**
+ * The back-calculated sound-power `L_W` per band index `0..=104` (dB).
+ */
+l_w_db: Array<number>, };
+
+/**
  * Serde twin of `envi_engine::scene::SubSource`: a position + its spectrum.
  */
 export type SubSourceDto = { 

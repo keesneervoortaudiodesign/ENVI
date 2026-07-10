@@ -15,6 +15,7 @@ import type { GeoJSONStoreFeatures } from "terra-draw";
 
 import { KIND_META, isKind, type Kind } from "./draw/kinds";
 import { useSceneStore } from "./store/sceneStore";
+import type { AuthoredSpectrumDto } from "./generated/wire";
 
 // Build a minimal valid geometry for a kind's Terra Draw geometry mode, offset around [lng, lat].
 function geometryFor(kind: Kind, lng: number, lat: number): GeoJSONStoreFeatures["geometry"] {
@@ -55,6 +56,17 @@ export interface EnviTestBridge {
     selection: string | null;
     inherited: Record<string, readonly string[]>;
   };
+  // The per-edge UUIDs (D-02) of a building feature, in ring order.
+  buildingEdges(id: string): string[];
+  // Set an authored isolation spectrum for a feature/edge key (a façade override or a wall/screen spectrum).
+  setSpectrum(key: string, authored: AuthoredSpectrumDto): void;
+  // The authored spectrum stored under a key, or null.
+  spectrum(key: string): AuthoredSpectrumDto | null;
+  // Apply a building geometry update (a new footprint ring) through the same store path a Terra Draw edit
+  // uses, so the D-02 ring-diff reconciles edge_ids + façade spectra. `ring` is a CLOSED ring `[x, y][]`.
+  applyBuildingRing(id: string, ring: [number, number][]): void;
+  // The current [x, y] endpoints of the edge whose UUID is `edgeId` on building `id` (for re-point checks).
+  edgeSegment(id: string, edgeId: string): { from: [number, number]; to: [number, number] } | null;
   // Trigger the whole-scene PUT.
   save(): Promise<void>;
 }
@@ -76,6 +88,47 @@ export function installTestBridge(): void {
         kinds[id] = s.kindOf(id);
       }
       return { kinds, selection: s.selection, inherited: { ...s.inheritedFields } };
+    },
+    buildingEdges(id) {
+      const raw = useSceneStore.getState().features[id]?.properties?.["edge_ids"];
+      return Array.isArray(raw) ? (raw.filter((x) => typeof x === "string") as string[]) : [];
+    },
+    setSpectrum(key, authored) {
+      useSceneStore.getState().setSpectrum(key, authored);
+    },
+    spectrum(key) {
+      return (useSceneStore.getState().spectra[key] ?? null) as AuthoredSpectrumDto | null;
+    },
+    applyBuildingRing(id, ring) {
+      const prev = useSceneStore.getState().features[id];
+      const feature = {
+        id,
+        type: "Feature",
+        geometry: { type: "Polygon", coordinates: [ring] },
+        properties: { ...(prev?.properties ?? {}) },
+      } as unknown as GeoJSONStoreFeatures;
+      useSceneStore.getState().applyTerraDrawChange([id], "update", [feature]);
+    },
+    edgeSegment(id, edgeId) {
+      const s = useSceneStore.getState();
+      const edges = this.buildingEdges(id);
+      const pos = edges.indexOf(edgeId);
+      if (pos < 0) {
+        return null;
+      }
+      const geometry = s.features[id]?.geometry;
+      if (!geometry || geometry.type !== "Polygon") {
+        return null;
+      }
+      const outer = geometry.coordinates[0];
+      const closed =
+        outer.length > 1 &&
+        outer[0][0] === outer[outer.length - 1][0] &&
+        outer[0][1] === outer[outer.length - 1][1];
+      const verts = closed ? outer.slice(0, outer.length - 1) : outer.slice();
+      const from = verts[pos];
+      const to = verts[(pos + 1) % verts.length];
+      return { from: [from[0], from[1]], to: [to[0], to[1]] };
     },
     save() {
       return useSceneStore.getState().saveScene();

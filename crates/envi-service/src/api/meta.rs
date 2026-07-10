@@ -28,6 +28,7 @@ use ts_rs::TS;
 
 use envi_engine::freq::{FREQ_AXIS, N_BANDS, N_THIRD_OCT, NOMINAL_THIRD_OCT};
 use envi_engine::propagation::transmission::IsolationSpectrum;
+use envi_store::calibrate::spl_to_lw;
 use envi_store::interpolate::{Resolution, interpolate};
 
 use crate::error::ApiError;
@@ -129,4 +130,45 @@ pub async fn interpolate_spectrum(
     Ok(Json(InterpolateResp {
         r_db: spectrum.as_bands().to_vec(),
     }))
+}
+
+/// Request body for `POST /meta/spl-to-lw`: a free-field SPL spectrum measured at
+/// a reference distance, to back-calculate into sound power `L_W` (WEB-02).
+///
+/// `spl_db` is dense `[105]` by band **index** (never nominal Hz — SVC-07 wire
+/// contract); `reference_distance_m` is the positive distance the SPL was
+/// specified at. `deny_unknown_fields` (request-facing) so a typo'd key is a loud
+/// `4xx`. Length / finiteness / positivity are enforced by [`spl_to_lw`], not
+/// re-implemented here (the store owns the acoustic back-calc, SVC-07).
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct SplToLwReq {
+    /// Free-field SPL per band index `0..=104` (dB), dense `[105]`.
+    pub spl_db: Vec<f64>,
+    /// The reference distance the SPL was specified at, meters (must be `> 0`).
+    pub reference_distance_m: f64,
+}
+
+/// Response body for `POST /meta/spl-to-lw`: the dense `[105]` sound-power grid
+/// (`l_w_db[i]` is band index `i`, never nominal Hz).
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct SplToLwResp {
+    /// The back-calculated sound-power `L_W` per band index `0..=104` (dB).
+    pub l_w_db: Vec<f64>,
+}
+
+/// Handler: back-calculate sound power `L_W` from an SPL-at-reference (WEB-02,
+/// SVC-07). Thin wrapper over [`envi_store::calibrate::spl_to_lw`] — the acoustic
+/// free-field correction lives in the store, never in the browser and never
+/// inlined here.
+///
+/// # Errors
+/// - `400` if `spl_db.len()` ≠ 105, any SPL value is non-finite, or
+///   `reference_distance_m` is non-finite or `<= 0` (surfaced from the store as
+///   [`ApiError::BadRequest`] via `From<StoreError>`).
+pub async fn spl_to_lw_handler(Json(req): Json<SplToLwReq>) -> Result<Json<SplToLwResp>, ApiError> {
+    let l_w_db = spl_to_lw(&req.spl_db, req.reference_distance_m)?;
+    Ok(Json(SplToLwResp { l_w_db }))
 }
