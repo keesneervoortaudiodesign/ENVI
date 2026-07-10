@@ -6,14 +6,14 @@ current_phase: 07
 current_phase_name: frontend-shell-scene-editing
 status: executing
 stopped_at: Phase 7 context gathered
-last_updated: "2026-07-10T15:53:31.790Z"
+last_updated: "2026-07-10T16:25:40.969Z"
 last_activity: 2026-07-10
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 33
-  completed_plans: 28
+  completed_plans: 29
   percent: 55
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 07 (frontend-shell-scene-editing) — EXECUTING
-Plan: 6 of 10
+Plan: 7 of 10
 Status: Ready to execute
 Last activity: 2026-07-10 — Phase 07 execution started
 
@@ -77,6 +77,7 @@ Progress: [██████████] Phase 6 — 4/4 plans complete (06-01
 | Phase 07 P05 | 4min | 2 tasks | 12 files |
 | Phase 07 P03 | 13min | 3 tasks | 9 files |
 | Phase 07 P06 | 16min | 3 tasks | 10 files |
+| Phase 07 P04 | 40min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,7 @@ Recent decisions affecting current work:
 - [Phase 07]: interpolate-spectrum endpoint delegates to the shared envi_store::interpolate core (D-05) then the engine IsolationSpectrum::new range gate: R>1000 is a 4xx, never silently clamped
 - [Phase ?]: Terra Draw re-hydration after setStyle REBUILDS a fresh instance on style.load (research's clear()+addFeatures throws against maplibre adapter v1.4.1)
 - [Phase ?]: Store is canonical (D-03); TD change echoes with context.origin==='api' are ignored to break the feedback loop
+- [Phase ?]: TS wire types generated from Rust serde DTOs via ts-rs (D-10)
 
 ### Pending Todos
 
@@ -159,6 +161,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-10T15:52:54.203Z
+Last session: 2026-07-10T16:25:22.413Z
 Stopped at: Phase 7 context gathered
 Resume file: .planning/phases/07-frontend-shell-scene-editing/07-CONTEXT.md

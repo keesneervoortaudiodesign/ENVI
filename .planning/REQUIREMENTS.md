@@ -104,14 +104,14 @@
 ### Web frontend (WEB)
 
 - [x] **WEB-01**: OSM/vector basemap (MapLibre GL JS 5)
-- [ ] **WEB-02**: Place/edit directional sources on the map (Terra Draw), with sound power / spectrum / SPL-at-reference-point calibration
+- [x] **WEB-02**: Place/edit directional sources on the map (Terra Draw), with sound power / spectrum / SPL-at-reference-point calibration
 - [ ] **WEB-03**: Place/edit receiver points and the receiver-grid / calculation-area domain
 - [x] **WEB-04**: Draw/edit buildings, walls, ground-effect (impedance A–H + roughness N/S/M/L) zones, forests, and elevation points/lines with DGM re-triangulation; last-object property inheritance; click-to-select validation messages
 - [ ] **WEB-05**: Configure source input conditioning (per-source gain/filter/delay) in the UI with **interactive fast recalculation** (tensor MAC) and a results-stale badge
 - [ ] **WEB-06**: Render isophone overlays as fill polygons with an editable color scale + legend (dB weighting from result metadata)
 - [ ] **WEB-07**: Submit a calculation job and view progress / abort / results; pre-run cost estimate
-- [ ] **WEB-08**: Draw/assign a **semi-transparent screen** and edit its isolation spectrum (SCN-01)
-- [ ] **WEB-09**: Assign **per-façade isolation spectra** on a semi-transparent building (SCN-02)
+- [x] **WEB-08**: Draw/assign a **semi-transparent screen** and edit its isolation spectrum (SCN-01)
+- [x] **WEB-09**: Assign **per-façade isolation spectra** on a semi-transparent building (SCN-02)
 - [x] **WEB-10**: **Isolation-spectrum editor** — enter 1/12-octave directly, or 1/1- / 1/3-octave with linear interpolation to the 1/12-octave grid (SCN-03)
 - [ ] **WEB-11**: **Receiver-point spectrum readout** — per-band (1/12-oct expert + 1/3-oct display aggregated by band index), dB(A)/dB(C) totals, coherent/incoherent split, instant dB(A)⇄dB(C) toggle without recompute
 - [ ] **WEB-12**: Weather what-if panel — import, manual override, named-scenario management and difference-map view (METX-03/04)
@@ -217,14 +217,14 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | GRID-04 | Phase 11 | Pending |
 | GRID-05 | Phase 11 | Pending |
 | WEB-01 | Phase 7 | Complete |
-| WEB-02 | Phase 7 | Pending |
+| WEB-02 | Phase 7 | Complete |
 | WEB-03 | Phase 7 | Pending |
 | WEB-04 | Phase 7 | Complete |
 | WEB-05 | Phase 11 | Pending |
 | WEB-06 | Phase 11 | Pending |
 | WEB-07 | Phase 10 | Pending |
-| WEB-08 | Phase 7 | Pending |
-| WEB-09 | Phase 7 | Pending |
+| WEB-08 | Phase 7 | Complete |
+| WEB-09 | Phase 7 | Complete |
 | WEB-10 | Phase 7 | Complete |
 | WEB-11 | Phase 11 | Pending |
 | WEB-12 | Phase 11 | Pending |
