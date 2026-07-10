@@ -2,7 +2,7 @@
 //!
 //! # Module I/O
 //! - **Input:** every `ts_rs::TS`-deriving wire DTO across `envi-store`
-//!   (16 DTOs + [`Resolution`]) and `envi-service` (16 request/response/enum
+//!   (16 DTOs + [`Resolution`]) and `envi-service` (18 request/response/enum
 //!   types incl. [`JobStatus`]), plus the committed
 //!   `web/src/generated/wire.ts`.
 //! - **Output:** a `#[test]` verdict. Regenerates the whole wire contract into a
@@ -46,7 +46,9 @@ use envi_service::api::calc::{
     SubmitResponse,
 };
 use envi_service::api::dgm::{DgmReq, DgmResp};
-use envi_service::api::meta::{FreqAxisDto, InterpolateReq, InterpolateResp, SplToLwReq, SplToLwResp};
+use envi_service::api::meta::{
+    FreqAxisDto, InterpolateReq, InterpolateResp, SplToLwReq, SplToLwResp,
+};
 use envi_service::api::projects::{CreateProjectRequest, OriginDto, UpdateProjectRequest};
 use envi_service::jobs::{JobId, JobStatus};
 use envi_store::dto::{
