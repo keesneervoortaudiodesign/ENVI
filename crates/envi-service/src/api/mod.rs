@@ -46,6 +46,10 @@ use crate::state::AppState;
 pub fn api_router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/meta/freq-axis", get(meta::freq_axis))
+        .route(
+            "/meta/interpolate-spectrum",
+            post(meta::interpolate_spectrum),
+        )
         .route("/projects", get(projects::list).post(projects::create))
         .route("/projects/last", get(projects::last))
         .route(
