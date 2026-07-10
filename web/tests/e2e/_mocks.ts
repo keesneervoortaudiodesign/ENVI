@@ -74,3 +74,60 @@ export async function installOffline(page: Page): Promise<string[]> {
   await installApiMocks(page);
   return unmocked;
 }
+
+// A valid 105-band 1/12-octave freq axis (band-index keyed; nominal Hz display-only). Built from the x/12
+// grid so the spectrum editor's Hz tick labels resolve; assertions are always by band INDEX, never Hz. The
+// 27 third-octave centres land on indices 0, 4, 8, …, 104 (the octave centres are the subset 4, 16, … 100).
+export function freqAxisFixture(): unknown {
+  const G = Math.pow(10, 3 / 10);
+  const centres = Array.from({ length: 105 }, (_, i) => 1000 * Math.pow(G, (i - 64) / 12));
+  const thirdIdx = Array.from({ length: 27 }, (_, k) => 4 * k);
+  return {
+    n_bands: 105,
+    centres_hz: centres,
+    third_octave_indices: thirdIdx,
+    nominal_third_octave_hz: thirdIdx.map((i) => Math.round(centres[i])),
+  };
+}
+
+// Install the two `/meta` endpoints the isolation/sound-power spectrum editor needs (D-05): the freq axis
+// and the SERVER-owned interpolation preview. The interpolate mock echoes a deterministic dense [105] ramp
+// so anchor/preview assertions are exact. Registered AFTER `installOffline` so these specific routes win.
+export async function installMetaMocks(page: Page): Promise<void> {
+  await page.route(/\/api\/v1\/meta\/freq-axis$/, (route: Route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(freqAxisFixture()) }),
+  );
+  await page.route(/\/api\/v1\/meta\/interpolate-spectrum$/, (route: Route) => {
+    const r_db = Array.from({ length: 105 }, (_, i) => 20 + (i % 12));
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ r_db }) });
+  });
+}
+
+// A deterministic single-triangle TIN for a valid elevation set (three non-collinear points → one face).
+const STUB_TIN = {
+  vertices: [
+    [4.9, 52.36, 0],
+    [4.91, 52.36, 1],
+    [4.905, 52.37, 2],
+  ],
+  triangles: [[0, 1, 2]],
+};
+
+// Install `POST /dgm/triangulate` as a DETERMINISTIC oracle of the SC1 re-triangulation contract: a valid
+// point-only elevation set returns the single-triangle TIN (200), while a set carrying ≥2 breaklines models
+// the server's interior-crossing rejection and returns a typed 4xx (the crit source the ValidationPanel
+// surfaces). A no-op producer would never fire either, so both SC1 branches genuinely exercise the wire.
+export async function installTriangulateMock(page: Page): Promise<void> {
+  await page.route(/\/api\/v1\/dgm\/triangulate$/, (route: Route) => {
+    const body = route.request().postDataJSON() as { breaklines?: unknown[] } | null;
+    const breaklines = Array.isArray(body?.breaklines) ? body.breaklines : [];
+    if (breaklines.length >= 2) {
+      return route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "breaklines intersect in their interior" }),
+      });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(STUB_TIN) });
+  });
+}
