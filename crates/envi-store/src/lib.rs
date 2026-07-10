@@ -40,6 +40,7 @@
 pub mod dto;
 pub mod geojson;
 pub mod hash;
+pub mod interpolate;
 pub mod manifest;
 pub mod project_dir;
 
