@@ -1,0 +1,144 @@
+/* app.css — ENVI component/layout CSS layered on the adopted metrao3 tokens (theme.css).
+ *
+ * # Module I/O
+ * - Input  the theme tokens from theme.css (colours, spacing, radii, --row-h / --row-h-lg). No new
+ *   token is defined here — every value below is `var(--…)` or a layout primitive (grid/flex/px).
+ * - Output the four-region app-shell layout + palette/rail component styles used by App.tsx.
+ *   Control heights come from --row-h-lg (36px palette rows) / --row-h (28px dense); the .btn 44px
+ *   min-height (theme) is retained on the primary Save + destructive actions only (D-12).
+ */
+
+/* Full-viewport shell: fixed project bar over a three-column body. */
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Region 1 — project bar. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  min-height: var(--row-h-lg);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+.topbar-left,
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.identity {
+  font-size: var(--text-base);
+  color: var(--color-text);
+  margin-right: var(--space-2);
+}
+.save-indicator {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-right: var(--space-1);
+}
+
+/* Body — palette | map | right rail. */
+.shell-body {
+  display: grid;
+  grid-template-columns: 200px 1fr 320px;
+  min-height: 0;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-bg);
+}
+
+/* Region 2 — object palette. */
+.palette {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.tool-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  overflow-y: auto;
+}
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--row-h-lg);
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.tool-row:hover {
+  background: var(--color-surface-2);
+}
+/* Active tool: elevated surface + primary left-border + primary text (existing tokens; no
+   --color-primary-bg token exists, so the "background tint" is the elevated surface — see SUMMARY). */
+.tool-row.active {
+  background: var(--color-surface-3);
+  border-left-color: var(--color-primary);
+  color: var(--color-primary);
+}
+.tool-row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.tool-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted);
+}
+.tool-row.active .tool-icon {
+  color: var(--color-primary);
+}
+.tool-label {
+  flex: 1;
+}
+
+/* Region 3 — map canvas slot (placeholder until 07-06). */
+.map-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.map-placeholder {
+  color: var(--color-text-dim);
+  font-size: var(--text-sm);
+}
+
+/* Region 4 — right rail. */
+.right-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 0;
+  overflow-y: auto;
+}
+.empty-state {
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}

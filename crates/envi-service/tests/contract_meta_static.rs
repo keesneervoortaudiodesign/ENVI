@@ -84,7 +84,10 @@ async fn freq_axis_meta_matches_engine() {
 
 #[tokio::test]
 async fn static_bundle_served_with_spa_fallback() {
-    // GET / -> 200 placeholder HTML (Phase-7 heading present).
+    // GET / -> 200: the REAL Vite bundle (Phase-7 shell). We assert STABLE markers baked into the
+    // built index.html — the `<title>ENVI` document title and the `<div id="root">` SPA mount — NOT
+    // the hashed asset filenames (which change every build) and NOT the removed Phase-6 placeholder
+    // text ("frontend arrives in Phase 7"). These markers survive any rebuild of the shell.
     let (app, _tmp) = test_app();
     let resp = app
         .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
@@ -93,8 +96,8 @@ async fn static_bundle_served_with_spa_fallback() {
     assert_eq!(resp.status(), StatusCode::OK, "GET / is 200");
     let html = String::from_utf8(body_bytes(resp).await).expect("utf8 html");
     assert!(
-        html.contains("frontend arrives in Phase 7"),
-        "GET / serves the placeholder heading"
+        html.contains("<title>ENVI") && html.contains("id=\"root\""),
+        "GET / serves the real bundle (stable <title>ENVI + #root mount markers)"
     );
 
     // Unknown non-API deep link -> 200 index.html (SPA fallback).
@@ -115,8 +118,8 @@ async fn static_bundle_served_with_spa_fallback() {
     );
     let html = String::from_utf8(body_bytes(resp).await).expect("utf8 html");
     assert!(
-        html.contains("frontend arrives in Phase 7"),
-        "SPA deep link serves index.html, not a 404"
+        html.contains("<title>ENVI") && html.contains("id=\"root\""),
+        "SPA deep link serves index.html (real bundle markers), not a 404"
     );
 
     // Unknown /api/v1 path -> 404 JSON (the API namespace does NOT serve HTML).
