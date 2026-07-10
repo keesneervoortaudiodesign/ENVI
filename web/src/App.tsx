@@ -12,6 +12,7 @@ import { type ReactElement } from "react";
 
 import { MapCanvas } from "./map/MapCanvas";
 import { Palette } from "./panels/Palette";
+import { Inspector } from "./panels/Inspector";
 import { useSceneStore } from "./store/sceneStore";
 
 export function App(): ReactElement {
@@ -63,10 +64,7 @@ export function App(): ReactElement {
 
         {/* Region 4 — right rail: property inspector + validation panel. */}
         <aside className="right-rail" data-testid="right-rail" aria-label="Inspector and validation">
-          <section className="panel" data-testid="inspector">
-            <div className="panel-header">Properties</div>
-            <div className="empty-state">Select an object to edit its properties.</div>
-          </section>
+          <Inspector />
           <section className="panel" data-testid="validation">
             <div className="panel-header">Validation</div>
             <div className="empty-state">No issues — the scene is valid.</div>
