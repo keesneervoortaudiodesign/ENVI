@@ -1,0 +1,15 @@
+[package]
+name = "envi-dgm"
+description = "ENVI DGM boundary — constrained-Delaunay TIN from user-drawn elevation (D-08); spade lives HERE, never in envi-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# Boundary rule (D-08, 07-RESEARCH Gate 3): pure-Rust constrained-Delaunay TIN.
+# spade + thiserror ONLY at runtime — zero C toolchain, zero I/O, NO serde in the
+# runtime graph, and NO dependency on envi-engine (the 3-dep quarantine must not
+# be reachable through this crate). serde/approx are dev-only if the TIN gets an
+# oracle test.
+[dependencies]
+spade = "2.15"
+thiserror = "2"
