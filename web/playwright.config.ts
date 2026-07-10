@@ -18,6 +18,17 @@ export default defineConfig({
     baseURL: "http://localhost:5174",
     headless: true,
     trace: "on-first-retry",
+    // MapLibre GL needs WebGL2; headless Chromium (137+) blocks the software (SwiftShader) fallback
+    // unless explicitly allowed. These flags give a deterministic offscreen WebGL context so the map
+    // renders in CI-less local runs without a GPU. (No effect on the shipped bundle — test-only.)
+    launchOptions: {
+      args: [
+        "--enable-unsafe-swiftshader",
+        "--use-gl=angle",
+        "--use-angle=swiftshader",
+        "--ignore-gpu-blocklist",
+      ],
+    },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {

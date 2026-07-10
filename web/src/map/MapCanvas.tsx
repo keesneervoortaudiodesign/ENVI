@@ -26,6 +26,7 @@ function SceneOverlay(): ReactElement {
   const { switchBasemap, addTestFeature, tdFeatureCount, ready } = useTerraDraw();
   const storeFeatureCount = useSceneStore((s) => Object.keys(s.features).length);
   const drawInstancesLive = useSceneStore((s) => s.drawInstancesLive);
+  const rehydrations = useSceneStore((s) => s.rehydrations);
 
   return (
     <div className="map-overlay">
@@ -66,6 +67,10 @@ function SceneOverlay(): ReactElement {
         <div>
           <dt>instances</dt>
           <dd data-testid="td-instances-live">{drawInstancesLive}</dd>
+        </div>
+        <div>
+          <dt>rehydrations</dt>
+          <dd data-testid="rehydration-count">{rehydrations}</dd>
         </div>
       </dl>
     </div>

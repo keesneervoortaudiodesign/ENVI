@@ -35,6 +35,10 @@ export interface SceneState {
   // DOM; superseded once the real drawing UI lands in 07-07.
   readonly drawInstancesLive: number;
   readonly drawInstancesBuilt: number;
+  // How many times the scene has been re-hydrated into Terra Draw from a `style.load` after a basemap
+  // switch (SC4). Starts at 0 (the initial style load happens before the instance is built); each
+  // basemap switch that re-adds the canonical features increments it. Surfaced to the E2E.
+  readonly rehydrations: number;
 
   // Write user-driven Terra Draw geometry into the store. `snapshot` is TD's FULL current feature list
   // (`draw.getSnapshot()`); every id in `ids` present in the snapshot is upserted, every id absent is a
@@ -50,6 +54,7 @@ export interface SceneState {
   markDirty(): void;
   noteDrawBuilt(): void;
   noteDrawStopped(): void;
+  noteRehydration(): void;
 }
 
 export const useSceneStore = create<SceneState>((set, get) => ({
@@ -59,6 +64,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   dirty: false,
   drawInstancesLive: 0,
   drawInstancesBuilt: 0,
+  rehydrations: 0,
 
   applyTerraDrawChange: (ids, _type, snapshot) =>
     set((state) => {
@@ -90,4 +96,5 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     })),
   noteDrawStopped: () =>
     set((state) => ({ drawInstancesLive: Math.max(0, state.drawInstancesLive - 1) })),
+  noteRehydration: () => set((state) => ({ rehydrations: state.rehydrations + 1 })),
 }));

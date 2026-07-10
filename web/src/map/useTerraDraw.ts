@@ -44,34 +44,6 @@ export interface TerraDrawController {
   ready: boolean;
 }
 
-// Re-add the store's canonical features into Terra Draw. Fires `change` with origin:"api" (ignored by
-// the change handler), so this never writes back into the store — the loop is broken by design (D-03).
-function rehydrate(draw: TerraDraw): void {
-  const features = useSceneStore.getState().terraDrawFeatures();
-  // `map.setStyle()` wiped the adapter's rendered source/layers but TD's internal store still holds the
-  // features; clear it first so re-adding the same ids does not collide, then re-add (the adapter
-  // re-creates its source/layers on the new style during the resulting render). Research Pattern 2.
-  try {
-    draw.clear();
-    if (features.length > 0) {
-      draw.addFeatures(features);
-    }
-  } catch {
-    // Defensive: if the adapter could not re-render onto the fresh style, rebuild its layers via a
-    // stop/start cycle and re-add. Keeps SC4 robust without leaving the scene invisible.
-    try {
-      draw.stop();
-      draw.start();
-      draw.clear();
-      if (features.length > 0) {
-        draw.addFeatures(features);
-      }
-    } catch {
-      /* leave TD empty rather than throw during a style swap */
-    }
-  }
-}
-
 export function useTerraDraw(): TerraDrawController {
   const drawRef = useRef<TerraDraw | null>(null);
   const altStyleRef = useRef(false);
@@ -107,7 +79,10 @@ export function useTerraDraw(): TerraDrawController {
       useSceneStore.getState().markDirty();
     };
 
-    const build = (): void => {
+    // Create ONE Terra Draw instance bound to the current map style, wire its handlers, and re-add the
+    // store's canonical features. A fresh adapter registers its source/layers onto whatever style is
+    // live now — which is exactly why a basemap switch rebuilds rather than reuses (see onStyleLoad).
+    const buildDraw = (): void => {
       if (disposed || drawRef.current) {
         return; // StrictMode double-mount / already built — exactly one live instance
       }
@@ -125,27 +100,50 @@ export function useTerraDraw(): TerraDrawController {
       draw.on("finish", onFinish);
       drawRef.current = draw;
       useSceneStore.getState().noteDrawBuilt();
-      // Hydrate any features the store already holds (e.g. a reopened project in a later plan).
+      // Re-add the canonical features (initial mount OR after a basemap switch). addFeatures fires
+      // `change` with origin:"api" (ignored for the store), so this never writes back — no loop (D-03).
       const existing = useSceneStore.getState().terraDrawFeatures();
       if (existing.length > 0) {
         draw.addFeatures(existing);
       }
+      setTdFeatureCount(draw.getSnapshot().length);
       setReady(true);
     };
 
-    // Re-hydrate after a basemap switch: setStyle destroys sources/layers, so re-add from the store on
-    // the SINGLE style.load hook (not the repeatedly-firing per-tile style-data event).
-    const onStyleLoad = (): void => {
+    const teardownDraw = (): void => {
       const draw = drawRef.current;
-      if (draw) {
-        rehydrate(draw);
+      if (!draw) {
+        return;
       }
+      draw.off("change", onChange);
+      draw.off("finish", onFinish);
+      // stop() may touch layers already destroyed by setStyle — guard so cleanup never throws.
+      try {
+        draw.stop();
+      } catch {
+        /* style already torn down */
+      }
+      useSceneStore.getState().noteDrawStopped();
+      drawRef.current = null;
+    };
+
+    // `map.setStyle()` destroys every source and layer — including the Terra Draw adapter's, which caches
+    // the old style's source handles and cannot re-attach itself. So on the SINGLE `style.load` hook
+    // (not the repeatedly-firing per-tile style-data event), tear the instance down and rebuild a fresh
+    // one whose new adapter registers onto the new style, then re-add the canonical features (SC4).
+    const onStyleLoad = (): void => {
+      if (!drawRef.current) {
+        return; // initial style load — the first build is driven by "load" below
+      }
+      teardownDraw();
+      buildDraw();
+      useSceneStore.getState().noteRehydration();
     };
 
     if (instance.isStyleLoaded()) {
-      build();
+      buildDraw();
     } else {
-      instance.once("load", build);
+      instance.once("load", buildDraw);
     }
     instance.on("style.load", onStyleLoad);
     const detachAttribution = attachOsmAttribution(instance);
@@ -153,16 +151,9 @@ export function useTerraDraw(): TerraDrawController {
     return () => {
       disposed = true;
       instance.off("style.load", onStyleLoad);
-      instance.off("load", build);
+      instance.off("load", buildDraw);
       detachAttribution();
-      const draw = drawRef.current;
-      if (draw) {
-        draw.off("change", onChange);
-        draw.off("finish", onFinish);
-        draw.stop();
-        useSceneStore.getState().noteDrawStopped();
-      }
-      drawRef.current = null;
+      teardownDraw();
     };
   }, [mapRef]);
 
