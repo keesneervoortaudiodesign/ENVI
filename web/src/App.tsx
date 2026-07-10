@@ -1,62 +1,36 @@
 // App.tsx — the ENVI application shell: four persistent regions on the token grid (UI-SPEC).
 //
 // # Module I/O
-// - Input  the canonical store (D-03): the dirty flag drives the save indicator; Save flushes the whole
-//   scene (07-07). The palette + property inspector are their own components (panels/).
-// - Output the four-region shell JSX — project bar (.topbar), object palette (<Palette>), map-canvas
-//   slot (<MapCanvas>, 07-06), and the right rail (<Inspector> + validation empty-state). Control
-//   heights come from --row-h-lg / --row-h; 44px is retained ONLY on the primary Save and destructive
-//   actions (D-12). Every colour/space/radius is an existing theme token — no new token.
+// - Input  the canonical store (D-03) + the autosave store (D-04). `useAutosave()` wires committed edits
+//   to the debounced whole-scene PUT + the flush-on-unload. The palette, inspector, validation panel,
+//   project bar, and spectrum editor are their own components (panels/ + spectrum/).
+// - Output the four-region shell JSX — project bar (<ProjectBar>), object palette (<Palette>), map-canvas
+//   slot (<MapCanvas> + the transient <RejectBanner>), and the right rail (<Inspector> + <ValidationPanel>).
+//   Control heights come from --row-h-lg / --row-h; 44px is retained ONLY on the primary Save and
+//   destructive actions (D-12). Every colour/space/radius is an existing theme token — no new token.
 
 import { type ReactElement } from "react";
 
 import { MapCanvas } from "./map/MapCanvas";
 import { Palette } from "./panels/Palette";
 import { Inspector } from "./panels/Inspector";
+import { ProjectBar } from "./panels/ProjectBar";
 import { RejectBanner } from "./panels/RejectBanner";
 import { ValidationPanel } from "./panels/ValidationPanel";
 import { SpectrumEditor } from "./spectrum/SpectrumEditor";
 import { useSceneStore } from "./store/sceneStore";
+import { useAutosave } from "./store/autosave";
 
 export function App(): ReactElement {
-  const dirty = useSceneStore((s) => s.dirty);
-  const saveScene = useSceneStore((s) => s.saveScene);
   const spectrumEditor = useSceneStore((s) => s.spectrumEditor);
   const closeSpectrumEditor = useSceneStore((s) => s.closeSpectrumEditor);
+  // Wire committed-edit autosave + flush-on-unload (D-04). Mounted once at the app root.
+  useAutosave();
 
   return (
     <div className="app-shell">
-      {/* Region 1 — project bar (fixed, sticky top). */}
-      <header className="topbar" data-testid="project-bar">
-        <div className="topbar-left">
-          <span className="identity">No project</span>
-          <button type="button" className="btn">
-            Open
-          </button>
-          <button type="button" className="btn">
-            New
-          </button>
-        </div>
-        <div className="topbar-right">
-          <span className="save-indicator" data-testid="save-indicator">
-            {dirty ? "Unsaved" : "No changes"}
-          </span>
-          {/* 44px primary action (D-12). Explicit whole-scene PUT; debounced autosave lands in 07-09. */}
-          <button
-            type="button"
-            className="btn primary"
-            data-testid="save-scene"
-            onClick={() => {
-              void saveScene();
-            }}
-          >
-            Save
-          </button>
-          <button type="button" className="btn" aria-label="More project actions">
-            &#x22EF;
-          </button>
-        </div>
-      </header>
+      {/* Region 1 — project bar (fixed, sticky top): identity, save indicator, Save, delete overflow. */}
+      <ProjectBar />
 
       <div className="shell-body">
         {/* Region 2 — object palette rail. */}

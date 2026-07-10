@@ -69,6 +69,14 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
+// DELETE a resource, tolerating an empty 2xx body. A non-2xx throws `ApiError` (status + server detail).
+async function deleteResource(path: string, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE", headers: { Accept: "application/json" }, signal });
+  if (!res.ok) {
+    throw new ApiError(res.status, await readDetail(res));
+  }
+}
+
 async function sendJson<T>(method: "POST" | "PUT", path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -114,4 +122,10 @@ export function getScene(projectId: string, signal?: AbortSignal): Promise<Scene
 // PUT /api/v1/projects/{id}/scene — whole-scene save (no per-feature PATCH; D-04 coalesces to this).
 export function putScene(projectId: string, scene: SceneCollection, signal?: AbortSignal): Promise<void> {
   return sendJson<void>("PUT", `/projects/${encodeURIComponent(projectId)}/scene`, scene, signal);
+}
+
+// DELETE /api/v1/projects/{id} — irreversibly removes the project folder (scene + settings + calc
+// records). Guarded by the typed-name confirmation dialog client-side; the server is the backstop.
+export function deleteProject(projectId: string, signal?: AbortSignal): Promise<void> {
+  return deleteResource(`/projects/${encodeURIComponent(projectId)}`, signal);
 }
