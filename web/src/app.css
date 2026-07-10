@@ -237,3 +237,139 @@ select.input.dense {
   min-height: var(--row-h);
   padding: var(--space-1) var(--space-2);
 }
+
+/* Segmented control (.switch) — the resolution selector + any 3-way toggle. Tokens only (the metrao3
+   styles.css .switch idiom is referenced by the UI-SPEC but not part of the copied theme.css). */
+.switch {
+  display: inline-flex;
+  gap: var(--space-0);
+  padding: var(--space-0);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.seg {
+  min-height: var(--row-h);
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.seg:hover:not(.active) {
+  background: var(--color-surface-3);
+}
+.seg.active {
+  background: var(--color-surface-3);
+  border-color: var(--color-border-strong);
+  color: var(--color-primary);
+}
+.seg:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.seg:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* An inline error line (server `detail` rendered as TEXT). No .form-error primitive in theme.css → built
+   here from the crit token; crit text sits on --color-bg/surface, never surface-2 (a11y usage rule). */
+.form-error {
+  margin: var(--space-1) 0 0;
+  color: var(--color-crit);
+  font-size: var(--text-xs);
+}
+
+/* Spectrum editor overlay (WEB-10) — a centered dialog on a dim scrim (--shadow-lg). */
+.overlay-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12);
+  background: rgba(11, 13, 16, 0.72);
+}
+.spectrum-editor {
+  width: min(760px, 96vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+}
+.spectrum-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.spectrum-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  min-height: 0;
+  overflow-y: auto;
+}
+.spectrum-views {
+  display: grid;
+  grid-template-columns: 1fr 240px;
+  gap: var(--space-4);
+  align-items: start;
+}
+.spectrum-curve {
+  width: 100%;
+  height: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.spectrum-curve.loading {
+  opacity: 0.55;
+}
+.curve-axis-label {
+  fill: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.spectrum-table {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 320px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.spectrum-table-head,
+.spectrum-table-row {
+  display: grid;
+  grid-template-columns: 3rem 1fr 4.5rem;
+  gap: var(--space-1);
+  align-items: center;
+  padding: 0 var(--space-2);
+  font-size: var(--text-xxs);
+}
+.spectrum-table-head {
+  min-height: var(--row-h);
+  color: var(--color-text-dim);
+  background: var(--color-surface-2);
+  border-bottom: 1px solid var(--color-border);
+}
+.spectrum-table-body {
+  overflow-y: auto;
+}
+.spectrum-table-row {
+  min-height: var(--row-h);
+}
+.spectrum-band {
+  color: var(--color-text-muted);
+}
+.spectrum-hz {
+  color: var(--color-text-dim);
+}

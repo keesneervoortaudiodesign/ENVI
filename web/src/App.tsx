@@ -13,11 +13,14 @@ import { type ReactElement } from "react";
 import { MapCanvas } from "./map/MapCanvas";
 import { Palette } from "./panels/Palette";
 import { Inspector } from "./panels/Inspector";
+import { SpectrumEditor } from "./spectrum/SpectrumEditor";
 import { useSceneStore } from "./store/sceneStore";
 
 export function App(): ReactElement {
   const dirty = useSceneStore((s) => s.dirty);
   const saveScene = useSceneStore((s) => s.saveScene);
+  const spectrumEditor = useSceneStore((s) => s.spectrumEditor);
+  const closeSpectrumEditor = useSceneStore((s) => s.closeSpectrumEditor);
 
   return (
     <div className="app-shell">
@@ -71,6 +74,15 @@ export function App(): ReactElement {
           </section>
         </aside>
       </div>
+
+      {/* Isolation / sound-power spectrum editor overlay (WEB-10), opened from source / wall / façade. */}
+      {spectrumEditor ? (
+        <SpectrumEditor
+          spectrumKey={spectrumEditor.key}
+          title={spectrumEditor.title}
+          onClose={closeSpectrumEditor}
+        />
+      ) : null}
     </div>
   );
 }

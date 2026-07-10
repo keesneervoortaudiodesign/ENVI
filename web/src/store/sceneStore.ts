@@ -49,6 +49,10 @@ export interface SceneState {
   // placeholder key is used so an explicit Save can exercise the PUT path.
   readonly projectId: string | null;
 
+  // Which spectrum (feature or edge UUID) the isolation/L_W editor is open for, plus its display title.
+  // Null when the editor is closed. Opened from the source / wall / façade "Edit spectrum" triggers.
+  readonly spectrumEditor: { readonly key: string; readonly title: string } | null;
+
   // Gate-1 lifecycle diagnostics (07-06 spike): live/built Terra Draw instance counts + re-hydrations.
   readonly drawInstancesLive: number;
   readonly drawInstancesBuilt: number;
@@ -73,6 +77,9 @@ export interface SceneState {
   // Set (or clear, when `authored` is null) the AUTHORED isolation/L_W spectrum for a feature or edge id
   // (D-06 — only the authored coarse form is stored; the dense grid is derived server-side). Marks dirty.
   setSpectrum(key: string, authored: AuthoredSpectrumDto | null): void;
+  // Open / close the isolation-spectrum editor overlay for a feature or edge UUID (WEB-10).
+  openSpectrumEditor(key: string, title: string): void;
+  closeSpectrumEditor(): void;
   // The feature's kind (`properties.kind`) or null if absent/unknown.
   kindOf(id: string): Kind | null;
 
@@ -221,6 +228,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   dirty: false,
   activeTool: "select",
   projectId: null,
+  spectrumEditor: null,
   drawInstancesLive: 0,
   drawInstancesBuilt: 0,
   rehydrations: 0,
@@ -317,6 +325,9 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       }
       return { spectra, dirty: true };
     }),
+
+  openSpectrumEditor: (key, title) => set({ spectrumEditor: { key, title } }),
+  closeSpectrumEditor: () => set({ spectrumEditor: null }),
 
   kindOf: (id) => {
     const props = get().features[id]?.properties as Record<string, unknown> | null | undefined;
