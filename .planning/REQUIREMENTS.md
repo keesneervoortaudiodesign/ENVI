@@ -68,10 +68,10 @@
 
 ### Scene model extensions (SCN)
 
-- [ ] **SCN-01**: Semi-transparent **screen** object — a screen carrying an assigned isolation spectrum; transmission via ENG-10, diffraction/reflection unchanged
-- [ ] **SCN-02**: Semi-transparent **building** object — a 3D building where each façade (footprint edge) can be assigned its own isolation spectrum; transmission through a façade uses that façade's `R(f)`
-- [ ] **SCN-03**: **Isolation-spectrum** data type on the 105-point 1/12-octave grid; accept 1/1-octave or 1/3-octave input and **linearly interpolate** (dB across band index = linear in log-frequency; octave/third-octave centres fall exactly on 1/12-octave band indices) to the full grid
-- [ ] **SCN-04**: **Forest** object with editable mean tree density / mean stem radius / height (feeds ENG-09); single trees and tree lines have no effect
+- [x] **SCN-01**: Semi-transparent **screen** object — a screen carrying an assigned isolation spectrum; transmission via ENG-10, diffraction/reflection unchanged
+- [x] **SCN-02**: Semi-transparent **building** object — a 3D building where each façade (footprint edge) can be assigned its own isolation spectrum; transmission through a façade uses that façade's `R(f)`
+- [x] **SCN-03**: **Isolation-spectrum** data type on the 105-point 1/12-octave grid; accept 1/1-octave or 1/3-octave input and **linearly interpolate** (dB across band index = linear in log-frequency; octave/third-octave centres fall exactly on 1/12-octave band indices) to the full grid
+- [x] **SCN-04**: **Forest** object with editable mean tree density / mean stem radius / height (feeds ENG-09); single trees and tree lines have no effect
 
 ### GIS data ingestion (DATA)
 
@@ -196,10 +196,10 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | VAL-03 | Phase 4 | Complete |
 | ENG-09 | Phase 5 | Complete |
 | ENG-10 | Phase 5 | Complete |
-| SCN-01 | Phase 7 | Pending |
-| SCN-02 | Phase 7 | Pending |
-| SCN-03 | Phase 7 | Pending |
-| SCN-04 | Phase 7 | Pending |
+| SCN-01 | Phase 7 | Complete |
+| SCN-02 | Phase 7 | Complete |
+| SCN-03 | Phase 7 | Complete |
+| SCN-04 | Phase 7 | Complete |
 | DATA-01 | Phase 8 | Pending |
 | DATA-02 | Phase 8 | Pending |
 | DATA-03 | Phase 8 | Pending |
