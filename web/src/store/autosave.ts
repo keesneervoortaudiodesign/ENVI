@@ -47,9 +47,16 @@ export const useAutosaveStore = create<AutosaveState>((set) => ({
 }));
 
 // Module-level debounce state — one timer, coalescing every committed edit within the window into a
-// single PUT. `pending` guards the unload flush so it only fires when there is unsaved work.
+// single PUT. `pending` guards the unload flush so it only fires when there is unsaved work — it is cleared
+// only once a save actually SUCCEEDS, so an in-flight or failed save still counts as unsaved work.
 let timer: ReturnType<typeof setTimeout> | undefined;
 let pending = false;
+// In-flight sequencing (ME-01): the currently-running save (or null), plus a single trailing-save latch.
+// Two concurrent whole-scene PUTs could complete out of order and persist the STALER snapshot, so saves are
+// serialized: while one is in flight a new request only sets `queued`, and a single trailing save re-runs
+// with the LATEST store snapshot once the in-flight one settles.
+let inFlight: Promise<void> | null = null;
+let queued = false;
 
 function errorText(err: unknown): string {
   if (err instanceof ApiError) {
@@ -63,13 +70,28 @@ async function runSave(): Promise<void> {
     clearTimeout(timer);
     timer = undefined;
   }
-  pending = false;
-  useAutosaveStore.getState().setSaving();
-  try {
-    await useSceneStore.getState().saveScene();
-    useAutosaveStore.getState().setSaved(Date.now());
-  } catch (err) {
-    useAutosaveStore.getState().setError(errorText(err));
+  // Serialize against any in-flight save: request a single trailing re-run instead of starting a second
+  // concurrent PUT (ME-01). `pending` is deliberately NOT cleared here — the queued save (or the unload
+  // flush) still owes the latest snapshot until a save succeeds.
+  if (inFlight) {
+    queued = true;
+    return;
+  }
+  inFlight = (async () => {
+    useAutosaveStore.getState().setSaving();
+    try {
+      await useSceneStore.getState().saveScene();
+      pending = false; // cleared only on genuine success — the newest snapshot is now persisted
+      useAutosaveStore.getState().setSaved(Date.now());
+    } catch (err) {
+      useAutosaveStore.getState().setError(errorText(err));
+    }
+  })();
+  await inFlight;
+  inFlight = null;
+  if (queued) {
+    queued = false;
+    void runSave(); // re-run once with the latest store snapshot (supersedes the older one)
   }
 }
 
@@ -86,12 +108,38 @@ export function scheduleAutosave(): void {
   }, DEBOUNCE_MS);
 }
 
-// Flush any pending save immediately (tab close / navigate-away). No-op when nothing is pending.
-export function flushAutosave(): void {
+// Flush any pending save on the UNLOAD path (tab close / navigate-away). No-op when nothing is pending.
+//
+// A normal `fetch` without `keepalive` is NOT guaranteed to complete as the document is torn down — the
+// browser cancels in-flight requests — so routing the unload flush through `runSave()`/`saveScene()` would
+// silently drop the last edit made inside the debounce window (HI-01, breaking the D-04 flush-on-close
+// guarantee). This path instead issues the whole-scene PUT with `{ keepalive: true }`, which the browser
+// completes during unload. `sendBeacon` is deliberately NOT used: a whole-scene FeatureCollection can exceed
+// its ~64 KB cap. Best-effort only — the indicator is NOT set to "saved" (we cannot await the response and
+// the page is going away), keeping the state honest.
+export function flushAutosaveOnUnload(): void {
   if (!pending) {
     return;
   }
-  void runSave();
+  if (timer) {
+    clearTimeout(timer);
+    timer = undefined;
+  }
+  const state = useSceneStore.getState();
+  const id = state.projectId ?? "current";
+  const url = `/api/v1/projects/${encodeURIComponent(id)}/scene`;
+  const body = JSON.stringify(state.sceneFeatureCollection());
+  try {
+    void fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+    });
+    pending = false;
+  } catch {
+    /* best-effort on unload — nothing more can be done as the document tears down */
+  }
 }
 
 // Save immediately regardless of the debounce (the explicit Save button).
@@ -111,7 +159,7 @@ export function useAutosave(): void {
       }
     });
 
-    const onUnload = (): void => flushAutosave();
+    const onUnload = (): void => flushAutosaveOnUnload();
     window.addEventListener("beforeunload", onUnload);
     window.addEventListener("pagehide", onUnload);
 
