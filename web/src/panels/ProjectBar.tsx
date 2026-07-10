@@ -55,6 +55,10 @@ export function ProjectBar(): ReactElement {
   const projectId = useSceneStore((s) => s.projectId);
   const status = useAutosaveStore((s) => s.status);
   const savedAt = useAutosaveStore((s) => s.savedAt);
+  // Whether the scene carries any authored isolation/L_W spectra. These are NOT serialized by the
+  // whole-scene PUT this phase (a documented Phase-9/10 deferral — see sceneStore.sceneFeatureCollection),
+  // so when present the "Saved" indicator would over-claim. A distinct affordance keeps it honest (ME-04).
+  const hasUnpersistedSpectra = useSceneStore((s) => Object.keys(s.spectra).length > 0);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -102,6 +106,18 @@ export function ProjectBar(): ReactElement {
         <span className={`save-conn ${indicator.cls}`} data-testid="save-indicator" data-status={status}>
           <span className="save-conn-label">{indicator.label}</span>
         </span>
+        {/* Honesty affordance (ME-04): authored isolation/L_W spectra are session-only this phase (not
+            serialized by PUT /scene — Phase-9/10 deferral). Surface it so "Saved" never implies the
+            acoustic authoring is persisted. */}
+        {hasUnpersistedSpectra ? (
+          <span
+            className="chip warn"
+            data-testid="spectra-unpersisted"
+            title="Authored isolation / sound-power spectra are session-only this phase — they are not yet written to the project and will be lost on reload (Phase 9/10)."
+          >
+            Spectra session-only
+          </span>
+        ) : null}
         {/* 44px primary action (D-12). Explicit whole-scene PUT (debounced autosave also runs, D-04). */}
         <button
           type="button"

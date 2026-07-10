@@ -492,6 +492,15 @@ export const useSceneStore = create<SceneState>((set, get) => ({
 
   terraDrawFeatures: () => Object.values(get().features),
 
+  // The whole-scene FeatureCollection for a PUT — GEOMETRY + feature `properties` ONLY. The `spectra`
+  // channel (per-façade overrides, building `default_isolation`, source `L_W`) is deliberately NOT folded
+  // in this phase: serializing authored spectra into the persisted feature `properties` (the D-02/D-06
+  // typed shape) is a Phase-9/10 deferral (07-08-SUMMARY "Known Stubs"), landing together with the
+  // solve-time `SubSourceDto.spectrum` / `IsolationSpectrumDto` mapping so there is a single persisted
+  // shape rather than an ad-hoc one now that Phase 9/10 would have to migrate. HONESTY (ME-04): because
+  // authored spectra do NOT survive a reload this phase, the save indicator must not present an
+  // unqualified "Saved" for a scene that carries them — the project bar shows a distinct
+  // "spectra session-only" affordance whenever `spectra` is non-empty (see `ProjectBar`).
   sceneFeatureCollection: () => ({
     type: "FeatureCollection",
     features: Object.values(get().features),
