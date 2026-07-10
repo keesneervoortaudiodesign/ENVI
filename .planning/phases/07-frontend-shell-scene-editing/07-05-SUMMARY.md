@@ -146,6 +146,12 @@ None - Node v24 / npm 11 already installed; `npm install` runs offline against t
 - `test:unit`=`vitest run` is present for 07-08's ring-diff unit tests.
 - envi-service still serves the real bundle; the static-bundle contract test is decoupled from hashed asset names, so future rebuilds won't break it.
 
+## Self-Check: PASSED
+
+- All 10 created files + web/dist bundle + SUMMARY.md exist on disk.
+- All three commits present in git history (1b7337d, d6ddd69, f6d94ac).
+- `.planning/config.json` untouched (pre-existing unstaged modification preserved).
+
 ---
 *Phase: 07-frontend-shell-scene-editing*
 *Completed: 2026-07-10*
