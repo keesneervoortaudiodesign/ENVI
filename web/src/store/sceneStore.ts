@@ -19,7 +19,7 @@ import { create } from "zustand";
 import type { GeoJSONStoreFeatures } from "terra-draw";
 
 import type { DrawTool, Kind } from "../draw/kinds";
-import { KIND_META } from "../draw/kinds";
+import { KIND_META, KINDS } from "../draw/kinds";
 import { recordLast, seedProps, type KindProps } from "./inheritance";
 import { putScene, type SceneCollection } from "../api/client";
 import { initEdgeIds, ringDiff, type Coord } from "./edges";
@@ -147,17 +147,9 @@ export interface SceneState {
 }
 
 // The 9 frozen kinds as a lookup — a `properties.kind` string must be one of these to count as a kind.
-const KIND_SET = new Set<string>([
-  "source",
-  "receiver",
-  "wall",
-  "building",
-  "forest",
-  "ground_zone",
-  "elevation_point",
-  "elevation_line",
-  "calc_area",
-]);
+// Derived from the single-source-of-truth `KINDS` array (draw/kinds.ts, mirroring geojson.rs); adding a
+// 10th kind there is picked up here automatically rather than being silently dropped by a stale hand-list.
+const KIND_SET = new Set<string>(KINDS);
 
 // The ordered DISTINCT footprint vertices of a polygon feature (the outer ring minus the closing
 // duplicate), or null if the feature is not a usable polygon. This is the ring the D-02 ring-diff operates
