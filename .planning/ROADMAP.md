@@ -238,7 +238,7 @@ Plans:
 - [ ] 07-04-PLAN.md — ts-rs generated wire types (committed wire.ts) + no-drift test (D-10)
 - [ ] 07-05-PLAN.md — web/ React+Vite+TSX scaffold + metrao3 theme + app shell + real web/dist bundle (D-09/D-11/D-12/D-13a)
 - [ ] 07-06-PLAN.md — Gate-1 Terra Draw ⇄ react-map-gl lifecycle spike: store-canonical, style.load rehydrate, dark basemap (D-03/D-13a)
-- [ ] 07-07-PLAN.md — object palette + all 9 kinds + property inspector + last-object inheritance + typed fetch client
+- [ ] 07-07-PLAN.md — object palette + all 9 kinds + property inspector + last-object inheritance + typed fetch client + DGM re-triangulation producer (trigger + TIN overlay)
 - [ ] 07-08-PLAN.md — isolation-spectrum editor + per-façade UUID ring-diff + semi-transparent screen + SPL calibration (D-02/D-06)
 - [ ] 07-09-PLAN.md — draw-time ground-zone hard reject + validation panel + debounced autosave + delete-project dialog (D-04/D-07)
 - [ ] 07-10-PLAN.md — SC1–SC4 end-to-end E2E journeys + final committed bundle + README docs

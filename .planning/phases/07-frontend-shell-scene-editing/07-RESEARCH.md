@@ -507,19 +507,21 @@ Per-kind scene-object palette (D-11 discretion, drawn from existing tokens — d
 | A5 | On vertex insert, keeping the parent UUID on the *first* split half + one fresh UUID (vs two fresh) | Pattern 5 | Cosmetic/stability; either is correct as long as both halves inherit the parent spectrum |
 | A6 | Protomaps offline path requires bundling glyphs/sprites + a viewport PMTiles extract into `public/basemap/` | Gate 4 | If a whole-region PMTiles is too large to bundle, Phase 7 accepts OpenFreeMap network fallback (see verdict) |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Fully-offline basemap vs network tile fetch (Gate 4).**
+> All three resolved during phase discussion/planning. Resolution notes added inline; carried into the 10-plan set.
+
+1. **Fully-offline basemap vs network tile fetch (Gate 4).** — **(RESOLVED)** CONTEXT D-13a adopts **OpenFreeMap `styles/dark`** (network vector, no API key); "no API key ≠ no network" stated; a runtime tile XHR is not an `index.html` asset (Phase-6 gate stays green); Playwright `page.route`-intercepts basemap style/tiles/glyphs for offline E2E (07-06/07-10). Protomaps bundled-PMTiles remains the documented air-gapped upgrade path.
    - What we know: Protomaps can be truly offline (bundled PMTiles + glyphs/sprites, CC0). OpenFreeMap needs no key but is a network endpoint. A runtime tile fetch is an XHR by MapLibre JS, **not** an asset referenced in `index.html` — so it does **not** violate Phase-6's "zero external assets in `index.html`" gate, but it **does** break the "works with no network" claim.
    - What's unclear: whether the user wants to bundle a PMTiles extract now (real work: generate the extract for the working area) or accept a network basemap in Phase 7.
    - Recommendation: ship the **Protomaps PMTiles path** with a small bundled extract for the default working area as the offline-true default, and wire OpenFreeMap `styles/dark` as a config-selectable network fallback. Be explicit in the plan that "no API key" ≠ "no network."
 
-2. **WEB-02 source calibration scope.**
+2. **WEB-02 source calibration scope.** — **(RESOLVED)** Store `L_W[105]` directly (what `SourceDto`/`SubSourceDto` already carry); the optional SPL-at-reference → `L_W` back-calculation is done **server-side** (SVC-07 — no client acoustic Hz math), wired in 07-08 Task 3. Directivity-balloon import stays deferred (not in WEB-02).
    - What we know: `SourceDto`/`SubSourceDto` carry `sub_sources: [{ position:[x,y,z], spectrum: BandSpectrumDto([105]) }]`. "SPL-at-reference-point calibration" means: author a sound-power (`L_W`) spectrum, or specify an SPL at a reference distance and derive `L_W` back (free-field `L_p = L_W + 20·log10|H|`). Directivity balloon import is explicitly **deferred** (not in WEB-02).
    - What's unclear: whether calibration UI must do the SPL→`L_W` back-calculation client-side (would that be "acoustic math" barred by SVC-07?) or store the authored `L_W` directly.
    - Recommendation: store `L_W[105]` (what the DTO already carries); if SPL-at-reference entry is offered, do the free-field back-calc **server-side** (a trivial meta endpoint or fold into the existing conversion) to honor SVC-07. Confirm in planning.
 
-3. **DGM endpoint shape (D-08, Claude's discretion).**
+3. **DGM endpoint shape (D-08, Claude's discretion).** — **(RESOLVED)** A stateless `POST /api/v1/dgm/triangulate` (points + breaklines → triangles), the TIN NOT persisted (the source elevation objects are the persisted truth), built in the new `envi-dgm` crate — 07-02 (crate) + 07-03 (endpoint). The frontend producer (debounced trigger + TIN overlay) lands in 07-07 Task 4; interior-cross rejects surface in the 07-09 validation panel.
    - Recommendation: a stateless `POST /api/v1/dgm/triangulate` taking elevation points + breaklines, returning triangle indices + optional sampled Z grid, computed on demand (no persistence of the TIN itself in Phase 7 — the source elevation objects are the persisted truth). Alternatively compute lazily inside `envi-dgm` with no HTTP surface if the frontend only needs a rendered TIN preview. Decide against `crates/README.md` boundaries during planning.
 
 ## Environment Availability
