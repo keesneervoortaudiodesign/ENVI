@@ -179,9 +179,25 @@ and keeps generated wire types (D-10) rather than `metrao3`'s hand-written `api.
   changed — only which token each control consumes.
 - **D-13 (adaptation):** the chrome is dark-only, so the basemap must be a **dark MapLibre vector
   style**; the basemap recedes and the drawn scene carries the colour, hued from the accent +
-  severity tokens. **Research must pick a style that needs no API key and works offline** (ENVI is
-  self-hosted localhost). A light OSM raster under dark chrome would create a hard luminance seam and
-  would break the severity-token palette's legibility.
+  severity tokens. A light OSM raster under dark chrome would create a hard luminance seam and would
+  break the severity-token palette's legibility.
+- **D-13a (resolved by research — corrects an imported constraint):** the basemap is
+  **OpenFreeMap `styles/dark`** (MIT-licensed style, OSM data, **no API key**), fetched over the
+  network at runtime. Research established honestly that *"no API key" ≠ "no network"*: only a
+  bundled Protomaps PMTiles extract is genuinely offline, and that would cap the app to one
+  pre-baked region — wrong for a tool where the user draws anywhere on Earth.
+  **The "fully offline" requirement was mis-imported from `metrao3`, whose P5 offline rule exists
+  because it is a kiosk.** ENVI is not: `PROJECT.md` states it "pulls terrain, ground-type, building
+  and open-weather data from public APIs," so a network basemap is consistent with the product.
+  Two consequences the planner must honor:
+  - A runtime tile fetch is a MapLibre XHR, **not** an asset referenced from `index.html`, so it does
+    **not** violate Phase-6's "zero external assets in `index.html`" gate. Keep that gate green.
+  - **Playwright must still run fully offline** (CLAUDE.md: "runs are offline and need no
+    credentials"). The E2E suite therefore `page.route`-intercepts the basemap tile/style/glyph
+    requests in addition to `/api/*`. A test that silently hits the network is a failed test.
+  - OSM attribution must be displayed (CLAUDE.md data-hygiene rule).
+  Protomaps + bundled PMTiles remains the documented upgrade path if a true air-gapped deployment is
+  ever required; it is not this phase.
 
 ### Claude's Discretion
 - Client state library (Zustand suggested, not mandated) and store shape.
