@@ -34,16 +34,161 @@ export interface RingDiffResult {
   reconcileFacade<T>(facade: Readonly<Record<string, T>>): Record<string, T>;
 }
 
-// STUB (RED): the ring-diff is specified by `edges.test.ts` first (TDD). The GREEN implementation lands
-// in the next commit; until then every call fails loudly so no false green is possible.
-export function initEdgeIds(_ring: readonly Coord[]): string[] {
-  throw new Error("edges.initEdgeIds: not implemented");
+// Exact-`f64` coordinate identity (RESEARCH Pattern 5: match vertices by the coords TD echoes).
+function sameCoord(a: Coord, b: Coord): boolean {
+  return a[0] === b[0] && a[1] === b[1];
+}
+
+// Whole-ring coordinate equality (used to locate the single inserted / deleted vertex).
+function ringEquals(a: readonly Coord[], b: readonly Coord[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (!sameCoord(a[i], b[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// The ring with vertex `i` removed (order preserved) — the probe used to find an insert/delete position.
+function withoutAt(ring: readonly Coord[], i: number): Coord[] {
+  return ring.filter((_, k) => k !== i);
+}
+
+// A directed edge's coordinate-pair key, used to map an UNCHANGED next-edge back to its prev UUID. Edges
+// are directed in ring order, so `(from → to)` is unambiguous for a footprint with distinct vertices.
+function pairKey(from: Coord, to: Coord): string {
+  return `${from[0]},${from[1]}|${to[0]},${to[1]}`;
+}
+
+// Build the `pairKey → edgeId` lookup for every prev edge `prevRing[i] → prevRing[(i+1) % n]`.
+function prevEdgeLookup(prevRing: readonly Coord[], prevEdgeIds: readonly string[]): Map<string, string> {
+  const n = prevRing.length;
+  const lookup = new Map<string, string>();
+  for (let i = 0; i < n; i++) {
+    lookup.set(pairKey(prevRing[i], prevRing[(i + 1) % n]), prevEdgeIds[i]);
+  }
+  return lookup;
+}
+
+// One fresh UUID per ring edge — the initial assignment when a building is first drawn.
+export function initEdgeIds(ring: readonly Coord[]): string[] {
+  return ring.map(() => crypto.randomUUID());
 }
 
 export function ringDiff(
-  _prevRing: readonly Coord[],
-  _prevEdgeIds: readonly string[],
-  _nextRing: readonly Coord[],
+  prevRing: readonly Coord[],
+  prevEdgeIds: readonly string[],
+  nextRing: readonly Coord[],
 ): RingDiffResult {
-  throw new Error("edges.ringDiff: not implemented");
+  const prevN = prevRing.length;
+  const nextN = nextRing.length;
+
+  // IDENTITY / MOVE — same vertex count. Edge identity is positional: the edge between vertex `i` and
+  // `i+1` keeps its UUID even as endpoints move (D-02 MOVE), so the façade map is untouched. IDENTITY is
+  // the strict sub-case where every coordinate is also unchanged (byte-identical edge ids either way).
+  if (prevN === nextN) {
+    const identical = ringEquals(prevRing, nextRing);
+    return {
+      kind: identical ? "identity" : "move",
+      edgeIds: prevEdgeIds.slice(),
+      reconcileFacade: (facade) => ({ ...facade }),
+    };
+  }
+
+  // INSERT — exactly one vertex added. Find the new vertex position `j` (removing it recovers prevRing);
+  // its parent edge is `prev[(j-1) → j]`. The parent UUID stays on the FIRST half; the second half gets a
+  // fresh UUID (Assumption A5). Both halves inherit the parent's spectrum.
+  if (nextN === prevN + 1) {
+    let j = -1;
+    for (let k = 0; k < nextN; k++) {
+      if (ringEquals(withoutAt(nextRing, k), prevRing)) {
+        j = k;
+        break;
+      }
+    }
+    if (j >= 0) {
+      const parentIndex = (j - 1 + prevN) % prevN; // prev edge prev[parentIndex] → prev[parentIndex+1]
+      const parentId = prevEdgeIds[parentIndex];
+      const secondHalfId = crypto.randomUUID();
+      const w = nextRing[j];
+      const lookup = prevEdgeLookup(prevRing, prevEdgeIds);
+      const edgeIds: string[] = [];
+      for (let k = 0; k < nextN; k++) {
+        const from = nextRing[k];
+        const to = nextRing[(k + 1) % nextN];
+        if (sameCoord(to, w)) {
+          edgeIds.push(parentId); // first half: prev[parentIndex] → w
+        } else if (sameCoord(from, w)) {
+          edgeIds.push(secondHalfId); // second half: w → prev[parentIndex+1]
+        } else {
+          edgeIds.push(lookup.get(pairKey(from, to)) ?? crypto.randomUUID());
+        }
+      }
+      return {
+        kind: "insert",
+        edgeIds,
+        // Both halves inherit the parent spectrum: the parent id keeps its entry (first half), the fresh
+        // second-half id gets a copy. If the parent had no override, neither half does (both inherit the
+        // building default) — nothing to copy.
+        reconcileFacade: <T,>(facade: Readonly<Record<string, T>>): Record<string, T> => {
+          const next: Record<string, T> = { ...facade };
+          if (Object.prototype.hasOwnProperty.call(facade, parentId)) {
+            next[secondHalfId] = facade[parentId];
+          }
+          return next;
+        },
+      };
+    }
+  }
+
+  // DELETE — exactly one vertex removed. The two edges adjacent to the removed vertex merge into one; keep
+  // the FIRST edge's UUID (the merged edge), drop the second edge's spectrum entry (RESEARCH Pattern 5).
+  if (nextN === prevN - 1) {
+    let r = -1;
+    for (let i = 0; i < prevN; i++) {
+      if (ringEquals(withoutAt(prevRing, i), nextRing)) {
+        r = i;
+        break;
+      }
+    }
+    if (r >= 0) {
+      const firstIndex = (r - 1 + prevN) % prevN; // edge prev[r-1] → prev[r]
+      const mergedId = prevEdgeIds[firstIndex]; // kept for the merged edge
+      const droppedId = prevEdgeIds[r]; // edge prev[r] → prev[r+1], merged away
+      const mergedFrom = prevRing[firstIndex]; // prev[r-1]
+      const mergedTo = prevRing[(r + 1) % prevN]; // prev[r+1]
+      const lookup = prevEdgeLookup(prevRing, prevEdgeIds);
+      const edgeIds: string[] = [];
+      for (let k = 0; k < nextN; k++) {
+        const from = nextRing[k];
+        const to = nextRing[(k + 1) % nextN];
+        if (sameCoord(from, mergedFrom) && sameCoord(to, mergedTo)) {
+          edgeIds.push(mergedId); // the merged edge prev[r-1] → prev[r+1]
+        } else {
+          edgeIds.push(lookup.get(pairKey(from, to)) ?? crypto.randomUUID());
+        }
+      }
+      return {
+        kind: "delete",
+        edgeIds,
+        reconcileFacade: <T,>(facade: Readonly<Record<string, T>>): Record<string, T> => {
+          const next: Record<string, T> = { ...facade };
+          delete next[droppedId]; // the merged-away second edge's spectrum entry
+          return next;
+        },
+      };
+    }
+  }
+
+  // REBUILD — a delta that is neither a single insert, a single delete, nor a same-count move. There is no
+  // safe way to recover per-edge identity, so mint fresh UUIDs and drop all overrides rather than silently
+  // re-point them at the wrong façade (the exact failure D-02 exists to prevent).
+  return {
+    kind: "rebuild",
+    edgeIds: nextRing.map(() => crypto.randomUUID()),
+    reconcileFacade: () => ({}),
+  };
 }

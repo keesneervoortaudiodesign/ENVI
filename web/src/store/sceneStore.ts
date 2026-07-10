@@ -21,11 +21,15 @@ import type { GeoJSONStoreFeatures } from "terra-draw";
 import type { DrawTool, Kind } from "../draw/kinds";
 import { recordLast, seedProps, type KindProps } from "./inheritance";
 import { putScene, type SceneCollection } from "../api/client";
+import { initEdgeIds, ringDiff, type Coord } from "./edges";
+import type { AuthoredSpectrumDto } from "../generated/wire";
 
-// One authored isolation spectrum lives here, keyed by feature/edge id (D-02/D-06). The skeleton only
-// reserves the channel so the "spectrum data lives in the store, never in TD props" invariant holds; the
-// editor + per-edge UUID diffing land in later 07-plans.
-export type StoredSpectrum = readonly number[];
+// One authored isolation spectrum lives here, keyed by feature/edge id (D-02/D-06): a building's
+// `default_isolation` under its FEATURE id, each per-façade override under its EDGE UUID, a wall/screen or
+// source L_W under its feature id. Only the AUTHORED coarse representation is stored — the dense `r_db[105]`
+// is DERIVED on read via the server (`POST /meta/interpolate-spectrum`), never a second persisted field
+// (D-06). A 105-band spectrum is scene data; it lives HERE, never in Terra Draw feature properties (D-03).
+export type StoredSpectrum = AuthoredSpectrumDto;
 
 export interface SceneState {
   // Canonical geometry: the FeatureCollection keyed by feature id.
@@ -66,6 +70,9 @@ export interface SceneState {
   // Merge a non-geometric property patch into a feature; every patched field clears its "inherited"
   // marker and updates the kind's last-object inheritance source. Marks the scene dirty.
   updateProperties(id: string, patch: KindProps): void;
+  // Set (or clear, when `authored` is null) the AUTHORED isolation/L_W spectrum for a feature or edge id
+  // (D-06 — only the authored coarse form is stored; the dense grid is derived server-side). Marks dirty.
+  setSpectrum(key: string, authored: AuthoredSpectrumDto | null): void;
   // The feature's kind (`properties.kind`) or null if absent/unknown.
   kindOf(id: string): Kind | null;
 
@@ -97,6 +104,83 @@ const KIND_SET = new Set<string>([
   "calc_area",
 ]);
 
+// The ordered DISTINCT footprint vertices of a polygon feature (the outer ring minus the closing
+// duplicate), or null if the feature is not a usable polygon. This is the ring the D-02 ring-diff operates
+// on: `n` vertices ⇒ `n` edges (including the wrap edge).
+function ringOf(feature: GeoJSONStoreFeatures | undefined): Coord[] | null {
+  const geometry = feature?.geometry;
+  if (!geometry || geometry.type !== "Polygon") {
+    return null;
+  }
+  const outer = geometry.coordinates[0];
+  if (!Array.isArray(outer) || outer.length < 4) {
+    return null; // a valid closed ring needs ≥3 distinct vertices + the closing duplicate
+  }
+  // Drop the closing duplicate vertex if present.
+  const last = outer.length - 1;
+  const closed = sameXY(outer[0], outer[last]);
+  const verts = closed ? outer.slice(0, last) : outer.slice();
+  return verts.map((c) => [c[0], c[1]] as Coord);
+}
+
+function sameXY(a: readonly number[], b: readonly number[]): boolean {
+  return a[0] === b[0] && a[1] === b[1];
+}
+
+// The building's per-edge UUID list from `properties.edge_ids`, or null if absent/malformed.
+function edgeIdsOf(feature: GeoJSONStoreFeatures | undefined): string[] | null {
+  const raw = feature?.properties?.["edge_ids"];
+  if (Array.isArray(raw) && raw.every((x) => typeof x === "string")) {
+    return raw as string[];
+  }
+  return null;
+}
+
+// Reconcile a building's per-edge UUIDs + per-façade spectra when its footprint geometry changes (D-02,
+// RESEARCH Pattern 5). Mutates `spectra` in place (drop/rekey façade overrides by UUID) and returns the
+// next feature with refreshed `properties.edge_ids`. Returns `nextFeature` unchanged when the feature is
+// not a building or the rings are unusable. This is the SOLE call site of `ringDiff` (grep gate: the
+// ring-diff runs in the store's applyTerraDrawChange, never in a Terra Draw callback).
+function reconcileBuildingEdges(
+  prevFeature: GeoJSONStoreFeatures | undefined,
+  nextFeature: GeoJSONStoreFeatures,
+  spectra: Record<string, StoredSpectrum>,
+): GeoJSONStoreFeatures {
+  if (prevFeature?.properties?.["kind"] !== "building") {
+    return nextFeature;
+  }
+  const prevRing = ringOf(prevFeature);
+  const nextRing = ringOf(nextFeature);
+  if (!prevRing || !nextRing) {
+    return nextFeature;
+  }
+  const prevEdgeIds = edgeIdsOf(prevFeature) ?? initEdgeIds(prevRing);
+  if (prevEdgeIds.length !== prevRing.length) {
+    return nextFeature; // base is inconsistent — leave geometry, don't risk a bad re-point
+  }
+
+  const diff = ringDiff(prevRing, prevEdgeIds, nextRing);
+
+  // Reconcile only THIS building's per-edge spectra (keyed by its prev edge UUIDs) through the diff's
+  // mapping instruction, then splice the result back into the shared spectra channel.
+  const facadeSubset: Record<string, StoredSpectrum> = {};
+  for (const edgeId of prevEdgeIds) {
+    if (Object.prototype.hasOwnProperty.call(spectra, edgeId)) {
+      facadeSubset[edgeId] = spectra[edgeId];
+      delete spectra[edgeId];
+    }
+  }
+  const reconciled = diff.reconcileFacade(facadeSubset);
+  for (const [edgeId, authored] of Object.entries(reconciled)) {
+    spectra[edgeId] = authored;
+  }
+
+  return {
+    ...nextFeature,
+    properties: { ...nextFeature.properties, edge_ids: diff.edgeIds },
+  } as GeoJSONStoreFeatures;
+}
+
 // Merge kind + seeded inheritance onto an existing feature's properties (shared by the draw path and the
 // single-call `commitFeature`). Returns the next `features`/`inheritedFields` maps and the seeded props.
 function tagFeature(
@@ -110,9 +194,18 @@ function tagFeature(
     return { seeded: {} };
   }
   const { props, inheritedFields: inherited } = seedProps(kind);
+  // A building's per-façade isolation is keyed by stable per-edge UUIDs (D-02): mint one per footprint
+  // edge at draw time so the ring-diff has a base to reconcile against on the first geometry edit.
+  const edgeProps: { edge_ids?: string[] } = {};
+  if (kind === "building") {
+    const ring = ringOf(existing);
+    if (ring) {
+      edgeProps.edge_ids = initEdgeIds(ring);
+    }
+  }
   features[id] = {
     ...existing,
-    properties: { ...existing.properties, ...props, kind, id },
+    properties: { ...existing.properties, ...props, ...edgeProps, kind, id },
   } as GeoJSONStoreFeatures;
   inheritedFields[id] = inherited;
   // This finished object becomes the inheritance source for the next object of the kind.
@@ -142,9 +235,17 @@ export const useSceneStore = create<SceneState>((set, get) => ({
         const id = String(raw);
         const feature = byId.get(id);
         if (feature) {
-          features[id] = feature; // create or update
+          // On a geometry update of an existing building, run the D-02 ring-diff so per-edge UUIDs +
+          // per-façade spectra reconcile (a vertex insert must NOT re-point an existing façade spectrum).
+          const prevFeature = state.features[id];
+          features[id] = reconcileBuildingEdges(prevFeature, feature, spectra); // create or update
         } else {
-          delete features[id]; // deletion: absent from the snapshot
+          // Deletion: absent from the snapshot. Drop the feature's own spectrum + every per-edge override.
+          const prevFeature = state.features[id];
+          for (const edgeId of edgeIdsOf(prevFeature) ?? []) {
+            delete spectra[edgeId];
+          }
+          delete features[id];
           delete spectra[id];
           delete inheritedFields[id];
         }
@@ -204,6 +305,17 @@ export const useSceneStore = create<SceneState>((set, get) => ({
         }
       }
       return { features, inheritedFields, dirty: true };
+    }),
+
+  setSpectrum: (key, authored) =>
+    set((state) => {
+      const spectra: Record<string, StoredSpectrum> = { ...state.spectra };
+      if (authored === null) {
+        delete spectra[key];
+      } else {
+        spectra[key] = authored;
+      }
+      return { spectra, dirty: true };
     }),
 
   kindOf: (id) => {
