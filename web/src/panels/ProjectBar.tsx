@@ -18,6 +18,11 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import { useSceneStore } from "../store/sceneStore";
 import { useAutosaveStore, saveNow, type SaveStatus } from "../store/autosave";
 import { DeleteProjectDialog } from "./DeleteProjectDialog";
+import { ProjectPicker } from "./ProjectPicker";
+import type { OriginDto } from "../generated/wire";
+
+// A new project's WGS84 origin (the map's initial centre); the server pins its UTM CRS from it (D-03).
+const DEFAULT_ORIGIN: OriginDto = { lon_deg: 4.9041, lat_deg: 52.3676 };
 
 // The indicator presentation for each save status: the severity class + its text label. No `.dot` pulse
 // (dirty-overload mitigation) — meaning comes from location + label, not hue alone.
@@ -53,6 +58,7 @@ export function ProjectBar(): ReactElement {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Close the overflow menu on an outside click / Esc (torn down on unmount).
@@ -85,10 +91,10 @@ export function ProjectBar(): ReactElement {
     <header className="topbar" data-testid="project-bar">
       <div className="topbar-left">
         <span className="identity">{projectName ?? "No project"}</span>
-        <button type="button" className="btn">
+        <button type="button" className="btn" data-testid="project-open" onClick={() => setPickerOpen(true)}>
           Open
         </button>
-        <button type="button" className="btn">
+        <button type="button" className="btn" data-testid="project-new" onClick={() => setPickerOpen(true)}>
           New
         </button>
       </div>
@@ -138,6 +144,10 @@ export function ProjectBar(): ReactElement {
 
       {deleteOpen ? (
         <DeleteProjectDialog projectName={deleteName} onClose={() => setDeleteOpen(false)} />
+      ) : null}
+
+      {pickerOpen ? (
+        <ProjectPicker onClose={() => setPickerOpen(false)} defaultOrigin={DEFAULT_ORIGIN} />
       ) : null}
     </header>
   );

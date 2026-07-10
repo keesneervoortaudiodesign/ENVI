@@ -13,11 +13,13 @@
 //   `triangulateDgm` accepts an `AbortSignal` so a superseded debounced call can be cancelled.
 
 import type {
+  CreateProjectRequest,
   DgmReq,
   DgmResp,
   FreqAxisDto,
   InterpolateReq,
   InterpolateResp,
+  ProjectMetaDto,
   SplToLwReq,
   SplToLwResp,
 } from "../generated/wire";
@@ -112,6 +114,37 @@ export function splToLw(req: SplToLwReq, signal?: AbortSignal): Promise<SplToLwR
 // (D-08, SC1). A 4xx (interior-crossing / degenerate) throws `ApiError` for the caller to store.
 export function triangulateDgm(req: DgmReq, signal?: AbortSignal): Promise<DgmResp> {
   return sendJson<DgmResp>("POST", "/dgm/triangulate", req, signal);
+}
+
+// GET /api/v1/projects — metadata of every stored project (the Open picker's list, D-06).
+export function listProjects(signal?: AbortSignal): Promise<ProjectMetaDto[]> {
+  return getJson<ProjectMetaDto[]>("/projects", signal);
+}
+
+// POST /api/v1/projects — create a project (the server pins its UTM CRS from the WGS84 origin, D-03) and
+// return the new metadata. Backs the "New project" flow.
+export function createProject(req: CreateProjectRequest, signal?: AbortSignal): Promise<ProjectMetaDto> {
+  return sendJson<ProjectMetaDto>("POST", "/projects", req, signal);
+}
+
+// GET /api/v1/projects/{id} — open a project (records reopen-last server-side, D-06) and return metadata.
+export function getProject(projectId: string, signal?: AbortSignal): Promise<ProjectMetaDto> {
+  return getJson<ProjectMetaDto>(`/projects/${encodeURIComponent(projectId)}`, signal);
+}
+
+// GET /api/v1/projects/last — the last-opened project's metadata for reopen-last (D-06), or `null` when
+// there is no record (a 404) OR the store returns an id-less body (the offline test stub). A missing
+// last-project is a normal empty state, never an error — so this resolves to `null`, it does not throw.
+export async function getLastProject(signal?: AbortSignal): Promise<ProjectMetaDto | null> {
+  try {
+    const meta = await getJson<ProjectMetaDto>("/projects/last", signal);
+    return meta && typeof meta.id === "string" && meta.id.length > 0 ? meta : null;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
 }
 
 // GET /api/v1/projects/{id}/scene — the persisted WGS84 scene FeatureCollection.

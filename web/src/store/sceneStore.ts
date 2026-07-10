@@ -19,6 +19,7 @@ import { create } from "zustand";
 import type { GeoJSONStoreFeatures } from "terra-draw";
 
 import type { DrawTool, Kind } from "../draw/kinds";
+import { KIND_META } from "../draw/kinds";
 import { recordLast, seedProps, type KindProps } from "./inheritance";
 import { putScene, type SceneCollection } from "../api/client";
 import { initEdgeIds, ringDiff, type Coord } from "./edges";
@@ -69,6 +70,11 @@ export interface SceneState {
   // Null when the editor is closed. Opened from the source / wall / façade "Edit spectrum" triggers.
   readonly spectrumEditor: { readonly key: string; readonly title: string } | null;
 
+  // Bumped whenever the WHOLE scene is bulk-loaded from the server (project open / reopen-last / a page
+  // reload's rehydrate) — distinct from an incremental `applyTerraDrawChange`. Terra Draw subscribes to it
+  // to re-add the freshly-loaded features into its controlled view (SC4). Starts at 0.
+  readonly loadEpoch: number;
+
   // Gate-1 lifecycle diagnostics (07-06 spike): live/built Terra Draw instance counts + re-hydrations.
   readonly drawInstancesLive: number;
   readonly drawInstancesBuilt: number;
@@ -118,6 +124,12 @@ export interface SceneState {
   closeSpectrumEditor(): void;
   // The feature's kind (`properties.kind`) or null if absent/unknown.
   kindOf(id: string): Kind | null;
+
+  // Replace the WHOLE scene from a persisted FeatureCollection (project open / reopen-last / reload). The
+  // features become the canonical truth (keyed by id); selection, dirty, inherited markers, spectra, and
+  // any transient reject are reset (a freshly-opened project starts clean). Bumps `loadEpoch` so Terra Draw
+  // re-hydrates its view. The scene wire is geometry-only (spectra are not carried by PUT /scene).
+  loadScene(collection: SceneCollection): void;
 
   // The authoritative features to re-add into Terra Draw (e.g. after `style.load` re-hydration).
   terraDrawFeatures(): GeoJSONStoreFeatures[];
@@ -246,9 +258,15 @@ function tagFeature(
       edgeProps.edge_ids = initEdgeIds(ring);
     }
   }
+  // Ensure a Terra Draw `mode` matching the kind's geometry (`point`/`linestring`/`polygon`) so a feature
+  // committed programmatically (or bulk-loaded) can be re-added into Terra Draw's view — a TD-drawn feature
+  // already carries this; setting it here keeps the programmatic-commit path identical, so a reopened scene
+  // renders on the map (SC4). The kind is still the semantic tag (`properties.kind`), never the TD mode.
+  const existingMode = (existing.properties as Record<string, unknown> | undefined)?.["mode"];
+  const mode: string = typeof existingMode === "string" ? existingMode : KIND_META[kind].mode;
   features[id] = {
     ...existing,
-    properties: { ...existing.properties, ...props, ...edgeProps, kind, id },
+    properties: { ...existing.properties, ...props, ...edgeProps, mode, kind, id },
   } as GeoJSONStoreFeatures;
   inheritedFields[id] = inherited;
   // This finished object becomes the inheritance source for the next object of the kind.
@@ -269,6 +287,7 @@ export const useSceneStore = create<SceneState>((set, get) => ({
   groundReject: null,
   zoomRequest: null,
   spectrumEditor: null,
+  loadEpoch: 0,
   drawInstancesLive: 0,
   drawInstancesBuilt: 0,
   rehydrations: 0,
@@ -450,6 +469,25 @@ export const useSceneStore = create<SceneState>((set, get) => ({
     const kind = props?.["kind"];
     return typeof kind === "string" && KIND_SET.has(kind) ? (kind as Kind) : null;
   },
+
+  loadScene: (collection) =>
+    set((state) => {
+      const features: Record<string, GeoJSONStoreFeatures> = {};
+      for (const raw of collection.features ?? []) {
+        const id = String((raw as { id?: unknown }).id ?? crypto.randomUUID());
+        features[id] = { ...(raw as GeoJSONStoreFeatures), id } as GeoJSONStoreFeatures;
+      }
+      return {
+        features,
+        spectra: {},
+        inheritedFields: {},
+        selection: null,
+        dirty: false,
+        groundReject: null,
+        zoomRequest: null,
+        loadEpoch: state.loadEpoch + 1,
+      };
+    }),
 
   terraDrawFeatures: () => Object.values(get().features),
 

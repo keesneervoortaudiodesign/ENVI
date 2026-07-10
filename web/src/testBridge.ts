@@ -15,6 +15,7 @@ import type { GeoJSONStoreFeatures } from "terra-draw";
 
 import { KIND_META, isKind, type Kind } from "./draw/kinds";
 import { useSceneStore } from "./store/sceneStore";
+import { reopenLast } from "./store/projectActions";
 import type { GroundZoneOutcome } from "./validate/groundZone";
 import type { AuthoredSpectrumDto } from "./generated/wire";
 
@@ -80,6 +81,13 @@ export interface EnviTestBridge {
   update(id: string, patch: Record<string, unknown>): void;
   // Open a project (id + display name) — the Delete-project dialog compares the typed name to this.
   openProject(id: string, name: string): void;
+  // Close the current project (route to the empty/no-project state) — the SC4 close-before-reopen step.
+  closeProject(): void;
+  // Reopen the last-opened project (GET /projects/last → scene) — the SC4 reopen-last step. Resolves to
+  // whether a project was restored.
+  reopenLast(): Promise<boolean>;
+  // The canonical feature ids currently in the store (SC4 round-trip fidelity checks).
+  featureIds(): string[];
   // Trigger the whole-scene PUT.
   save(): Promise<void>;
 }
@@ -162,6 +170,15 @@ export function installTestBridge(): void {
     },
     openProject(id, name) {
       useSceneStore.getState().setProject(id, name);
+    },
+    closeProject() {
+      useSceneStore.getState().resetProject();
+    },
+    reopenLast() {
+      return reopenLast();
+    },
+    featureIds() {
+      return Object.keys(useSceneStore.getState().features);
     },
     save() {
       return useSceneStore.getState().saveScene();

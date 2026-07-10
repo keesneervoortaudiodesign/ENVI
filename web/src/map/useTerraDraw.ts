@@ -57,6 +57,38 @@ export function useTerraDraw(): TerraDrawController {
     drawRef.current?.setMode(tdModeName(activeTool));
   }, [activeTool]);
 
+  // Re-hydrate Terra Draw when the WHOLE scene is bulk-loaded (project open / reopen-last / reload). The
+  // store's `loadScene` bumps `loadEpoch`; on each bump we clear the current TD render and re-add the
+  // freshly-loaded canonical features so the reopened scene is visible on the map without a basemap switch
+  // (SC4). Removing by id (never a blanket clear across a torn-down style) keeps the map/store in lockstep.
+  useEffect(() => {
+    let prevEpoch = useSceneStore.getState().loadEpoch;
+    const unsubscribe = useSceneStore.subscribe((state) => {
+      if (state.loadEpoch === prevEpoch) {
+        return;
+      }
+      prevEpoch = state.loadEpoch;
+      const draw = drawRef.current;
+      if (!draw) {
+        return; // no live instance yet — the initial build re-adds from the store on `load`
+      }
+      try {
+        const current = draw.getSnapshot().map((f) => String(f.id));
+        if (current.length > 0) {
+          draw.removeFeatures(current);
+        }
+        const next = useSceneStore.getState().terraDrawFeatures();
+        if (next.length > 0) {
+          draw.addFeatures(next);
+        }
+        setTdFeatureCount(draw.getSnapshot().length);
+      } catch {
+        /* style momentarily torn down (mid basemap switch) — style.load rebuild re-adds from the store */
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   useEffect(() => {
     // react-map-gl's MapRef.getMap() returns its MapInstance; structurally it is the maplibre-gl Map
     // (the single boundary cast for the whole hook). setStyle/on/once/addControl live on it.

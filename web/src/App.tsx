@@ -9,7 +9,7 @@
 //   Control heights come from --row-h-lg / --row-h; 44px is retained ONLY on the primary Save and
 //   destructive actions (D-12). Every colour/space/radius is an existing theme token — no new token.
 
-import { type ReactElement } from "react";
+import { useEffect, type ReactElement } from "react";
 
 import { MapCanvas } from "./map/MapCanvas";
 import { Palette } from "./panels/Palette";
@@ -20,12 +20,19 @@ import { ValidationPanel } from "./panels/ValidationPanel";
 import { SpectrumEditor } from "./spectrum/SpectrumEditor";
 import { useSceneStore } from "./store/sceneStore";
 import { useAutosave } from "./store/autosave";
+import { reopenLast } from "./store/projectActions";
 
 export function App(): ReactElement {
   const spectrumEditor = useSceneStore((s) => s.spectrumEditor);
   const closeSpectrumEditor = useSceneStore((s) => s.closeSpectrumEditor);
   // Wire committed-edit autosave + flush-on-unload (D-04). Mounted once at the app root.
   useAutosave();
+
+  // Reopen-last on boot (D-06): restore the last-opened project + its scene. Best-effort — a missing
+  // last-project resolves to the ordinary "No project" empty state, never an error (SC4 reopen path).
+  useEffect(() => {
+    void reopenLast();
+  }, []);
 
   return (
     <div className="app-shell">
