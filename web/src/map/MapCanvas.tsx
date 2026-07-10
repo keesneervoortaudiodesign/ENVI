@@ -18,15 +18,22 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 import { DARK_BASEMAP_STYLE } from "./basemap";
 import { useTerraDraw } from "./useTerraDraw";
+import { DgmOverlay } from "./DgmOverlay";
+import { useDgmTrigger } from "../dgm/dgmTrigger";
 import { useSceneStore } from "../store/sceneStore";
+import { useDgmStore } from "../store/dgm";
 
 // The Terra Draw controller + Gate-1 scene overlay. Rendered as a child of <Map> so `useMap()` (used by
 // the hook) resolves to this map instance.
 function SceneOverlay(): ReactElement {
   const { switchBasemap, addTestFeature, tdFeatureCount, ready } = useTerraDraw();
+  // The SC1 DGM producer: committed elevation edits → debounced POST /dgm/triangulate → dgm slice.
+  useDgmTrigger();
   const storeFeatureCount = useSceneStore((s) => Object.keys(s.features).length);
   const drawInstancesLive = useSceneStore((s) => s.drawInstancesLive);
   const rehydrations = useSceneStore((s) => s.rehydrations);
+  const tinTriangles = useDgmStore((s) => s.triangulation?.triangles.length ?? 0);
+  const dgmReject = useDgmStore((s) => s.rejectReason);
 
   return (
     <div className="map-overlay">
@@ -72,6 +79,14 @@ function SceneOverlay(): ReactElement {
           <dt>rehydrations</dt>
           <dd data-testid="rehydration-count">{rehydrations}</dd>
         </div>
+        <div>
+          <dt>tin</dt>
+          <dd data-testid="dgm-triangle-count">{tinTriangles}</dd>
+        </div>
+        <div>
+          <dt>dgm-reject</dt>
+          <dd data-testid="dgm-reject">{dgmReject ? String(dgmReject.status) : "none"}</dd>
+        </div>
       </dl>
     </div>
   );
@@ -102,6 +117,7 @@ export function MapCanvas(): ReactElement {
       style={{ position: "absolute", inset: 0 }}
     >
       <ResizeOnMount />
+      <DgmOverlay />
       <SceneOverlay />
     </Map>
   );
