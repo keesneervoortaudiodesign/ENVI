@@ -26,6 +26,17 @@
 // The config avoids `node:*` imports on purpose (tsconfig `types: []`, no `@types/node`), so the
 // wasm reference here is `assetsInclude` (a plain glob) rather than a path-alias built from
 // `fileURLToPath`.
+//
+// # Cross-origin isolation (SVC-02, D-04, plan 10-02)
+// `server.headers` emits `Cross-Origin-Opener-Policy: same-origin` +
+// `Cross-Origin-Embedder-Policy: credentialless` so `npm run dev` AND the Playwright test server
+// are cross-origin isolated (`self.crossOriginIsolated === true`) — the prerequisite for
+// `SharedArrayBuffer` and the wasm-bindgen-rayon thread pool the client-side solve spawns. This
+// mirrors the production headers the `envi-service` axum bundle sends. The COEP value is
+// `credentialless`, NOT `require-corp`: credentialless strips credentials on no-cors sub-resource
+// loads so the Phase-8 direct third-party fetches (basemap/AHN/Overpass) keep working without a
+// CORP header on every source — `require-corp` would break them. Native Vite feature: no new npm
+// dependency (no `vite-plugin-cross-origin-isolation`).
 
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -33,6 +44,12 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   base: "./",
   plugins: [react()],
+  server: {
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "credentialless",
+    },
+  },
   // The wasm-bindgen `.wasm` in src/generated/wasm/ is an explicit asset the Vite build consumes.
   assetsInclude: ["**/src/generated/wasm/*.wasm"],
   build: {
