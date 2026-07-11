@@ -41,7 +41,10 @@
 #![deny(unsafe_code)]
 
 pub mod cog;
+pub mod impedance_table;
+pub mod provenance;
 pub mod registry;
+pub mod terrain;
 
 use thiserror::Error;
 
@@ -116,6 +119,21 @@ pub enum GisError {
     #[error("tiff decode error: {message}")]
     Tiff {
         /// Human-readable `tiff` error text.
+        message: String,
+    },
+    /// Reprojection through [`envi_geo`] failed (the single reprojection boundary,
+    /// GEOX-04). The underlying `GeoError` is captured as a message so [`GisError`]
+    /// stays `PartialEq` (mirroring [`GisError::Tiff`]).
+    #[error("reprojection error: {message}")]
+    Reproject {
+        /// Human-readable `envi_geo::GeoError` text.
+        message: String,
+    },
+    /// Untrusted third-party JSON (Overpass) failed to parse, or a required field
+    /// was malformed. The parser error is captured as a message.
+    #[error("json parse error: {message}")]
+    Json {
+        /// Human-readable parse error text.
         message: String,
     },
 }
