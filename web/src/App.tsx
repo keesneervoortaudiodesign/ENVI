@@ -19,6 +19,7 @@ import { RejectBanner } from "./panels/RejectBanner";
 import { ValidationPanel } from "./panels/ValidationPanel";
 import { ImportPanel } from "./panels/ImportPanel";
 import { WeatherPanel } from "./panels/WeatherPanel";
+import { CalcPanel } from "./panels/CalcPanel";
 import { SpectrumEditor } from "./spectrum/SpectrumEditor";
 import { useSceneStore } from "./store/sceneStore";
 import { useAutosave } from "./store/autosave";
@@ -60,6 +61,7 @@ export function App(): ReactElement {
           <Inspector />
           <ImportPanel />
           <WeatherPanel />
+          <CalcPanel />
           <ValidationPanel />
         </aside>
       </div>
