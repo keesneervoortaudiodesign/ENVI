@@ -384,7 +384,7 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 10-01-PLAN.md — envi-compute pure-Rust core: factored identity + cost/guardrail + hierarchical tiers + SolveJob assembly with directional-phase seam (SRC-03) [wave 1]
+- [x] 10-01-PLAN.md — envi-compute pure-Rust core: factored identity + cost/guardrail + hierarchical tiers + SolveJob assembly with directional-phase seam (SRC-03) [wave 1]
 - [ ] 10-02-PLAN.md — Cross-origin isolation: COOP/COEP credentialless headers on envi-service + Vite dev headers (D-04) [wave 1]
 - [ ] 10-03-PLAN.md — envi-compute-wasm cdylib: thin boundary + ts-rs DTOs (TierComplete/JobStatus) + OPFS TensorSink + threaded-wasm build toolchain [wave 2]
 - [ ] 10-04-PLAN.md — Caller-side rayon pool sharding + Web Worker job machine + client/store/opfs glue (GRID-02/SVC-02, D-03/D-10/D-11) [wave 3]

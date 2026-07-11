@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 09
-current_phase_name: path-extraction-weather
-status: complete
-stopped_at: Phase 10 context gathered
-last_updated: "2026-07-11T17:31:02.679Z"
+current_phase: 10
+current_phase_name: calculation-service
+status: in-progress
+stopped_at: Phase 10 plan 10-01 complete (envi-compute core)
+last_updated: "2026-07-11T18:15:00.000Z"
 last_activity: 2026-07-11
-last_activity_desc: "Phase 9 closed: 6/6 plans + 5 gates green (offline Playwright 19/19)"
+last_activity_desc: "Phase 10 plan 10-01 executed: envi-compute pure-Rust core (identity + cost + tiers + SolveJob assembly/SRC-03), all gates green"
 progress:
   total_phases: 11
   completed_phases: 9
-  total_plans: 47
-  completed_plans: 47
-  percent: 82
+  total_plans: 52
+  completed_plans: 48
+  percent: 83
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 09 (path-extraction-weather) — COMPLETE
-Plan: 6 of 6 complete (09-01 … 09-06)
-Status: Phase 9 COMPLETE — all 5 completion gates closed (code-review 1 critical/3 warnings/3 info fixed + re-review clean · simplify 11 cleanups applied · secure SECURED 27/27 · verify passed 5/5 · doc-consistency). GEOX-01/02/03 + GRID-01 + METX-01/02 delivered: the GIS→engine geometry pipeline (cut-profile with committed r.profile oracle, impedance segmentation drawn>imported>default, screen-vertex injection into TerrainProfile, building-aware CDT receiver grid) + Open-Meteo per-azimuth A/B/C + ERA5 Obukhov/occurrence-stats groundwork + WASM boundary + flagged-off ERA5 endpoint + PropagationPathInputs/PathCacheKey + web weather panel. Next: Phase 10 (Calculation Service).
-Last activity: 2026-07-11 — Phase 9 closed: 6/6 plans + 5 gates green (offline Playwright 19/19)
+Phase: 10 (calculation-service) — IN PROGRESS
+Plan: 1 of 5 complete (10-01 ✓; 10-02..10-05 pending)
+Status: Phase 10 STARTED. 10-01 executed — the pure-Rust `envi-compute` core landed: the WASM-safe tensor-identity closure factored byte-for-byte out of envi-store (tensor_hash digest-pinned + CalcManifest + chunk_receivers + MetDto/ReceiverDto + geometry_positions, re-exported for source compatibility), the SC1 cost model + Ok/Warn/Block guardrail, the hierarchical points⊂coarse⊂fine tier partition (D-05), and the SolveJob assembly that FIRST populates SolveJob::directivity_phase_rad (SRC-03 seam, has_phase()-gated) with ENG-09/10 forest/isolation threaded. Engine byte-identical; envi-compute compiles for wasm32; all gates green. Next: 10-02 (COOP/COEP headers), then 10-03 (envi-compute-wasm cdylib + OPFS sink), 10-04 (rayon pool + worker), 10-05 (CalcPanel UI).
+Last activity: 2026-07-11 — 10-01 executed (envi-compute core, 3 tasks, all quality gates green)
 
-Progress: [██████████] Phase 9 — 6/6 plans complete (GEOX-01/02 cut-profile+impedance · GEOX-03/GRID-01 screening+receiver grid · METX-01/02 Open-Meteo A/B/C lift + ERA5 Obukhov/occurrence derivation · WASM boundary+flagged ERA5 endpoint+PropagationPathInputs/PathCacheKey · web weather-import panel+overlays · offline Playwright SC4 zero-egress proof)
+Progress: [█████████░] Phase 10 — 1/5 plans complete (10-01 envi-compute core: factored identity + cost/guardrail + hierarchical tiers + SolveJob directional-phase seam SRC-03)
 
 ## Performance Metrics
 
@@ -96,6 +96,7 @@ Progress: [██████████] Phase 9 — 6/6 plans complete (GEOX-
 | Phase 09 P04 | 55min | 3 tasks | 12 files |
 | Phase 09 P05 | 50min | 2 tasks | 10 files |
 | Phase 09 P06 | 12min | 1 task | 4 files |
+| Phase 10 P01 | ~45min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -172,14 +173,15 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-- **Wire directional phase into the coherent composition path (do not miss).**
-  `DirectivityBalloon` now carries optional per-band phase `Δφ(θ,φ,f)`
-  (`eval_phase`/`eval_complex`) and the solver applies it via
-  `SolveJob::directivity_phase_rad` to `H_coh` only — an ENVI extension beyond
-  stock Nord2000 (real ΔL, incoherent). **No harness `SolveJob` site populates it
-  yet**; wire it when the coherent directional-source composition path lands
-  (Milestone 2 Phases 10–11, SRC-03 end-to-end). Full detail + how-to in
-  `.planning/phases/04-.../deferred-items.md` ("Directional phase seam").
+- ~~**Wire directional phase into the coherent composition path.**~~ RESOLVED
+  (10-01): `envi_compute::job_assembly::assemble_jobs` is the FIRST construction
+  site to populate `SolveJob::directivity_phase_rad` — `Some(balloon.eval_phase(
+  dir_local))` gated on `has_phase()`, else `None` (phase-free stays bit-identical).
+  Proven end-to-end (rotating a phased balloon changes the coherent sum's argument;
+  a phase-free balloon leaves `arg(H_coh)` bit-identical). The full browser path
+  runs this site through the wasm pool (10-03/10-04). SRC-02 shipped as real
+  `ΔL(θ,φ,f)`; complex directivity is the accepted ENVI enhancement (reflect in
+  REQUIREMENTS at phase close).
 
 ### Blockers/Concerns
 
