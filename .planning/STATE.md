@@ -4,9 +4,9 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 08
 current_phase_name: gis-ingestion-dgm
-status: complete
+status: executing
 stopped_at: Phase 9 context gathered
-last_updated: "2026-07-11T11:56:06.511Z"
+last_updated: "2026-07-11T12:40:46.585Z"
 last_activity: 2026-07-11
 last_activity_desc: "Phase 8 closed: 8/8 plans + 5 gates green (offline Playwright 17/17)"
 progress:
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 08 (gis-ingestion-dgm) — COMPLETE
 Plan: 8 of 8 complete (08-01 … 08-08)
-Status: Phase 8 COMPLETE — all 5 completion gates closed (code-review 1 critical/4 warnings fixed + simplify 7 cleanups + secure SECURED 25/25 + verify passed 5/5 + doc-consistency). DATA-01..04 delivered via the client-side WASM pivot. Next: Phase 9 (Path Extraction & Weather).
+Status: Ready to execute
 Last activity: 2026-07-11 — Phase 8 closed: 8/8 plans + 5 gates green (offline Playwright 17/17)
 
 Progress: [██████████] Phase 8 — 8/8 plans complete (envi-geo RD-New · envi-gis sans-I/O COG core · allowlisted byte proxy · source registry+terrain+σ table+Overpass buildings+re-import merge · WorldCover→ground_zone vectorization · envi-gis-wasm cdylib+generated DTOs · web OPFS import path+ImportPanel+overlay+attribution · offline Playwright import+DATA-04 replay)
