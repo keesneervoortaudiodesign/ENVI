@@ -141,6 +141,12 @@ async function fetchBody(base: string, directUrl: string, signal?: AbortSignal):
     if (err instanceof ApiError) {
       throw err;
     }
+    // A caller abort is NOT a network/CORS failure — re-throw it so a cancelled fetch does not spawn a
+    // second (proxy) request with the already-aborted signal (WR-03), which would only reject again and
+    // momentarily reach the same-origin proxy. A clean cancel must stay a clean cancel.
+    if (signal?.aborted || (err as { name?: string })?.name === "AbortError") {
+      throw err;
+    }
     // A network/CORS failure (TypeError) → try the same-origin allowlisted proxy once.
     const res = await fetch(proxyUrlFor(base, directUrl), { method: "GET", signal });
     if (!res.ok) {
