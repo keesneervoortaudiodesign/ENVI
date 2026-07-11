@@ -21,10 +21,11 @@
 
 use std::collections::HashMap;
 
-use geojson::{Feature, Geometry, GeometryValue, JsonValue, Position};
+use geojson::{Feature, JsonValue, Position};
 use serde::Deserialize;
 
 use crate::GisError;
+use crate::geojson_util::polygon_feature;
 use crate::provenance::Provenance;
 
 /// Meters per building level (OSM convention ≈ 3 m/storey; D-10 locked formula).
@@ -172,13 +173,7 @@ pub fn buildings_from_overpass(
             JsonValue::from(height.height_m),
         );
 
-        features.push(Feature {
-            bbox: None,
-            geometry: Some(Geometry::new(GeometryValue::Polygon { coordinates: rings })),
-            id: None,
-            properties: Some(props),
-            foreign_members: None,
-        });
+        features.push(polygon_feature(rings, props));
     }
 
     Ok((features, skips))
@@ -286,6 +281,7 @@ struct LatLon {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use geojson::GeometryValue;
 
     fn tags(pairs: &[(&str, &str)]) -> HashMap<String, String> {
         pairs

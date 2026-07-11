@@ -46,11 +46,12 @@
 use std::collections::HashMap;
 
 use geo::{Area, Contains, Coord, InteriorPoint, LineString, Polygon, Simplify};
-use geojson::{Feature, Geometry, GeometryValue, JsonValue, Position};
+use geojson::{Feature, JsonValue, Position};
 
 use envi_geo::LonLat;
 
 use crate::cog::Raster;
+use crate::geojson_util::polygon_feature;
 use crate::impedance_table::{DEFAULT_ROUGHNESS_CLASS, worldcover_to_class};
 use crate::provenance::Provenance;
 
@@ -208,13 +209,7 @@ pub fn vectorize_landcover(
                 JsonValue::from(DEFAULT_ROUGHNESS_CLASS.to_string()),
             );
 
-            features.push(Feature {
-                bbox: None,
-                geometry: Some(Geometry::new(GeometryValue::Polygon { coordinates: rings })),
-                id: None,
-                properties: Some(props),
-                foreign_members: None,
-            });
+            features.push(polygon_feature(rings, props));
         }
     }
 
@@ -373,6 +368,7 @@ mod tests {
     use super::*;
     use crate::cog::geo_tags::GeoTransform;
     use geo::Relate;
+    use geojson::GeometryValue;
 
     /// A WGS84 north-up geotransform: ~10 m pixels near Amsterdam.
     fn wgs84_geo() -> GeoTransform {

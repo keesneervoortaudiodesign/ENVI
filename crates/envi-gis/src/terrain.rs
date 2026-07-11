@@ -25,12 +25,13 @@
 //!   4. **One reprojection boundary** (GEOX-04): RD New / WGS84 → WGS84 goes
 //!      through [`envi_geo`] only — no inline proj strings here.
 
-use geojson::{Feature, Geometry, JsonValue};
+use geojson::{Feature, JsonValue};
 
 use envi_geo::{LonLat, RdNewCrs, SceneXY};
 
 use crate::GisError;
 use crate::cog::Raster;
+use crate::geojson_util::point_feature;
 use crate::provenance::Provenance;
 
 /// Hard cap on decimated terrain samples per import (threat T-08-04-01). Far
@@ -149,16 +150,7 @@ pub fn terrain_features(
 
         let mut props = provenance.clone().into_properties("elevation_point");
         props.insert("z_m".to_string(), JsonValue::from(s.z));
-        features.push(Feature {
-            bbox: None,
-            geometry: Some(Geometry::new(geojson::GeometryValue::new_point([
-                lonlat.lon_deg,
-                lonlat.lat_deg,
-            ]))),
-            id: None,
-            properties: Some(props),
-            foreign_members: None,
-        });
+        features.push(point_feature([lonlat.lon_deg, lonlat.lat_deg], props));
     }
     Ok(features)
 }

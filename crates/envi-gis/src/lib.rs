@@ -42,6 +42,7 @@
 
 pub mod buildings;
 pub mod cog;
+mod geojson_util;
 pub mod impedance_table;
 pub mod landcover;
 pub mod merge;
