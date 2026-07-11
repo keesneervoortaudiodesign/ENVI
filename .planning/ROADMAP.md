@@ -282,7 +282,7 @@ Plans:
 
 Plans:
 
-- [ ] 08-01-PLAN.md — envi-geo RD-New (EPSG:28992) + pyproj oracle (DATA-01)
+- [x] 08-01-PLAN.md — envi-geo RD-New (EPSG:28992) + pyproj oracle (DATA-01)
 - [ ] 08-02-PLAN.md — envi-gis crate + sans-I/O COG decode core + committed COG fixtures (DATA-01)
 - [ ] 08-03-PLAN.md — envi-service allowlisted byte proxy (GLO-30/WorldCover) + SSRF contract tests (DATA-01/02)
 - [ ] 08-04-PLAN.md — envi-gis feature layer: source registry + terrain decimation/base-elevation + WorldCover→σ table + Overpass buildings/height-chain + re-import merge (DATA-01/02/03)
@@ -293,7 +293,7 @@ Plans:
 
 **Wave 1** *(parallel — no shared files)*
 
-- [ ] 08-01: envi-geo RD-New
+- [x] 08-01: envi-geo RD-New
 - [ ] 08-02: envi-gis COG decode core + fixtures
 - [ ] 08-03: envi-service byte proxy
 

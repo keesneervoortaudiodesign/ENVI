@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 07
-current_phase_name: frontend-shell-scene-editing
-status: complete
+current_phase: 08
+current_phase_name: gis-ingestion-dgm
+status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-07-10T21:20:46.674Z"
-last_activity: 2026-07-10
-last_activity_desc: "Phase 7 closed: 5 completion gates green (07-REVIEW fixed, 07-SECURITY SECURED 39/39, 07-VERIFICATION passed 4/4, simplify applied, doc-consistency)"
+last_updated: "2026-07-11T00:12:31.137Z"
+last_activity: 2026-07-11
+last_activity_desc: Completed 08-01 (envi-geo RD New EPSG:28992 + pyproj oracle)
 progress:
   total_phases: 11
   completed_phases: 7
-  total_plans: 33
-  completed_plans: 33
+  total_plans: 41
+  completed_plans: 34
   percent: 64
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** A numerically faithful Nord2000 engine — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain.
-**Current focus:** Phase 07 — frontend-shell-scene-editing (COMPLETE)
+**Current focus:** Phase 08 — gis-ingestion-dgm
 
 ## Current Position
 
-Phase: 07 (frontend-shell-scene-editing) — COMPLETE
-Plan: 10 of 10 complete (07-01 … 07-10)
-Status: Phase 7 COMPLETE — all 5 completion gates closed (code-review + simplify + secure + verify + doc-consistency). WEB-01/02/03/04/08/09/10 and SCN-01/02/03/04 delivered for Phase-7 authoring scope (authored isolation/source spectra are session-only; persistence + engine transmission land in Phases 9–11). Next: Phase 8 (GIS Ingestion & DGM).
-Last activity: 2026-07-10 — Phase 7 closed: 5 completion gates green (07-REVIEW fixed, 07-SECURITY SECURED 39/39, 07-VERIFICATION passed 4/4, simplify applied, doc-consistency)
+Phase: 08 (gis-ingestion-dgm) — EXECUTING
+Plan: 2 of 8
+Status: Executing Phase 08
+Last activity: 2026-07-11 — Completed 08-01 (envi-geo RD New + pyproj oracle)
 
 Progress: [██████████] Phase 7 — 10/10 plans complete (envi-store DTOs · envi-dgm TIN · endpoints · web scaffold+theme · Terra Draw lifecycle · generated wire types · 9-kind palette+DGM producer · spectrum editor+ring-diff · validation+autosave · SC1–SC4 E2E)
 
@@ -82,6 +82,7 @@ Progress: [██████████] Phase 7 — 10/10 plans complete (env
 | Phase 07 P08 | 21min | 3 tasks | 20 files |
 | Phase 07 P09 | 42min | 4 tasks | 15 files |
 | Phase 07 P10 | 17min | 3 tasks | 15 files |
+| Phase 08 P01 | 30min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 07-07: DGM producer is debounced 750ms + decoupled from the raw TD change/drag path (SC1); closed-enum selects make out-of-vocabulary impedance/roughness impossible
 - [Phase ?]: 07-10: reopen-last on boot restores the last project; getLastProject maps 404/id-less to null so the boot GET is transparent to the offline test suite
 - [Phase ?]: 07-10: SC1-SC4 proven by integrated offline Playwright journeys; final web/dist committed (zero external assets); envi-dgm documented with its own quarantine gate
+- [Phase 08, 08-01] RD New (EPSG:28992) added to envi-geo as a sibling source type `RdNewCrs` (to_rd/to_wgs84), NOT an overload of the UTM-specific ProjectCrs — RD is the transient AHN import source CRS, reprojected to WGS84 then handed to the project ProjectCrs (GEOX-04 single boundary preserved). proj4rs sterea + Bessel + 7-param towgs84, ZERO new deps; radians stay quarantined in transform.rs. Pinned to a committed pyproj EPSG:4326↔28992 oracle (rd_landmarks.toml, sha256 provenance, tol_m read from [meta]) at ≤1.0 m round-trip — the ~0.5 m towgs84-vs-RDNAPTRANS gap sits inside tolerance; no runtime Python. Fallible constructor wraps bad proj strings into GeoError::Proj (no panic, T-08-01-02)
 
 ### Pending Todos
 
@@ -169,6 +171,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-10T21:20:46.661Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-gis-ingestion-dgm/08-CONTEXT.md
+Last session: 2026-07-11
+Stopped at: Completed 08-01-PLAN.md (envi-geo RD New + pyproj oracle)
+Resume file: None
