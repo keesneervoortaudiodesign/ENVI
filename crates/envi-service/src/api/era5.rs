@@ -237,7 +237,23 @@ fn run_era5_job(tx: &watch::Sender<JobStatus>, token: &CancellationToken, hours:
         return;
     }
     match derive_occurrence(hours) {
-        Ok(_occ) => tx.send_replace(JobStatus::Done),
+        Ok(occ) => {
+            // IN-01: the derived occurrence table is the whole point of the compute,
+            // so surface it rather than dropping it on the floor. The `JobStatus`
+            // wire enum is the FROZEN Phase-7 contract (its `Done` carries no
+            // payload) and there is no results endpoint yet (D-04/D-05 flagged-off
+            // groundwork), so the statistics are intentionally NOT on the wire at
+            // this stage — they are logged server-side so the compute is observable
+            // and verifiably non-dead. Persisting to a result store + a results
+            // endpoint is the un-flag follow-up.
+            tracing::info!(
+                total = occ.total,
+                reliable = occ.reliable,
+                reliable_fraction = occ.reliable_fraction(),
+                "ERA5 occurrence statistics derived (not yet surfaced on the wire)"
+            );
+            tx.send_replace(JobStatus::Done)
+        }
         Err(_) => tx.send_replace(JobStatus::Failed {
             reason: "ERA5 derivation failed".to_string(),
         }),
