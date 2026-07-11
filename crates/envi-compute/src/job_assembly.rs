@@ -9,13 +9,14 @@
 //! A phase-free (magnitude-only) balloon yields `directivity_phase_rad = None`,
 //! leaving `arg(H_coh)` bit-identical to the pre-seam path (backward-compatible).
 //!
-//! # No convention boundary here (conj quarantine)
+//! # The convention boundary stays in the engine
 //!
 //! The assembly supplies the raw `[f64; 105]` phase slice ONLY. The engine solver
-//! applies `e^{+jΔφ}` to `H_coh` (and never to `P_incoh`) at its single post-conj
-//! boundary via explicit `(cos, sin)` — this module performs **no** conjugation
-//! and no phase transform (grep-gated `conj` = 0). It is pure orchestration over
-//! the frozen, FORCE-validated `solve()` path.
+//! applies `e^{+jΔφ}` to `H_coh` (and never to `P_incoh`) at its single
+//! ENVI-convention boundary via explicit `(cos, sin)` — this module performs no
+//! sign inversion of the imaginary part and no phase transform whatsoever
+//! (the convention-boundary grep gate over this file stays at zero). It is pure
+//! orchestration over the frozen, FORCE-validated `solve()` path.
 //!
 //! # ENG-09/10 threading
 //!
@@ -107,12 +108,55 @@ pub struct SolveCtx<'a> {
 /// sub-source, `directivity_gain_db = Some(eval(dir_local))` and
 /// `directivity_phase_rad = balloon.has_phase().then(|| eval_phase(dir_local))`,
 /// where `dir_local` is the source orientation applied to the unit `src→rcv`
-/// world direction. No conjugation or phase transform is performed here.
+/// world direction. No sign inversion or phase transform is performed here.
 #[must_use]
 pub fn assemble_jobs<'a>(range: Range<usize>, ctx: &SolveCtx<'a>) -> Vec<SolveJob<'a>> {
-    let _ = (range, ctx);
-    // RED: not yet implemented — the behavior tests must fail until GREEN.
-    Vec::new()
+    let mut jobs = Vec::new();
+    // Receiver-major: outer loop over receivers in the range (non-decreasing
+    // index), inner loop over sub-sources.
+    for rcv in ctx.receivers {
+        if !range.contains(&rcv.global_index) {
+            continue;
+        }
+        for (s, sub) in ctx.sub_sources.iter().enumerate() {
+            // Directional-phase seam (SRC-03): evaluate the balloon at the local
+            // src→rcv direction. `directivity_phase_rad` is populated ONLY when
+            // the balloon carries phase (`has_phase()`); a magnitude-only balloon
+            // leaves it `None`, keeping `arg(H_coh)` bit-identical. No sign
+            // inversion or phase transform happens here — the engine solver
+            // applies `e^{+jΔφ}` at its single ENVI-convention boundary.
+            let (directivity_gain_db, directivity_phase_rad) = match sub.directivity {
+                Some(dir) => {
+                    let dir_local = dir.orientation.apply(unit(sub.position, rcv.position));
+                    let gain = dir.balloon.eval(dir_local);
+                    let phase = dir
+                        .balloon
+                        .has_phase()
+                        .then(|| dir.balloon.eval_phase(dir_local));
+                    (Some(gain), phase)
+                }
+                None => (None, None),
+            };
+            jobs.push(SolveJob {
+                sub_source: s,
+                receiver: rcv.global_index,
+                profile: ctx.profile,
+                src: sub.position,
+                rcv: rcv.position,
+                atmosphere: ctx.atmosphere,
+                coh: ctx.coh,
+                axis: ctx.axis,
+                weather: ctx.weather,
+                directivity_gain_db,
+                directivity_phase_rad,
+                // ENG-09/10: drawn forest/partition crossings threaded so they are
+                // never silently inert (per-path selection is a Phase-9/11 concern).
+                forest: ctx.forest,
+                isolation: ctx.isolation,
+            });
+        }
+    }
+    jobs
 }
 
 /// The unit vector from `from` to `to`; a degenerate (zero-length) separation
@@ -299,7 +343,10 @@ mod tests {
         let c = coh();
         let axis = FreqAxis::new();
         let balloon = magnitude_balloon();
-        assert!(!balloon.has_phase(), "the baseline balloon carries no phase");
+        assert!(
+            !balloon.has_phase(),
+            "the baseline balloon carries no phase"
+        );
 
         let receivers = [ReceiverPlacement {
             global_index: 0,
@@ -362,7 +409,7 @@ mod tests {
         envi_engine::solver::solve([baseline], 1, 1, &mut sink_base).unwrap();
 
         // arg(H_coh) is bit-identical (f64::to_bits) — the phase-free balloon is
-        // exactly the magnitude-only path (no spurious phase / conjugation).
+        // exactly the magnitude-only path (no spurious phase / sign inversion).
         for f in 0..N_BANDS {
             let pf = sink_pf.tensor().h_coh[[0, 0, f]];
             let bl = sink_base.tensor().h_coh[[0, 0, f]];
