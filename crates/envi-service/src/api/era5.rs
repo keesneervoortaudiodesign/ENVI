@@ -92,20 +92,20 @@ pub struct Era5HourInput {
     pub v10_ms: f64,
 }
 
-impl Era5HourInput {
-    /// Marshal into the engine-adjacent [`Era5Hour`] (pure field copy).
-    #[must_use]
-    pub fn to_hour(self) -> Era5Hour {
+impl From<Era5HourInput> for Era5Hour {
+    /// Marshal the wire hour into the engine-adjacent [`Era5Hour`] (pure field copy;
+    /// the field list lives once, at this boundary).
+    fn from(h: Era5HourInput) -> Self {
         Era5Hour {
-            iews: self.iews,
-            inss: self.inss,
-            ishf: self.ishf,
-            t2m_k: self.t2m_k,
-            d2m_k: self.d2m_k,
-            sp_pa: self.sp_pa,
-            sdfor_m: self.sdfor_m,
-            u10_ms: self.u10_ms,
-            v10_ms: self.v10_ms,
+            iews: h.iews,
+            inss: h.inss,
+            ishf: h.ishf,
+            t2m_k: h.t2m_k,
+            d2m_k: h.d2m_k,
+            sp_pa: h.sp_pa,
+            sdfor_m: h.sdfor_m,
+            u10_ms: h.u10_ms,
+            v10_ms: h.v10_ms,
         }
     }
 }
@@ -277,7 +277,7 @@ pub async fn import_era5(
         // Flagged-off live CDS retrieval (disabled by default).
         retrieve_era5_hours(&app, &req).await?
     } else {
-        req.hours.iter().map(|h| h.to_hour()).collect()
+        req.hours.iter().copied().map(Era5Hour::from).collect()
     };
 
     let job_id = submit_era5_job(&app, hours).await;

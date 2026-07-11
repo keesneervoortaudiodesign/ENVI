@@ -698,7 +698,7 @@ pub fn derive_weather(req: JsValue) -> Result<JsValue, JsValue> {
 #[wasm_bindgen]
 pub fn derive_era5(req: JsValue) -> Result<JsValue, JsValue> {
     let req: Era5DeriveReq = from_js(req)?;
-    let hours: Vec<Era5Hour> = req.hours.iter().map(era5_hour).collect();
+    let hours: Vec<Era5Hour> = req.hours.iter().map(Era5Hour::from).collect();
     // Single pass: the occurrence binning already computes each hour's `1/L`, so
     // collect it here instead of a second `obukhov` sweep over the same hours (IN-03a).
     let (occ, inv_l) = occurrence_stats_with_inv_l(&hours).map_err(gis_err)?;
@@ -720,17 +720,20 @@ pub fn derive_era5(req: JsValue) -> Result<JsValue, JsValue> {
     })
 }
 
-/// A core [`Era5Hour`] from its wire DTO (pure field marshalling).
-fn era5_hour(h: &Era5HourDto) -> Era5Hour {
-    Era5Hour {
-        iews: h.iews,
-        inss: h.inss,
-        ishf: h.ishf,
-        t2m_k: h.t2m_k,
-        d2m_k: h.d2m_k,
-        sp_pa: h.sp_pa,
-        sdfor_m: h.sdfor_m,
-        u10_ms: h.u10_ms,
-        v10_ms: h.v10_ms,
+/// A core [`Era5Hour`] from its wire DTO (pure field marshalling; the field list
+/// lives once, at this boundary).
+impl From<&Era5HourDto> for Era5Hour {
+    fn from(h: &Era5HourDto) -> Self {
+        Era5Hour {
+            iews: h.iews,
+            inss: h.inss,
+            ishf: h.ishf,
+            t2m_k: h.t2m_k,
+            d2m_k: h.d2m_k,
+            sp_pa: h.sp_pa,
+            sdfor_m: h.sdfor_m,
+            u10_ms: h.u10_ms,
+            v10_ms: h.v10_ms,
+        }
     }
 }
