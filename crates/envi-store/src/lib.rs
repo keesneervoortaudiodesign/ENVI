@@ -155,3 +155,22 @@ pub enum StoreError {
         message: String,
     },
 }
+
+/// Map the pure identity closure's error (from the factored-out
+/// `envi_compute::identity`, Phase 10 10-01) into a [`StoreError`] so re-exported
+/// call sites (`geometry_positions`, the `ReceiverDto` conversion) stay
+/// source-compatible: an unsupported-geometry error becomes [`StoreError::GeoJson`]
+/// and a non-finite value becomes [`StoreError::NonFinite`], exactly as before
+/// the move.
+impl From<envi_compute::identity::IdentityError> for StoreError {
+    fn from(e: envi_compute::identity::IdentityError) -> Self {
+        match e {
+            envi_compute::identity::IdentityError::GeoJson { message } => {
+                StoreError::GeoJson { message }
+            }
+            envi_compute::identity::IdentityError::NonFinite { what } => {
+                StoreError::NonFinite { what }
+            }
+        }
+    }
+}

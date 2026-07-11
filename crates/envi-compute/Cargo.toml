@@ -1,0 +1,36 @@
+[package]
+name = "envi-compute"
+description = "ENVI pure-Rust compute core — WASM-safe tensor identity (hash + manifest), cost/guardrail, hierarchical tiers, and SolveJob assembly; no std::fs, no C, no rayon-in-lib (the natively cargo test-able heart of the browser solve)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# Boundary rule (10-CONTEXT D-01/D-02, 10-RESEARCH §Refactor): this is the pure
+# compute core. It factors the WASM-safe tensor-identity closure (tensor_hash +
+# CalcManifest + chunk_receivers) out of `envi-store` so the browser can compute
+# the identity without `std::fs`, and holds the cost model, tier partition, and
+# SolveJob assembly. Every dependency is WASM-safe — NO `tempfile`, NO `std::fs`
+# user, NO `rayon`, NO C-linked crate (verify: `cargo tree -p envi-compute`).
+# Depending on `envi-engine` is legal (mirrors `envi-store`/`envi-gis`); the
+# engine's 3-dep quarantine is one-directional and gains nothing from this edge.
+# The dependency points envi-store -> envi-compute, NEVER the reverse (that would
+# drag std::fs/tempfile into wasm).
+[dependencies]
+envi-engine = { path = "../envi-engine" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+geojson = "1"
+# serde-only (NOT `v4`): the identity closure parses/compares/serializes uuids
+# but NEVER generates them — ids are minted in TS via `crypto.randomUUID()`
+# (10-RESEARCH Pitfall 9). Enabling `v4` would pull `getrandom` and break the
+# `wasm32-unknown-unknown` build (uuid demands a randomness-source feature there).
+uuid = { version = "1", features = ["serde"] }
+blake3 = "1"
+thiserror = "2"
+# ts-rs (D-10): the moved identity DTOs (MetDto/ReceiverDto) keep generating the
+# committed TS wire mirror; uuid-impl maps `Uuid -> string`. Same crate the
+# envi-store DTOs used — the wire.ts export stays byte-identical after the move.
+ts-rs = { version = "12", features = ["uuid-impl"] }
+
+[dev-dependencies]
+approx = "0.5"

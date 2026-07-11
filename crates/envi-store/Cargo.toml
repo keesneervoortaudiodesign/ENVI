@@ -13,12 +13,16 @@ rust-version.workspace = true
 [dependencies]
 envi-engine = { path = "../envi-engine" }
 envi-geo = { path = "../envi-geo" }
+# The WASM-safe tensor-identity closure (tensor_hash + CalcManifest +
+# chunk_receivers + MetDto/ReceiverDto + geometry_positions) was factored into
+# envi-compute (Phase 10, 10-01); this crate re-exports it and keeps the std::fs
+# manifest I/O. The edge points envi-store -> envi-compute, never the reverse.
+envi-compute = { path = "../envi-compute" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 geojson = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 tempfile = "3"
-blake3 = "1"
 thiserror = "2"
 # ts-rs (D-10): generate the committed TS wire mirror from these serde DTOs.
 # uuid-impl maps `Uuid -> string`; serde-compat (default) honors #[serde(tag/

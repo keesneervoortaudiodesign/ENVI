@@ -19,45 +19,17 @@
 
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-use envi_engine::freq::N_BANDS;
-use envi_engine::tensor::{BYTES_PER_CELL_PAIR, DEFAULT_TENSOR_BUDGET_BYTES};
 
 use crate::StoreError;
 use crate::project_dir::atomic_write;
 
-/// The calculation manifest persisted at `calc/<calc_id>/manifest.json`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CalcManifest {
-    /// The calculation id (also the `calc/<id>/` folder name).
-    pub calc_id: Uuid,
-    /// `[S, R, F]` — mirrors `TensorPair [sub_source, receiver, freq]`; `F` is
-    /// always 105 ([`N_BANDS`]).
-    pub dims: [usize; 3],
-    /// Number of receivers per chunk (receiver-axis chunking; see
-    /// [`chunk_receivers`]).
-    pub chunk_receivers: usize,
-    /// The frozen tensor-identity content hash (see [`crate::hash::tensor_hash`]).
-    pub tensor_hash: String,
-    /// Honest-stub provenance: `true` while compute is stubbed (Phase 6 always).
-    pub stub: bool,
-    /// Creation time, unix epoch seconds.
-    pub created_at_unix: u64,
-}
-
-/// Receivers per chunk under the engine's streaming budget:
-/// `floor(DEFAULT_TENSOR_BUDGET_BYTES / (n_sub · 105 · BYTES_PER_CELL_PAIR))`,
-/// capped at the receiver count `R` (and at least 1). The constants are imported
-/// from `envi_engine::tensor` — never re-derived here.
-#[must_use]
-pub fn chunk_receivers(n_sub: usize, n_receivers: usize) -> usize {
-    let per_receiver = n_sub.max(1) * N_BANDS * BYTES_PER_CELL_PAIR;
-    let raw = DEFAULT_TENSOR_BUDGET_BYTES / per_receiver;
-    raw.max(1).min(n_receivers.max(1))
-}
+// The pure format struct + chunk-size math moved verbatim into
+// `envi_compute::identity` (Phase 10, 10-01) so the browser can build the
+// manifest and size chunks without `std::fs`. Re-exported here so
+// `envi_store::manifest::{CalcManifest, chunk_receivers}` stay source-compatible;
+// the `std::fs` I/O below (`write_manifest`/`read_manifest`) stays in `envi-store`.
+pub use envi_compute::identity::{CalcManifest, chunk_receivers};
 
 /// Write `calc/<calc_id>/manifest.json` (atomically) and reserve the empty
 /// `tensor/` + `pincoh/` channel dirs.
@@ -100,6 +72,8 @@ pub fn read_manifest(project_dir: &Path, calc_id: Uuid) -> Result<CalcManifest, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use envi_engine::freq::N_BANDS;
+    use envi_engine::tensor::{BYTES_PER_CELL_PAIR, DEFAULT_TENSOR_BUDGET_BYTES};
 
     #[test]
     fn manifest_reserves_chunk_layout() {

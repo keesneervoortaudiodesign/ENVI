@@ -32,6 +32,13 @@ use envi_geo::{LonLat, ProjectCrs};
 use crate::StoreError;
 use crate::dto::{BandSpectrumDto, ReceiverDto};
 
+// The position-extraction helper moved into `envi_compute::identity` (Phase 10,
+// 10-01) alongside the tensor hash that consumes it. Re-exported here so
+// `envi_store::geojson::geometry_positions` still resolves and this module's
+// `validate_feature_collection` keeps calling it unqualified. Its
+// `IdentityError` maps into `StoreError` via the `From` impl in `lib.rs`.
+pub use envi_compute::identity::geometry_positions;
+
 /// The locked scene object vocabulary (ARCHITECTURE.md, aligned with the
 /// NoizCalc TI 386 palette). Engine-mappable in Phase 6: `source`, `receiver`,
 /// `wall`, `building`. The rest are persisted-but-not-yet-engine-consumed.
@@ -358,31 +365,6 @@ fn expect_point<'a>(
             message: format!("{kind} feature must be a Point"),
         }),
     }
-}
-
-/// All positions in a geometry value (Point/LineString/Polygon and their multi
-/// variants). Used by validation and by the tensor hash; unsupported geometry
-/// types are rejected.
-pub(crate) fn geometry_positions(
-    value: &geojson::GeometryValue,
-) -> Result<Vec<&geojson::Position>, StoreError> {
-    use geojson::GeometryValue::{
-        LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon,
-    };
-    let out = match value {
-        Point { coordinates } => vec![coordinates],
-        MultiPoint { coordinates } | LineString { coordinates } => coordinates.iter().collect(),
-        MultiLineString { coordinates } | Polygon { coordinates } => {
-            coordinates.iter().flatten().collect()
-        }
-        MultiPolygon { coordinates } => coordinates.iter().flatten().flatten().collect(),
-        other => {
-            return Err(StoreError::GeoJson {
-                message: format!("unsupported geometry type: {other:?}"),
-            });
-        }
-    };
-    Ok(out)
 }
 
 /// Validate a WGS84 position and return it as a [`LonLat`].

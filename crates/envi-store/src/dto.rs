@@ -25,12 +25,17 @@ use uuid::Uuid;
 use envi_engine::forest::ForestCrossing;
 use envi_engine::freq::N_BANDS;
 use envi_engine::propagation::transmission::IsolationSpectrum;
-use envi_engine::scene::{
-    Barrier, Building, GroundSegment, Receiver, Source, SubSource, TerrainProfile,
-};
+use envi_engine::scene::{Barrier, Building, GroundSegment, Source, SubSource, TerrainProfile};
 
 use crate::StoreError;
 use crate::interpolate::{Resolution, interpolate};
+
+// The identity DTOs `MetDto` + `ReceiverDto` (and the `TryFrom<&ReceiverDto> for
+// Receiver` impl) moved into `envi_compute::identity` (Phase 10, 10-01) so the
+// tensor hash can consume them WASM-side. Re-exported here so
+// `envi_store::dto::{MetDto, ReceiverDto}` stay source-compatible and keep
+// generating into the committed `web/src/generated/wire.ts`.
+pub use envi_compute::identity::{MetDto, ReceiverDto};
 
 /// Dense per-band sound-power spectrum, keyed by band **INDEX** `0..=104` — never
 /// nominal Hz (the SVC-07 wire contract; the 1/12-octave axis is served once at
@@ -121,28 +126,6 @@ impl TryFrom<&SourceDto> for Source {
             .map(SubSource::try_from)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Self { sub_sources })
-    }
-}
-
-/// Serde twin of `envi_engine::scene::Receiver`, plus a stable feature `id`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(deny_unknown_fields)]
-#[ts(export_to = "wire.ts")]
-pub struct ReceiverDto {
-    /// Stable feature id.
-    pub id: Uuid,
-    /// `[x, y, z]` in SceneXY meters (Z-up).
-    pub position: [f64; 3],
-}
-
-impl TryFrom<&ReceiverDto> for Receiver {
-    type Error = StoreError;
-
-    fn try_from(d: &ReceiverDto) -> Result<Self, StoreError> {
-        check_finite_3(&d.position, "receiver.position")?;
-        Ok(Self {
-            position: d.position,
-        })
     }
 }
 
@@ -388,36 +371,6 @@ impl CrsDto {
     /// [`StoreError::Geo`] if the zone is outside `1..=60`.
     pub fn to_project_crs(&self) -> Result<envi_geo::ProjectCrs, StoreError> {
         Ok(envi_geo::ProjectCrs::from_zone(self.utm_zone, self.south)?)
-    }
-}
-
-/// Meteorological readout parameters. Extensible via `#[serde(default)]`:
-/// deserializing `{}` yields the Nord2000 reference atmosphere (15 °C / 70 %).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export_to = "wire.ts")]
-pub struct MetDto {
-    /// Air temperature, °C (default 15.0).
-    #[serde(default = "default_temperature_c")]
-    pub temperature_c: f64,
-    /// Relative humidity, % (default 70.0).
-    #[serde(default = "default_humidity_pct")]
-    pub humidity_pct: f64,
-}
-
-fn default_temperature_c() -> f64 {
-    15.0
-}
-
-fn default_humidity_pct() -> f64 {
-    70.0
-}
-
-impl Default for MetDto {
-    fn default() -> Self {
-        Self {
-            temperature_c: default_temperature_c(),
-            humidity_pct: default_humidity_pct(),
-        }
     }
 }
 

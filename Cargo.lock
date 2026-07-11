@@ -458,6 +458,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "envi-compute"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "blake3",
+ "envi-engine",
+ "geojson",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "ts-rs",
+ "uuid",
+]
+
+[[package]]
 name = "envi-dgm"
 version = "0.1.0"
 dependencies = [
@@ -571,7 +586,7 @@ name = "envi-store"
 version = "0.1.0"
 dependencies = [
  "approx",
- "blake3",
+ "envi-compute",
  "envi-engine",
  "envi-geo",
  "geojson",
