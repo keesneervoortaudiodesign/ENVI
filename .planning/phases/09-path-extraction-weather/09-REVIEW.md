@@ -30,7 +30,8 @@ findings:
   warning: 3
   info: 3
   total: 7
-status: issues_found
+status: resolved
+resolution: all_7_fixed_and_re_reviewed_clean
 ---
 
 # Phase 9: Code Review Report
@@ -38,7 +39,32 @@ status: issues_found
 **Reviewed:** 2026-07-11
 **Depth:** standard
 **Files Reviewed:** 21
-**Status:** issues_found
+**Status:** resolved — all 7 findings fixed and confirmed by re-review
+
+## Fix Resolution (--fix --auto)
+
+All 7 findings were fixed and committed atomically, then an adversarial re-review
+confirmed each as genuinely resolved with no new correctness bugs introduced:
+
+| Finding | Fix | Commit |
+|---|---|---|
+| CR-01 elevation silent 0.0 | `elevation: Option<f64>`, missing → typed `GisError::Json` (no fabricated 0.0); test asserts rejection | `ec858e5` |
+| WR-01 negative-AGL fails fit | retain non-negative AGL after AMSL→AGL, `≥2` above-ground guard; elevated-site test | `18db6c9` |
+| WR-02 DoS cap after alloc | cap `screens.len()` before `RTree::bulk_load`; oversized-input test | `eb94085` |
+| IN-02 odd crossing drops span | anchor bounds with `x0`/`xn` via `geo::Contains` → even parity; source-inside test | `3e5c48a` |
+| IN-01 ClassOccurrence discarded | surfaced via server `tracing::info!` (wire payload is the un-flag follow-up) | `2be98ba` |
+| IN-03 double obukhov + early send | single-pass `occurrence_stats_with_inv_l`; precondition-before-send | `abb4141` |
+| WR-03 aborted fetch → proxy retry | re-throw AbortError/aborted signal before proxy branch (CORS fallback preserved) | `b353606` |
+
+**Accepted low-risk note (not fixed):** the re-review flagged a pre-existing,
+measure-zero geometric edge case — an exact tangential double-crossing collapsed by
+the `X_EPSILON_M` dedup in `inject_screens` before parity anchoring could theoretically
+flip crossing parity. It is reachable only on a misconfigured tangent, was NOT introduced
+by these fixes, and the affected path feeds only the debug overlay today. Accepted as a
+low-risk item to revisit if screen-vertex injection is later consumed by the solve path.
+
+**Post-fix gates:** `cargo fmt`/`clippy --all-targets -D warnings` (incl. `envi-service --features era5`),
+`cargo test` (workspace + `envi-service --features era5`), web `tsc` + `playwright test weather-import` (2/2) — all GREEN.
 
 ## Summary
 
