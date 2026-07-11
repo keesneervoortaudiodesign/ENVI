@@ -290,4 +290,59 @@ mod tests {
             Err(GeoError::BadZone { .. })
         ));
     }
+
+    /// Meter error between two WGS84 points (small-angle, mirrors the transform
+    /// self-check math) — local helper so the RD assertions read in meters.
+    fn error_m(a: LonLat, b: LonLat) -> f64 {
+        let dlat_m = (a.lat_deg - b.lat_deg).abs() * 111_320.0;
+        let dlon_m = (a.lon_deg - b.lon_deg).abs() * 111_320.0 * a.lat_deg.to_radians().cos();
+        (dlat_m.powi(2) + dlon_m.powi(2)).sqrt()
+    }
+
+    #[test]
+    fn rd_new_origin_maps_to_amersfoort() {
+        let crs = RdNewCrs::new().expect("valid RD New CRS");
+        // The RD false origin (155000, 463000) m inverts to the Amersfoort datum
+        // point ≈ (lon 5.3876, lat 52.1562); forward again returns the origin.
+        let origin_rd = crate::SceneXY {
+            x_m: 155_000.0,
+            y_m: 463_000.0,
+        };
+        let ll = crs.to_wgs84(origin_rd).expect("RD -> WGS84");
+        assert!(
+            (ll.lon_deg - 5.3876).abs() <= 1e-3 && (ll.lat_deg - 52.1562).abs() <= 1e-3,
+            "RD origin inverted to ({}, {}), expected ≈ (5.3876, 52.1562)",
+            ll.lon_deg,
+            ll.lat_deg
+        );
+        let fwd = crs.to_rd(ll).expect("WGS84 -> RD");
+        assert!(
+            (fwd.x_m - 155_000.0).abs() <= 1.0 && (fwd.y_m - 463_000.0).abs() <= 1.0,
+            "forward returned ({}, {}) m, expected ≈ (155000, 463000)",
+            fwd.x_m,
+            fwd.y_m
+        );
+    }
+
+    #[test]
+    fn rd_new_round_trip_within_one_meter() {
+        let crs = RdNewCrs::new().expect("valid RD New CRS");
+        // Dam Square, Amsterdam — well inside the RD New domain.
+        let dam = LonLat {
+            lon_deg: 4.8936,
+            lat_deg: 52.3731,
+        };
+        let rd = crs.to_rd(dam).expect("forward WGS84 -> RD");
+        let back = crs.to_wgs84(rd).expect("inverse RD -> WGS84");
+        let err = error_m(dam, back);
+        assert!(err <= 1.0, "RD New round-trip error {err} m > 1 m");
+    }
+
+    #[test]
+    fn rd_new_malformed_proj_string_is_typed_error_not_panic() {
+        // Fallible construction: a bad proj string surfaces GeoError::Proj, never
+        // a panic (threat T-08-01-02).
+        let got = RdNewCrs::from_proj_string("+proj=totally_bogus +no_defs");
+        assert!(matches!(got, Err(GeoError::Proj { .. })), "got {got:?}");
+    }
 }
