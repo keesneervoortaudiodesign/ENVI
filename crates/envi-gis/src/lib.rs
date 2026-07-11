@@ -60,6 +60,13 @@ pub mod weather;
 
 use thiserror::Error;
 
+/// Minimum strictly-ascending-x separation between spliced/kept cut-profile
+/// vertices (meters). Shared by [`profile`], [`impedance`], and [`screening`] so a
+/// crossing/screen top that lands on an existing vertex is absorbed rather than
+/// duplicating x — the three stages MUST agree on this epsilon (they compose on one
+/// `(x, z)` frame), so it lives here as a single `pub(crate)` source of truth.
+pub(crate) const X_EPSILON_M: f64 = 1e-6;
+
 /// Errors from the GIS-ingestion boundary out of untrusted tile bytes.
 ///
 /// Cached COG bytes arrive from the TS orchestrator (fetched from PDOK / the

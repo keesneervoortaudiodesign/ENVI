@@ -32,13 +32,8 @@ use envi_engine::scene::{GroundSegment, impedance_class};
 use geo::line_intersection::{LineIntersection, line_intersection};
 use geo::{Contains, Coord, Line, Point, Polygon};
 
-use crate::GisError;
 use crate::impedance_table::worldcover_to_class;
-
-/// Minimum strictly-ascending-x separation between spliced/kept vertices (meters),
-/// matching [`crate::profile`]'s dedupe epsilon so a crossing that lands on an
-/// existing vertex is absorbed rather than duplicating x.
-const X_EPSILON_M: f64 = 1e-6;
+use crate::{GisError, X_EPSILON_M};
 
 /// A user-drawn ground-impedance zone: a planar polygon (scene meters) carrying an
 /// explicit Nord2000 class letter and an optional roughness (meters, class N = 0).

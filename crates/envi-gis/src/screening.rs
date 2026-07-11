@@ -48,8 +48,8 @@ use geo::line_intersection::{LineIntersection, line_intersection};
 use geo::{BoundingRect, Contains, Coord, Line, LineString, Point, Polygon};
 use rstar::{AABB, RTree, RTreeObject};
 
-use crate::GisError;
 use crate::impedance::GroundSegmentation;
+use crate::{GisError, X_EPSILON_M};
 
 use envi_engine::scene::{GroundSegment, impedance_class};
 
@@ -74,11 +74,6 @@ const CORRIDOR_SOUND_SPEED_MS: f64 = 340.0;
 /// before any per-candidate cut-plane ∩ prism work (mirrors
 /// `terrain::MAX_TERRAIN_POINTS` / `envi_dgm::tin::MAX_POINTS`).
 pub const MAX_CORRIDOR_CANDIDATES: usize = 100_000;
-
-/// Minimum strictly-ascending-x separation between spliced/kept vertices (meters),
-/// matching [`crate::profile`]/[`crate::impedance`] so a screen crossing that lands
-/// on an existing vertex is absorbed rather than duplicating x.
-const X_EPSILON_M: f64 = 1e-6;
 
 /// A height-bearing scene object that screens along a path (D-08). Buildings screen
 /// at their eaves height with their footprint exterior ring; walls and barriers
@@ -290,8 +285,15 @@ pub fn inject_screens(
     let (points, planar_xy) = merge_tops(base, &mut tops, x0, span, s, r);
 
     // --- One segment per interval: hard (class H) inside a span, else inherited. ---
+    // The merged `points` and `base.points` are both strictly ascending in x, so the
+    // inherited base segment is found with a single monotonic cursor (`bi`) advancing
+    // as `mid_x` increases — O(n) total instead of re-scanning `base.points` from the
+    // start for every interval. `bi` indexes the base interval `[base.points[bi],
+    // base.points[bi + 1]]`; it is capped at the last interval (past-the-end x clamps
+    // there), reproducing the former `base_segment_at` result exactly.
     let sigma_hard = impedance_class('H').ok_or(GisError::UnresolvableClass { class: 'H' })?;
     let mut segments = Vec::with_capacity(points.len() - 1);
+    let mut bi = 0usize;
     for w in points.windows(2) {
         let mid_x = (w[0][0] + w[1][0]) / 2.0;
         let seg = if hard_spans
@@ -303,7 +305,10 @@ pub fn inject_screens(
                 roughness: 0.0,
             }
         } else {
-            base_segment_at(base, mid_x)
+            while bi + 1 < base.segments.len() && mid_x >= base.points[bi + 1][0] {
+                bi += 1;
+            }
+            base.segments[bi]
         };
         segments.push(seg);
     }
@@ -383,17 +388,6 @@ fn screen_top_z(
     let py = s[1] + frac * (r[1] - s[1]);
     let ground = tin.interpolate_z(px, py).ok_or(GisError::OutsideHull)?;
     Ok(ground + height_m)
-}
-
-/// The base segment covering distance-x (the interval `[points[i], points[i+1]]`
-/// containing `x`), clamped to the last interval past the end.
-fn base_segment_at(base: &GroundSegmentation, x: f64) -> GroundSegment {
-    for (i, w) in base.points.windows(2).enumerate() {
-        if x < w[1][0] {
-            return base.segments[i];
-        }
-    }
-    base.segments[base.segments.len() - 1]
 }
 
 /// Merge elevated screen-top vertices into the base `(x, z)` + planar lists, keeping

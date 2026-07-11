@@ -35,7 +35,7 @@
 //! `pub const`s the reviewer can sanity-check.
 
 use envi_dgm::tin::Tin;
-use geo::{BoundingRect, Contains, Point, Polygon};
+use geo::{BoundingRect, Contains, Point, Polygon, Rect};
 
 use crate::GisError;
 
@@ -122,6 +122,14 @@ pub fn receiver_grid(
     //     receiver z comes from the passed-in DGM `tin`. ---
     validate_region(calc_area, footprints)?;
 
+    // --- Precompute each footprint's AABB once so the per-lattice-point exclusion
+    //     prunes on the cheap bounding-box test before the exact point-in-polygon
+    //     (`contains`) — a footprint whose AABB misses the point cannot contain it.
+    //     A footprint with no bounding rect (empty ring) can contain no point, so it
+    //     is skipped identically to the former unconditional `contains` (false). ---
+    let footprint_bounds: Vec<Option<Rect<f64>>> =
+        footprints.iter().map(BoundingRect::bounding_rect).collect();
+
     // --- Regular lattice, clipped to calc_area minus footprints (D-07). ---
     let mut receivers: Vec<[f64; 3]> = Vec::new();
     for iy in 0..ny {
@@ -132,7 +140,9 @@ pub fn receiver_grid(
             if !calc_area.contains(&p) {
                 continue;
             }
-            if footprints.iter().any(|f| f.contains(&p)) {
+            if footprints.iter().zip(&footprint_bounds).any(|(f, bounds)| {
+                bounds.is_some_and(|r| rect_contains(&r, x, y)) && f.contains(&p)
+            }) {
                 continue; // D-07: no receiver inside a building footprint
             }
             let z = tin.interpolate_z(x, y).ok_or(GisError::OutsideHull)?;
@@ -156,6 +166,14 @@ pub fn receiver_grid(
     }
 
     Ok(receivers)
+}
+
+/// Inclusive point-in-AABB test — the cheap pre-filter before the exact
+/// point-in-polygon. Inclusive on all edges so it never prunes a point the polygon's
+/// `contains` (strict interior) would keep.
+#[inline]
+fn rect_contains(r: &Rect<f64>, x: f64, y: f64) -> bool {
+    x >= r.min().x && x <= r.max().x && y >= r.min().y && y <= r.max().y
 }
 
 /// Validate `calc_area` + footprint rings as constrained-Delaunay edges, reusing

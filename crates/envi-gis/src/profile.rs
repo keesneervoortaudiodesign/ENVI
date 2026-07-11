@@ -36,7 +36,7 @@
 
 use envi_dgm::tin::Tin;
 
-use crate::GisError;
+use crate::{GisError, X_EPSILON_M};
 
 /// Hard cap on cut-profile sample points (`[ASSUMED]` engineering bound, threat
 /// T-09-01-01). At the DEM cell resolution (~0.5 m) this is a ~50 km source→
@@ -44,11 +44,6 @@ use crate::GisError;
 /// ever trips on a pathological tiny-step / huge-distance request, which is
 /// rejected before allocation (mirrors `terrain::MAX_TERRAIN_POINTS`).
 pub const MAX_PROFILE_POINTS: usize = 100_000;
-
-/// Minimum strictly-ascending-x separation between kept profile points (meters).
-/// Two consecutive samples closer than this in horizontal distance collapse to one
-/// so x stays strictly increasing for `TerrainProfile::new` (09-RESEARCH Pitfall 3).
-const X_EPSILON_M: f64 = 1e-6;
 
 /// Extract the source→receiver DEM cut-profile as strictly-ascending `(x, z)`
 /// ground points over the DGM `tin`.
