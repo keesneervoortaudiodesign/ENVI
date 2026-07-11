@@ -19,6 +19,11 @@
 //! - [`job_assembly`] — the `SolveJob` assembly that wires the directional-phase
 //!   seam (SRC-03): it populates `SolveJob::directivity_phase_rad` from
 //!   `DirectivityBalloon::eval_phase`, the first construction site to do so.
+//! - [`scene_dto`] + [`interpolate`] — the WASM-safe scene DTOs (terrain, ground,
+//!   authored isolation spectrum, forest params, sound-speed profile) and the
+//!   band-index interpolation core, factored out of `envi-store`/`envi-gis-wasm`
+//!   (10-06) so the browser solve boundary can marshal a scene without dragging
+//!   `std::fs`/`tempfile` into wasm. Both re-export at their original paths.
 //!
 //! # Why pure Rust
 //!
@@ -38,5 +43,7 @@
 
 pub mod cost;
 pub mod identity;
+pub mod interpolate;
 pub mod job_assembly;
+pub mod scene_dto;
 pub mod tiers;

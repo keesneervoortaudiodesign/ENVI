@@ -27,6 +27,13 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+// The WASM-safe scene DTOs the solve marshals live in `envi_compute::scene_dto`
+// (factored from envi-store/envi-gis-wasm in 10-06) — reused here, never
+// hand-mirrored, so there is exactly one wire type per shape.
+use envi_compute::scene_dto::{
+    ForestParamsDto, IsolationSpectrumDto, SoundSpeedProfileDto, TerrainProfileDto,
+};
+
 // --- Cost estimate + guardrail (SC1) --------------------------------------
 
 /// `estimate_cost` request: the pure grid spec the cost model keys off. The
@@ -227,4 +234,325 @@ pub struct SolveChunkRangeReq {
     pub r_offset: u32,
     /// Receiver-axis length of this range.
     pub len: u32,
+}
+
+// --- prepare_solve request (the scene marshalled ONCE per submit, 10-06) ----
+
+/// `prepare_solve` request: the ENTIRE transfer scene marshalled ONCE per submit
+/// (D-08). The boundary builds an owned `PreparedScene` keyed by `tensor_hash`;
+/// every subsequent [`SolveChunkRangeReq`] carrying the same hash solves a
+/// receiver range against it. Request-facing (`deny_unknown_fields`).
+///
+/// The solve marshals the TRANSFER scene only — source sound-power spectra
+/// ([`BandSpectrumDto`](envi_store::dto::BandSpectrumDto)) are readout inputs
+/// (Phase 11) and are NOT carried here.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct PrepareSolveReq {
+    /// The frozen tensor-identity hash this scene is keyed under (must match the
+    /// later `solve_chunk_range` requests, D-09).
+    pub tensor_hash: String,
+    /// Sub-source count (tensor rows; `≥ 1`).
+    pub n_sub: u32,
+    /// The `src→rcv` cut-plane terrain profile (points + ground segments).
+    pub terrain: TerrainProfileDto,
+    /// Atmospheric state (built via the validating `Atmosphere::new`).
+    pub atmosphere: AtmosphereDto,
+    /// Coherence inputs (turbulence + sound speed).
+    pub coherence: CoherenceInputsDto,
+    /// Optional refraction profile (`None` = homogeneous atmosphere).
+    #[serde(default)]
+    pub weather: Option<SoundSpeedProfileDto>,
+    /// The sub-source placements (tensor rows).
+    pub sub_sources: Vec<SubSourcePlacementDto>,
+    /// The receiver placements (tensor columns), carrying global indices.
+    pub receivers: Vec<ReceiverPlacementDto>,
+    /// Optional forest crossing on this corridor (ENG-09) — the authored subset.
+    #[serde(default)]
+    pub forest: Option<ForestParamsDto>,
+    /// The through-forest crossing length `d_m` (Phase-9 geometry) supplied here
+    /// so the solve sees a real crossing length rather than the `ForestParamsDto`
+    /// `0.0` placeholder. Ignored when `forest` is `None`.
+    #[serde(default)]
+    pub forest_path_length_m: Option<f64>,
+    /// Optional semi-transparent partition on this corridor (ENG-10).
+    #[serde(default)]
+    pub isolation: Option<IsolationSpectrumDto>,
+}
+
+/// Atmospheric state for the free-field direct path (built via the validating
+/// `Atmosphere::new`, which rejects non-finite / out-of-range values).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct AtmosphereDto {
+    /// Air temperature, °C.
+    pub temperature_c: f64,
+    /// Relative humidity, %.
+    pub humidity_pct: f64,
+    /// Atmospheric pressure, kPa.
+    pub pressure_kpa: f64,
+}
+
+/// Coherence inputs (mirror of `envi_engine::propagation::coherence::CoherenceInputs`);
+/// every value is finiteness-checked when the `PreparedScene` is built.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct CoherenceInputsDto {
+    /// Wind-velocity structure parameter `Cv²` (m^{4/3}·s⁻²). `0` = no turbulence.
+    pub cv2: f64,
+    /// Temperature structure parameter `CT²` (K²·m^{−2/3}). `0` = no turbulence.
+    pub ct2: f64,
+    /// Air temperature, °C.
+    pub t_air_c: f64,
+    /// Speed of sound, m/s (also the terrain sound speed).
+    pub c0: f64,
+    /// Terrain roughness `r`, meters.
+    pub roughness_r: f64,
+    /// Relative bandwidth `Δν/ν` of the analysis filter.
+    pub f_delta_nu: f64,
+    /// Reference path length `d_m`, meters.
+    pub d_m: f64,
+}
+
+/// A receiver placement: its global (receiver-major) index and position.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct ReceiverPlacementDto {
+    /// Global receiver index (the tensor / sink receiver-axis coordinate).
+    pub global_index: u32,
+    /// Receiver position `[x, y, z]`, meters.
+    pub position: [f64; 3],
+}
+
+/// A sub-source placement: its position and optional directivity (balloon +
+/// source orientation). `None` directivity is an omnidirectional sub-source.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct SubSourcePlacementDto {
+    /// Sub-source position `[x, y, z]`, meters.
+    pub position: [f64; 3],
+    /// Optional directional pattern for this sub-source.
+    #[serde(default)]
+    pub directivity: Option<DirectionalDto>,
+}
+
+/// A directional pattern: a per-band balloon plus the source→local-frame rotation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct DirectionalDto {
+    /// The per-band spherical directivity balloon (may carry phase).
+    pub balloon: DirectivityBalloonDto,
+    /// Rotation from the world `src→rcv` direction into the balloon's local frame.
+    pub orientation: RotationDto,
+}
+
+/// A per-band spherical directivity balloon (mirror of the engine
+/// `DirectivityBalloon` inputs). `grid_db` / `phase_grid_rad` are flattened
+/// **row-major** `(azimuth, polar, band=105)`; the builder reshapes them into an
+/// `Array3` and routes through the engine's validating `DirectivityBalloon::new`
+/// / `new_with_phase` (which reject non-ascending axes, a wrong band count, and
+/// non-finite values). A phase-free balloon leaves `phase_grid_rad` `None`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct DirectivityBalloonDto {
+    /// Azimuth grid nodes, degrees (strictly ascending, `≥ 2`).
+    pub azimuths_deg: Vec<f64>,
+    /// Polar grid nodes, degrees (strictly ascending, `≥ 2`).
+    pub polars_deg: Vec<f64>,
+    /// Flattened row-major `(az, pol, band=105)` gain grid, dB.
+    pub grid_db: Vec<f64>,
+    /// Optional flattened row-major `(az, pol, band=105)` phase grid, radians
+    /// (source-local, ENVI `e^{+jωt}`). `None` = magnitude-only balloon.
+    #[serde(default)]
+    pub phase_grid_rad: Option<Vec<f64>>,
+}
+
+/// A 3×3 rotation matrix (row-major), built via `Rotation3::from_matrix`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct RotationDto {
+    /// Row-major 3×3 rotation matrix.
+    pub matrix: [[f64; 3]; 3],
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use envi_compute::interpolate::Resolution;
+    use envi_compute::scene_dto::{AuthoredSpectrumDto, GroundSegmentDto};
+
+    fn omni_scene_json() -> &'static str {
+        r#"{
+          "tensor_hash": "deadbeef",
+          "n_sub": 1,
+          "terrain": { "points": [[2.5,0.0],[200.0,0.0]], "segments": [{ "flow_resistivity": 200.0, "roughness": 0.0 }] },
+          "atmosphere": { "temperature_c": 15.0, "humidity_pct": 70.0, "pressure_kpa": 101.325 },
+          "coherence": { "cv2": 0.0, "ct2": 0.0, "t_air_c": 15.0, "c0": 340.348, "roughness_r": 0.0, "f_delta_nu": 1.0, "d_m": 97.5 },
+          "sub_sources": [{ "position": [2.5,0.0,0.5] }],
+          "receivers": [{ "global_index": 0, "position": [100.0,0.0,1.5] }]
+        }"#
+    }
+
+    #[test]
+    fn prepare_solve_req_round_trips_and_defaults_optionals() {
+        let req: PrepareSolveReq = serde_json::from_str(omni_scene_json()).expect("parse scene");
+        assert_eq!(req.tensor_hash, "deadbeef");
+        assert_eq!(req.n_sub, 1);
+        // Optional transfer inputs default to None.
+        assert!(req.weather.is_none());
+        assert!(req.forest.is_none());
+        assert!(req.forest_path_length_m.is_none());
+        assert!(req.isolation.is_none());
+        assert_eq!(req.sub_sources.len(), 1);
+        assert!(req.sub_sources[0].directivity.is_none());
+        assert_eq!(req.receivers[0].global_index, 0);
+
+        // Serialize → deserialize is lossless.
+        let s = serde_json::to_string(&req).expect("serialize");
+        assert_eq!(
+            serde_json::from_str::<PrepareSolveReq>(&s).unwrap(),
+            req,
+            "PrepareSolveReq round-trips losslessly"
+        );
+    }
+
+    #[test]
+    fn prepare_solve_req_carries_forest_isolation_and_directivity() {
+        let iso = IsolationSpectrumDto {
+            authored: AuthoredSpectrumDto {
+                resolution: Resolution::Octave,
+                values: vec![10.0; 9],
+            },
+        };
+        let forest = ForestParamsDto {
+            density_per_m2: 0.4,
+            stem_radius_m: 0.12,
+            height_m: 12.0,
+            absorption: Some(0.2),
+        };
+        let balloon = DirectivityBalloonDto {
+            azimuths_deg: vec![0.0, 180.0],
+            polars_deg: vec![0.0, 180.0],
+            grid_db: vec![0.0; 2 * 2 * 105],
+            phase_grid_rad: Some(vec![0.0; 2 * 2 * 105]),
+        };
+        let req = PrepareSolveReq {
+            tensor_hash: "abc123".to_string(),
+            n_sub: 1,
+            terrain: TerrainProfileDto {
+                points: vec![[2.5, 0.0], [200.0, 0.0]],
+                segments: vec![GroundSegmentDto {
+                    flow_resistivity: 200.0,
+                    roughness: 0.0,
+                }],
+            },
+            atmosphere: AtmosphereDto {
+                temperature_c: 15.0,
+                humidity_pct: 70.0,
+                pressure_kpa: 101.325,
+            },
+            coherence: CoherenceInputsDto {
+                cv2: 0.0,
+                ct2: 0.0,
+                t_air_c: 15.0,
+                c0: 340.348,
+                roughness_r: 0.0,
+                f_delta_nu: 1.0,
+                d_m: 97.5,
+            },
+            weather: Some(SoundSpeedProfileDto {
+                a: 0.0,
+                b: 0.0,
+                c: 340.348,
+                s_a: 0.0,
+                s_b: 0.0,
+                z0: 0.03,
+            }),
+            sub_sources: vec![SubSourcePlacementDto {
+                position: [2.5, 0.0, 0.5],
+                directivity: Some(DirectionalDto {
+                    balloon,
+                    orientation: RotationDto {
+                        matrix: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                    },
+                }),
+            }],
+            receivers: vec![ReceiverPlacementDto {
+                global_index: 0,
+                position: [100.0, 0.0, 1.5],
+            }],
+            forest: Some(forest),
+            forest_path_length_m: Some(80.0),
+            isolation: Some(iso),
+        };
+        let s = serde_json::to_string(&req).expect("serialize");
+        assert_eq!(
+            serde_json::from_str::<PrepareSolveReq>(&s).unwrap(),
+            req,
+            "a forest + isolation + phased-directivity scene round-trips"
+        );
+    }
+
+    #[test]
+    fn prepare_solve_req_rejects_unknown_fields() {
+        // A typo'd top-level key is a loud boundary error, never silently ignored.
+        let bad = r#"{
+          "tensor_hash": "deadbeef", "n_sub": 1,
+          "terrain": { "points": [[0.0,0.0],[1.0,0.0]], "segments": [{ "flow_resistivity": 200.0, "roughness": 0.0 }] },
+          "atmosphere": { "temperature_c": 15.0, "humidity_pct": 70.0, "pressure_kpa": 101.325 },
+          "coherence": { "cv2": 0.0, "ct2": 0.0, "t_air_c": 15.0, "c0": 340.348, "roughness_r": 0.0, "f_delta_nu": 1.0, "d_m": 97.5 },
+          "sub_sources": [], "receivers": [], "typo_field": 1
+        }"#;
+        assert!(
+            serde_json::from_str::<PrepareSolveReq>(bad).is_err(),
+            "unknown top-level field must be rejected"
+        );
+    }
+
+    #[test]
+    fn atmosphere_and_coherence_dtos_reject_unknown_fields() {
+        assert!(
+            serde_json::from_str::<AtmosphereDto>(
+                r#"{ "temperature_c": 15.0, "humidity_pct": 70.0, "pressure_kpa": 101.325, "x": 1 }"#
+            )
+            .is_err(),
+            "AtmosphereDto rejects unknown fields"
+        );
+        assert!(
+            serde_json::from_str::<CoherenceInputsDto>(
+                r#"{ "cv2":0,"ct2":0,"t_air_c":15,"c0":340.348,"roughness_r":0,"f_delta_nu":1,"d_m":97.5,"x":1 }"#
+            )
+            .is_err(),
+            "CoherenceInputsDto rejects unknown fields"
+        );
+    }
+
+    #[test]
+    fn directional_and_rotation_dtos_round_trip() {
+        let d = DirectionalDto {
+            balloon: DirectivityBalloonDto {
+                azimuths_deg: vec![0.0, 90.0, 180.0],
+                polars_deg: vec![0.0, 90.0],
+                grid_db: vec![1.0; 3 * 2 * 105],
+                phase_grid_rad: None,
+            },
+            orientation: RotationDto {
+                matrix: [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]],
+            },
+        };
+        let s = serde_json::to_string(&d).expect("serialize");
+        assert_eq!(serde_json::from_str::<DirectionalDto>(&s).unwrap(), d);
+        // phase_grid_rad defaults to None when absent.
+        let no_phase = r#"{ "azimuths_deg":[0.0,180.0], "polars_deg":[0.0,180.0], "grid_db":[] }"#;
+        let b: DirectivityBalloonDto = serde_json::from_str(no_phase).expect("parse");
+        assert!(b.phase_grid_rad.is_none());
+    }
 }

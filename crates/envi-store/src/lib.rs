@@ -174,3 +174,25 @@ impl From<envi_compute::identity::IdentityError> for StoreError {
         }
     }
 }
+
+/// Map the factored-out scene-DTO conversion error (from `envi_compute::scene_dto`,
+/// Phase 10 10-06) into a [`StoreError`] so re-exported call sites — the terrain /
+/// ground / isolation / forest DTO `TryFrom`s and the `interpolate` core — stay
+/// source-compatible: a length mismatch becomes [`StoreError::BadBandCount`], a
+/// non-finite value [`StoreError::NonFinite`], and an engine rejection
+/// [`StoreError::Engine`], exactly as before the move.
+impl From<envi_compute::scene_dto::SceneDtoError> for StoreError {
+    fn from(e: envi_compute::scene_dto::SceneDtoError) -> Self {
+        match e {
+            envi_compute::scene_dto::SceneDtoError::BadBandCount { got } => {
+                StoreError::BadBandCount { got }
+            }
+            envi_compute::scene_dto::SceneDtoError::NonFinite { what } => {
+                StoreError::NonFinite { what }
+            }
+            envi_compute::scene_dto::SceneDtoError::Engine { message } => {
+                StoreError::Engine { message }
+            }
+        }
+    }
+}

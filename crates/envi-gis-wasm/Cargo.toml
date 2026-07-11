@@ -33,6 +33,12 @@ envi-dgm = { path = "../envi-dgm" }
 # crate directly (already a transitive dep via envi-gis; its 3-dep quarantine is
 # untouched — the boundary adds nothing to envi-engine).
 envi-engine = { path = "../envi-engine" }
+# envi-compute (pure, WASM-safe): the shared `SoundSpeedProfileDto` wire type was
+# factored here (Phase 10, 10-06) so both wasm crates emit ONE wire type (no
+# duplicate `export type SoundSpeedProfileDto`). This crate re-exports it from
+# `dto` at its original path; the weather-derive boundary still constructs it. The
+# edge points envi-gis-wasm -> envi-compute; envi-compute stays WASM-safe (no fs/C).
+envi-compute = { path = "../envi-compute" }
 geo = "0.30"
 wasm-bindgen = "=0.2.126"
 js-sys = "0.3"

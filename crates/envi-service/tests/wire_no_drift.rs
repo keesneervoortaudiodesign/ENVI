@@ -82,8 +82,10 @@ use envi_gis_wasm::dto::{
 // the GIS boundary (D-10). The reused JobStatus union is the envi-service one
 // above (this crate defines no duplicate).
 use envi_compute_wasm::dto::{
-    ChunkSpanDto, CostEstimateResult, EstimateCostReq, GuardrailLevelDto, PlanTiersReq,
-    SolveChunkRangeReq, TierComplete, TierDto, TierKindDto, TierPlanResult, TierReceiverDto,
+    AtmosphereDto, ChunkSpanDto, CoherenceInputsDto, CostEstimateResult, DirectionalDto,
+    DirectivityBalloonDto, EstimateCostReq, GuardrailLevelDto, PlanTiersReq, PrepareSolveReq,
+    ReceiverPlacementDto, RotationDto, SolveChunkRangeReq, SubSourcePlacementDto, TierComplete,
+    TierDto, TierKindDto, TierPlanResult, TierReceiverDto,
 };
 
 /// Provenance banner prepended to the committed `wire.ts` (mirrors the oracle
@@ -207,6 +209,17 @@ fn export_all_wire_types(cfg: &Config) {
     EstimateCostReq::export_all(cfg).unwrap();
     PlanTiersReq::export_all(cfg).unwrap();
     SolveChunkRangeReq::export_all(cfg).unwrap();
+    // prepare_solve request + its engine-type marshalling DTOs (10-06). The scene
+    // DTOs it references (Terrain/Ground/Isolation/Forest/SoundSpeedProfile) are
+    // registered above via envi-store / envi-gis-wasm (one wire type each).
+    PrepareSolveReq::export_all(cfg).unwrap();
+    AtmosphereDto::export_all(cfg).unwrap();
+    CoherenceInputsDto::export_all(cfg).unwrap();
+    ReceiverPlacementDto::export_all(cfg).unwrap();
+    SubSourcePlacementDto::export_all(cfg).unwrap();
+    DirectionalDto::export_all(cfg).unwrap();
+    DirectivityBalloonDto::export_all(cfg).unwrap();
+    RotationDto::export_all(cfg).unwrap();
     // Result / value DTOs.
     GuardrailLevelDto::export_all(cfg).unwrap();
     CostEstimateResult::export_all(cfg).unwrap();

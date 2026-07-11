@@ -552,6 +552,7 @@ dependencies = [
 name = "envi-gis-wasm"
 version = "0.1.0"
 dependencies = [
+ "envi-compute",
  "envi-dgm",
  "envi-engine",
  "envi-gis",

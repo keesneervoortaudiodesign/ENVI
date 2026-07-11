@@ -20,6 +20,13 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+// The `SoundSpeedProfileDto` wire type was factored into `envi_compute::scene_dto`
+// (Phase 10, 10-06) so both wasm crates share ONE wire type (the solve boundary
+// consumes it as a request; the weather-derive boundary here produces it as a
+// result). Re-exported at its original path so `envi_gis_wasm::dto::SoundSpeedProfileDto`
+// stays source-compatible and the committed `wire.ts` is byte-identical (one export).
+pub use envi_compute::scene_dto::SoundSpeedProfileDto;
+
 // --- Shared value objects -------------------------------------------------
 
 /// A pixel-space window into a COG base image (mirrors
@@ -539,25 +546,6 @@ pub struct WeatherComponentsDto {
     /// Std-dev of `B`, s⁻¹.
     pub s_b: f64,
     /// Roughness length `z₀`, m.
-    pub z0: f64,
-}
-
-/// A concrete per-azimuth sound-speed profile (wire mirror of the engine
-/// `SoundSpeedProfile` `(A, B, C, sA, sB, z₀)`). Result-facing.
-#[derive(Debug, Clone, Copy, Serialize, TS)]
-#[ts(export_to = "wire.ts")]
-pub struct SoundSpeedProfileDto {
-    /// Logarithmic coefficient `A`, m/s (wind-projected onto the path azimuth).
-    pub a: f64,
-    /// Linear coefficient `B`, s⁻¹.
-    pub b: f64,
-    /// Ground sound speed `C`, m/s.
-    pub c: f64,
-    /// Std-dev of `A`, m/s (0 for a single-hour profile).
-    pub s_a: f64,
-    /// Std-dev of `B`, s⁻¹ (0 for a single-hour profile).
-    pub s_b: f64,
-    /// Roughness length `z₀`, m (clamped ≥ 0.001 m).
     pub z0: f64,
 }
 
