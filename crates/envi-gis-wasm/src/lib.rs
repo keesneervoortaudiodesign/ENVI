@@ -61,8 +61,16 @@ fn from_js<T: DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
 }
 
 /// Serialize a result DTO back to a JS value.
+///
+/// `serde_wasm_bindgen` serializes maps — including every `serde_json::Value::Object`
+/// inside the GeoJSON `features` payloads — as a JS `Map` by default. The TS import
+/// path reads result DTOs as PLAIN objects (`res.features.features`, `res.window`, …),
+/// so maps MUST serialize as plain JS objects or the whole compute pipeline reads
+/// `undefined` off a `Map` (DATA-01..03). Structs/enums already serialize as objects;
+/// only the nested `serde_json::Value` GeoJSON payloads depend on this flag.
 fn to_js<T: Serialize>(v: &T) -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(v).map_err(|e| js_err(&e.to_string()))
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    v.serialize(&serializer).map_err(|e| js_err(&e.to_string()))
 }
 
 /// Build a `JsValue` error carrying `msg` (an `Error` on the JS side).
