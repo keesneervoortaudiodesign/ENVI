@@ -43,6 +43,7 @@
 pub mod buildings;
 pub mod cog;
 pub mod impedance_table;
+pub mod landcover;
 pub mod merge;
 pub mod provenance;
 pub mod registry;
