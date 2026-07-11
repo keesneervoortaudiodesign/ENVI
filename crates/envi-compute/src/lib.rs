@@ -36,5 +36,7 @@
 //! live OUTSIDE this crate (`envi-store` and `envi-compute-wasm` respectively).
 #![deny(unsafe_code)]
 
+pub mod cost;
 pub mod identity;
-// `cost`, `tiers`, and `job_assembly` are added in Tasks 2-3 of this plan.
+pub mod tiers;
+// `job_assembly` is added in Task 3 of this plan.
