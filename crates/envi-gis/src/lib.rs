@@ -40,8 +40,10 @@
 //!   `GeoError::Proj`).
 #![deny(unsafe_code)]
 
+pub mod buildings;
 pub mod cog;
 pub mod impedance_table;
+pub mod merge;
 pub mod provenance;
 pub mod registry;
 pub mod terrain;
