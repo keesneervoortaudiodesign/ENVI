@@ -84,8 +84,8 @@ use envi_gis_wasm::dto::{
 use envi_compute_wasm::dto::{
     AtmosphereDto, ChunkSpanDto, CoherenceInputsDto, CostEstimateResult, DirectionalDto,
     DirectivityBalloonDto, EstimateCostReq, GuardrailLevelDto, PlanTiersReq, PrepareSolveReq,
-    ReceiverPlacementDto, RotationDto, SolveChunkRangeReq, SubSourcePlacementDto, TierComplete,
-    TierDto, TierKindDto, TierPlanResult, TierReceiverDto,
+    RangeProgressDto, ReceiverPlacementDto, RotationDto, SolveChunkRangeReq, SubSourcePlacementDto,
+    TierComplete, TierDto, TierKindDto, TierPlanResult, TierReceiverDto,
 };
 
 /// Provenance banner prepended to the committed `wire.ts` (mirrors the oracle
@@ -220,6 +220,7 @@ fn export_all_wire_types(cfg: &Config) {
     DirectionalDto::export_all(cfg).unwrap();
     DirectivityBalloonDto::export_all(cfg).unwrap();
     RotationDto::export_all(cfg).unwrap();
+    RangeProgressDto::export_all(cfg).unwrap();
     // Result / value DTOs.
     GuardrailLevelDto::export_all(cfg).unwrap();
     CostEstimateResult::export_all(cfg).unwrap();

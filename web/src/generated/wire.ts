@@ -1167,6 +1167,21 @@ retrieved_at: string,
 vertical_datum: VerticalDatumDto | null, };
 
 /**
+ * `solve_chunk_range` result: progress for one solved range — its OPFS chunk
+ * index and the receivers written. The worker folds these into a `Running`
+ * status (chunks done / total). Result-facing.
+ */
+export type RangeProgressDto = { 
+/**
+ * The range's OPFS chunk index.
+ */
+chunk_index: number, 
+/**
+ * Receivers written for this range.
+ */
+receivers: number, };
+
+/**
  * Serde twin of `envi_engine::scene::Receiver`, plus a stable feature `id`.
  */
 export type ReceiverDto = { 

@@ -383,6 +383,18 @@ pub struct RotationDto {
     pub matrix: [[f64; 3]; 3],
 }
 
+/// `solve_chunk_range` result: progress for one solved range — its OPFS chunk
+/// index and the receivers written. The worker folds these into a `Running`
+/// status (chunks done / total). Result-facing.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct RangeProgressDto {
+    /// The range's OPFS chunk index.
+    pub chunk_index: u32,
+    /// Receivers written for this range.
+    pub receivers: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

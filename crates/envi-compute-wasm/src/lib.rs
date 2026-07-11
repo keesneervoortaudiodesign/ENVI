@@ -46,7 +46,12 @@ pub mod opfs_sink;
 // only from the stable, single-threaded wasm build where rayon is absent.
 #[cfg(any(not(target_arch = "wasm32"), feature = "threads"))]
 pub mod pool;
+// The owned prepared scene + the marshalled range-solve (10-06) — closes the
+// solve_chunk_range seam. Available on every build; its rayon-sharded core is
+// cfg-split against a sequential fallback for the stable single-threaded wasm32.
+pub mod scene;
 
+use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
@@ -55,9 +60,17 @@ use thiserror::Error;
 use wasm_bindgen::prelude::*;
 
 use dto::{
-    CostEstimateResult, EstimateCostReq, GuardrailLevelDto, PlanTiersReq, SolveChunkRangeReq,
-    TierDto, TierKindDto, TierPlanResult, TierReceiverDto,
+    CostEstimateResult, EstimateCostReq, GuardrailLevelDto, PlanTiersReq, PrepareSolveReq,
+    RangeProgressDto, SolveChunkRangeReq, TierDto, TierKindDto, TierPlanResult, TierReceiverDto,
 };
+use scene::PreparedScene;
+
+/// The process-wide prepared scene (T-10-06-04). `wasm-bindgen-rayon`'s linear
+/// memory is a `SharedArrayBuffer`, so a single `static` in linear memory IS
+/// shared across every pool thread (a `thread_local` would NOT be — pool threads
+/// have separate thread-locals). Write-locked ONCE per submit by [`prepare_solve`]
+/// (no concurrent solve), read-locked by [`solve_chunk_range`].
+static PREPARED: RwLock<Option<PreparedScene>> = RwLock::new(None);
 
 /// Re-export the `wasm-bindgen-rayon` `initThreadPool` glue so the browser worker
 /// can size the SharedArrayBuffer pool to `navigator.hardwareConcurrency` before
@@ -119,9 +132,6 @@ fn js_err(msg: &str) -> JsValue {
 /// `Cancelled`, `Sink`, and `Solve` through this type.
 #[derive(Debug, Error)]
 pub enum ComputeError {
-    /// A boundary path not yet wired (e.g. the per-range scene marshalling).
-    #[error("not yet wired: {0}")]
-    Pending(&'static str),
     /// Cooperative cancellation was observed at a chunk boundary (D-11) — the tier
     /// stopped with already-emitted tiers intact; not an error condition per se.
     #[error("cancelled at a chunk boundary")]
@@ -132,6 +142,17 @@ pub enum ComputeError {
     /// A wrapped engine `PropagationError` from `envi_engine::solver::solve`.
     #[error("engine solve failed: {0}")]
     Solve(String),
+    /// A validating engine constructor rejected the marshalled scene at
+    /// `prepare_solve` (T-10-06-03) — degenerate geometry / non-finite / bad grid.
+    #[error("prepare_solve rejected the scene: {0}")]
+    Prepare(String),
+    /// `solve_chunk_range` was called before any scene was prepared (T-10-06-04).
+    #[error("no prepared scene — call prepare_solve first")]
+    NotPrepared,
+    /// The range's `tensor_hash` does not match the prepared scene's — never solve
+    /// a stale/mismatched scene (T-10-06-04).
+    #[error("tensor_hash mismatch — the prepared scene is for a different tensor")]
+    HashMismatch,
 }
 
 /// Map a [`ComputeError`] to a `JsValue` error (mirrors `gis_err`).
@@ -210,31 +231,119 @@ pub fn plan_tiers(req: JsValue) -> Result<JsValue, JsValue> {
     to_js(&TierPlanResult { tiers })
 }
 
-/// Solve one disjoint receiver-chunk range on the rayon pool (D-08/GRID-02).
-///
-/// The parallel sharding driver itself now lives in [`pool::solve_tier`] — it runs
-/// the UNCHANGED `envi_engine::solver::solve` per disjoint range into that range's
-/// own OPFS chunk file, checks the cooperative cancel flag ([`request_cancel`]) at
-/// each chunk boundary (D-11), and holds only `workers × chunk` resident (SC3), all
-/// proven natively by `cargo test -p envi-compute-wasm pool`.
-///
-/// The remaining seam is per-range JOB ASSEMBLY from a marshalled scene: the
-/// current [`SolveChunkRangeReq`] carries only the tensor-identity + range span,
-/// not the terrain/atmosphere/source geometry `pool::solve_tier`'s `assemble`
-/// closure needs. That scene-context DTO (and the `open_sink` OPFS wiring via
-/// [`opfs_sink::OpfsChunkSink::open_opfs`]) is the next integration step; until it
-/// lands this boundary validates the range and returns a typed [`ComputeError`].
+/// Marshal the ENTIRE transfer scene ONCE per submit (D-08). Deserializes a
+/// [`PrepareSolveReq`], builds an owned [`PreparedScene`] through the engine's
+/// validating constructors (a rejection is a typed [`ComputeError::Prepare`],
+/// never a panic — T-10-06-03), and stores it in the shared [`PREPARED`] registry
+/// keyed by its `tensor_hash`. Called once before the chunk loop; every subsequent
+/// [`solve_chunk_range`] carrying the same hash solves against it.
 ///
 /// # Errors
-/// A shape error in the request DTO, or [`ComputeError::Pending`] until the
-/// scene-context marshalling lands.
+/// A shape error in the request DTO, or a [`ComputeError::Prepare`] surfaced by a
+/// validating engine constructor.
+#[wasm_bindgen]
+pub fn prepare_solve(req: JsValue) -> Result<(), JsValue> {
+    let req: PrepareSolveReq = from_js(req)?;
+    let prepared = PreparedScene::build(&req).map_err(|e| compute_err(&e))?;
+    let mut guard = PREPARED
+        .write()
+        .map_err(|_| js_err("prepared-scene lock poisoned"))?;
+    *guard = Some(prepared);
+    Ok(())
+}
+
+/// Solve one disjoint receiver-chunk range against the prepared scene, writing its
+/// OPFS chunk file pair (D-08/GRID-02) and returning a [`RangeProgressDto`].
+///
+/// It deserializes the [`SolveChunkRangeReq`], read-locks the [`PREPARED`] scene,
+/// verifies the range's `tensor_hash` matches (never solves a stale/mismatched
+/// scene — [`ComputeError::HashMismatch`]), then runs
+/// [`scene::solve_prepared_range`]: the UNCHANGED `envi_engine::solver::solve`
+/// sharded across the rayon pool ([`pool::solve_tier`], its cancel-check + SC3
+/// residency) and assembled into one sub-source-major `[s][r_local][f]` chunk. The
+/// cooperative cancel flag ([`request_cancel`]) short-circuits before the file
+/// opens (D-11). The assembled chunk is written to its `tensor/` + `pincoh/` OPFS
+/// files (pre-opened by the worker; see `web/src/compute/opfs.ts`).
+///
+/// # Errors
+/// A shape error in the request DTO; [`ComputeError::NotPrepared`] if no scene was
+/// prepared; [`ComputeError::HashMismatch`] on a stale hash;
+/// [`ComputeError::Cancelled`] on a cooperative abort; a [`ComputeError::Sink`]
+/// OPFS I/O failure; or a wrapped engine [`ComputeError::Solve`].
 #[wasm_bindgen]
 pub fn solve_chunk_range(req: JsValue) -> Result<JsValue, JsValue> {
-    let _req: SolveChunkRangeReq = from_js(req)?;
-    Err(compute_err(&ComputeError::Pending(
-        "solve_chunk_range: the pool driver + OPFS sink are wired (pool::solve_tier); \
-         per-range scene-context marshalling (SolveCtx DTO) is the next step",
-    )))
+    let req: SolveChunkRangeReq = from_js(req)?;
+    let progress = run_chunk_range(&req).map_err(|e| compute_err(&e))?;
+    to_js(&progress)
+}
+
+/// The typed body of [`solve_chunk_range`] (no `JsValue` — natively testable).
+fn run_chunk_range(req: &SolveChunkRangeReq) -> Result<RangeProgressDto, ComputeError> {
+    // Cooperative abort at the chunk boundary (D-11): stop BEFORE opening the file.
+    if is_cancel_requested() {
+        return Err(ComputeError::Cancelled);
+    }
+    let guard = PREPARED.read().map_err(|_| ComputeError::NotPrepared)?;
+    let scene = guard.as_ref().ok_or(ComputeError::NotPrepared)?;
+    // Never solve a stale/mismatched scene (T-10-06-04).
+    if scene.tensor_hash() != req.tensor_hash {
+        return Err(ComputeError::HashMismatch);
+    }
+
+    let r_offset = req.r_offset as usize;
+    let len = req.len as usize;
+    let (h, p) = scene::solve_prepared_range(scene, r_offset, len)?;
+    write_chunk_to_opfs(req, scene.n_sub(), &h, &p)?;
+
+    Ok(RangeProgressDto {
+        chunk_index: req.chunk_index,
+        receivers: req.len,
+    })
+}
+
+/// Write the assembled chunk to its OPFS `tensor/` + `pincoh/` file pair. The
+/// handles were pre-opened by the worker (async `createSyncAccessHandle`) and
+/// keyed by the relative chunk path (`web/src/compute/opfs.ts`); the synchronous
+/// `openChunk` extern returns the pre-opened handle (D-08/D-09).
+#[cfg(target_arch = "wasm32")]
+fn write_chunk_to_opfs(
+    req: &SolveChunkRangeReq,
+    n_sub: usize,
+    h: &ndarray::Array3<num_complex::Complex<f64>>,
+    p: &ndarray::Array3<f64>,
+) -> Result<(), ComputeError> {
+    use envi_engine::tensor::TensorSink;
+
+    let tensor_path = chunk_relative_path("tensor", req.chunk_index);
+    let pincoh_path = chunk_relative_path("pincoh", req.chunk_index);
+    let mut sink =
+        opfs_sink::OpfsChunkSink::open_opfs(&tensor_path, &pincoh_path, n_sub, req.len as usize)
+            .map_err(ComputeError::Sink)?;
+    sink.put_chunk(0, h.view(), p.view())
+        .map_err(|e| ComputeError::Solve(e.to_string()))?;
+    sink.finish().map_err(ComputeError::Sink)?;
+    Ok(())
+}
+
+/// Native no-op: OPFS is worker-only (wasm). The assembled chunk tensor is
+/// verified directly via [`scene::solve_prepared_range`] in `cargo test`.
+#[cfg(not(target_arch = "wasm32"))]
+fn write_chunk_to_opfs(
+    _req: &SolveChunkRangeReq,
+    _n_sub: usize,
+    _h: &ndarray::Array3<num_complex::Complex<f64>>,
+    _p: &ndarray::Array3<f64>,
+) -> Result<(), ComputeError> {
+    Ok(())
+}
+
+/// The relative chunk path within a tensor's calc directory, e.g.
+/// `tensor/chunk_00042.bin` — matching `chunkRelativePath`/`chunkFileName` in
+/// `web/src/compute/opfs.ts` (zero-padded to 5 digits). The worker pre-opens the
+/// handle under exactly this key.
+#[cfg(target_arch = "wasm32")]
+fn chunk_relative_path(channel: &str, chunk_index: u32) -> String {
+    format!("{channel}/chunk_{chunk_index:05}.bin")
 }
 
 /// A [`TierKindDto`] from the core [`envi_compute::tiers::TierKind`].
@@ -243,5 +352,110 @@ fn tier_kind_dto(k: envi_compute::tiers::TierKind) -> TierKindDto {
         envi_compute::tiers::TierKind::Points => TierKindDto::Points,
         envi_compute::tiers::TierKind::Coarse => TierKindDto::Coarse,
         envi_compute::tiers::TierKind::Fine => TierKindDto::Fine,
+    }
+}
+
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod tests {
+    use super::*;
+    use dto::{AtmosphereDto, CoherenceInputsDto, ReceiverPlacementDto, SubSourcePlacementDto};
+    use envi_compute::scene_dto::{GroundSegmentDto, TerrainProfileDto};
+
+    fn omni_req(tensor_hash: &str) -> PrepareSolveReq {
+        PrepareSolveReq {
+            tensor_hash: tensor_hash.to_string(),
+            n_sub: 1,
+            terrain: TerrainProfileDto {
+                points: vec![[2.5, 0.0], [400.0, 0.0]],
+                segments: vec![GroundSegmentDto {
+                    flow_resistivity: 200.0,
+                    roughness: 0.0,
+                }],
+            },
+            atmosphere: AtmosphereDto {
+                temperature_c: 15.0,
+                humidity_pct: 70.0,
+                pressure_kpa: 101.325,
+            },
+            coherence: CoherenceInputsDto {
+                cv2: 0.0,
+                ct2: 0.0,
+                t_air_c: 15.0,
+                c0: 340.348,
+                roughness_r: 0.0,
+                f_delta_nu: 1.0,
+                d_m: 97.5,
+            },
+            weather: None,
+            sub_sources: vec![SubSourcePlacementDto {
+                position: [2.5, 0.0, 0.5],
+                directivity: None,
+            }],
+            receivers: vec![
+                ReceiverPlacementDto {
+                    global_index: 0,
+                    position: [100.0, 0.0, 1.5],
+                },
+                ReceiverPlacementDto {
+                    global_index: 1,
+                    position: [101.0, 0.0, 1.5],
+                },
+            ],
+            forest: None,
+            forest_path_length_m: None,
+            isolation: None,
+        }
+    }
+
+    /// The prepared-scene registry gate: a matching hash solves (a real, non-Pending
+    /// `RangeProgress`), a mismatched hash is a typed error (never a solve), and an
+    /// empty registry is `NotPrepared`. Serialized on `PREPARED` (single test).
+    #[test]
+    fn solve_chunk_range_registry_hash_gate() {
+        reset_cancel();
+        // Empty registry → NotPrepared.
+        {
+            let mut g = PREPARED.write().unwrap();
+            *g = None;
+        }
+        let req_ok = SolveChunkRangeReq {
+            tensor_hash: "hashA".to_string(),
+            chunk_index: 0,
+            r_offset: 0,
+            len: 2,
+        };
+        assert!(matches!(
+            run_chunk_range(&req_ok),
+            Err(ComputeError::NotPrepared)
+        ));
+
+        // Prepare a scene keyed by "hashA".
+        {
+            let scene = PreparedScene::build(&omni_req("hashA")).unwrap();
+            let mut g = PREPARED.write().unwrap();
+            *g = Some(scene);
+        }
+
+        // Matching hash → a real RangeProgress (no Pending).
+        let progress = run_chunk_range(&req_ok).expect("matching hash solves");
+        assert_eq!(progress.chunk_index, 0);
+        assert_eq!(progress.receivers, 2);
+
+        // Mismatched hash → HashMismatch, never a solve.
+        let req_bad = SolveChunkRangeReq {
+            tensor_hash: "hashB".to_string(),
+            chunk_index: 1,
+            r_offset: 0,
+            len: 2,
+        };
+        assert!(matches!(
+            run_chunk_range(&req_bad),
+            Err(ComputeError::HashMismatch)
+        ));
+
+        // Clean up so no other test observes a stale scene.
+        let mut g = PREPARED.write().unwrap();
+        *g = None;
     }
 }
