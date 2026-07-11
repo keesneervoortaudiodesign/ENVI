@@ -92,3 +92,10 @@ tempfile = "3"
 # HTTP wire and the WASM boundary. The `rlib` output of the cdylib compiles
 # natively for the test; nothing from this crate reaches the running service.
 envi-gis-wasm = { path = "../envi-gis-wasm" }
+# envi-compute-wasm (dev-only, D-10, plan 10-03): the browser compute-boundary
+# DTOs (cost/tier + the TierComplete D-07 event payload) ride the SAME no-drift
+# generate-and-commit mechanism — registered in `export_all_wire_types` so they
+# land in the single committed wire.ts. The reused JobStatus union stays the
+# `envi-service` one (no duplicate). Default features only: the threaded
+# `wasm-bindgen-rayon` pool is NOT compiled for the native rlib test.
+envi-compute-wasm = { path = "../envi-compute-wasm" }

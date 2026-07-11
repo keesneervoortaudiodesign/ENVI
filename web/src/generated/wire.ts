@@ -134,6 +134,33 @@ features: unknown,
 skipped: Array<SkipReportDto>, };
 
 /**
+ * Where one tier's data lives in OPFS — a receiver-axis span in a chunk file
+ * pair. Byte layout is the frozen `[s][r_local][f]` interleaved-LE format the
+ * OPFS sink writes. Both request- and result-facing (Phase-11 reads it back).
+ */
+export type ChunkSpanDto = { 
+/**
+ * The OPFS chunk index (unique per disjoint receiver range).
+ */
+chunk_index: number, 
+/**
+ * Receiver-axis offset of this span within the tensor.
+ */
+r_offset: number, 
+/**
+ * Receiver-axis length of this span.
+ */
+len: number, 
+/**
+ * The H_coh chunk file, e.g. `"tensor/chunk_00042.bin"`.
+ */
+tensor_file: string, 
+/**
+ * The P_incoh chunk file, e.g. `"pincoh/chunk_00042.bin"`.
+ */
+pincoh_file: string, };
+
+/**
  * The wind-speed × stability occurrence table (wire mirror of
  * `envi_gis::era5::ClassOccurrence`, D-05: counts only). `counts[wind_bin]
  * [stability]`. Result-facing.
@@ -184,6 +211,39 @@ muted: boolean, };
  * The browser-side reach of a source (mirrors `envi_gis::registry::Cors`).
  */
 export type CorsDto = "direct" | "proxy";
+
+/**
+ * `estimate_cost` result: the pure pre-run estimate + guardrail verdict (SC1).
+ * Byte counts are `f64` (JS-number-safe past `u32`; exact for integers ≤ 2^53).
+ * Result-facing.
+ */
+export type CostEstimateResult = { 
+/**
+ * Total receivers `N = discrete_points + floor(area / spacing_fine²)`.
+ */
+receiver_count: number, 
+/**
+ * Full OPFS on-disk tensor footprint, bytes
+ * (`n_sub · N · 105 · BYTES_PER_CELL_PAIR`).
+ */
+tensor_bytes: number, 
+/**
+ * Resident RAM working set, bytes (`n_workers · chunk · n_sub · 105 · 24`, SC3).
+ */
+working_set_bytes: number, 
+/**
+ * Wall-clock time estimate, milliseconds (`n_sub · N · t_pair / n_workers`).
+ */
+time_estimate_ms: number, 
+/**
+ * The guardrail severity level.
+ */
+guardrail_level: GuardrailLevelDto, 
+/**
+ * Human-readable guardrail detail (surfaced as text; always states the exact
+ * "halving the final spacing quadruples the cost" relation).
+ */
+guardrail_detail: string, };
 
 /**
  * `POST /projects` body. Strict (`deny_unknown_fields`) so client drift is loud.
@@ -415,6 +475,38 @@ u10_ms: number,
 v10_ms: number, };
 
 /**
+ * `estimate_cost` request: the pure grid spec the cost model keys off. The
+ * estimate keys off the FINAL (fine) spacing (D-06) — coarse tiers add no
+ * receivers (they are a subset of fine, D-05). Request-facing.
+ */
+export type EstimateCostReq = { 
+/**
+ * Calc-area footprint, m² (building footprints already subtracted).
+ */
+area_m2: number, 
+/**
+ * The user's final (fine) lattice spacing, meters (D-06).
+ */
+spacing_fine_m: number, 
+/**
+ * Count of explicit discrete receiver points (not double-counted by the grid).
+ */
+discrete_points: number, 
+/**
+ * Sub-source count (≥ 1 enforced by the core).
+ */
+n_sub: number, 
+/**
+ * Worker-pool size (`navigator.hardwareConcurrency`; ≥ 1 enforced).
+ */
+n_workers: number, 
+/**
+ * Hard byte budget (e.g. the OPFS quota from `navigator.storage.estimate()`).
+ * A tensor over this is a `Block` verdict.
+ */
+budget_bytes: number, };
+
+/**
  * Serde twin of the **authored subset** of `envi_engine::forest::ForestCrossing`
  * (D-01, SCN-04).
  *
@@ -522,6 +614,12 @@ planar_xy: Array<[number, number]>,
  * One segment per interval (`len() == points.len() − 1`).
  */
 segments: Array<ProfileSegmentDto>, };
+
+/**
+ * The guardrail severity (mirror of `envi_compute::cost::GuardrailLevel`).
+ * Serialized `snake_case` so the wire tags are `ok`/`warn`/`block`. Result-facing.
+ */
+export type GuardrailLevelDto = "ok" | "warn" | "block";
 
 /**
  * `plan_import` request: pick each layer's source for a viewport.
@@ -786,6 +884,37 @@ width: number,
  * Window height in pixels (`> 0`).
  */
 height: number, };
+
+/**
+ * `plan_tiers` request: the grid spec the hierarchical partition consumes. The
+ * calc area is an axis-aligned rectangle in SceneXY meters. Request-facing.
+ */
+export type PlanTiersReq = { 
+/**
+ * The user's final (fine) lattice spacing, meters (D-06).
+ */
+fine_spacing_m: number, 
+/**
+ * Shared lattice origin `[x, y]` (anchors coarse ⊂ fine, D-05).
+ */
+lattice_origin: [number, number], 
+/**
+ * Calc-area minimum corner `[x, y]`, meters.
+ */
+area_min: [number, number], 
+/**
+ * Calc-area maximum corner `[x, y]`, meters.
+ */
+area_max: [number, number], 
+/**
+ * Explicit discrete receiver positions `[x, y]` (the points tier).
+ */
+discrete_points: Array<[number, number]>, 
+/**
+ * Integer coarse factors `k` (e.g. `[10]` → one 100 m preview; `[10, 5]` →
+ * 100 m + 50 m). Factors `< 2` are ignored; the list is de-duplicated.
+ */
+coarse_multiples: Array<number>, };
 
 /**
  * `plan_tiles` request: enumerate the covering source tiles for a viewport.
@@ -1108,6 +1237,30 @@ source_ref: string,
 reason: string, };
 
 /**
+ * `solve_chunk_range` request: one disjoint receiver-chunk range to solve on the
+ * pool (D-08 caller-side rayon sharding). The full field set + the rayon pool
+ * driver land in plan 10-04; this crate declares the boundary signature so the
+ * wire shape is fixed. Request-facing.
+ */
+export type SolveChunkRangeReq = { 
+/**
+ * The frozen tensor-identity hash the chunk files are keyed under (D-09).
+ */
+tensor_hash: string, 
+/**
+ * This range's OPFS chunk index (disjoint across ranges → disjoint files).
+ */
+chunk_index: number, 
+/**
+ * Receiver-axis offset of the first receiver in this range.
+ */
+r_offset: number, 
+/**
+ * Receiver-axis length of this range.
+ */
+len: number, };
+
+/**
  * A concrete per-azimuth sound-speed profile (wire mirror of the engine
  * `SoundSpeedProfile` `(A, B, C, sA, sB, z₀)`). Result-facing.
  */
@@ -1310,6 +1463,90 @@ segments: Array<GroundSegmentDto>, };
  * `envi_gis::terrain::TerrainSourceCrs`). Request-facing.
  */
 export type TerrainSourceCrsDto = "rd_new" | "wgs84";
+
+/**
+ * The `tier_complete` event the compute worker posts once a tier's chunk files
+ * are flushed (D-07) — it carries everything Phase 11 needs to read the chunks
+ * and render points → coarse map → refined map. **Phase 10 emits; Phase 11
+ * renders.** The `tensor_hash` ties every span to the manifest identity (D-09).
+ */
+export type TierComplete = { 
+/**
+ * The fixed discriminant `"tier_complete"` (a postMessage-envelope tag).
+ */
+kind: "tier_complete", 
+/**
+ * Which tier just finished.
+ */
+tier: TierKindDto, 
+/**
+ * The tier's index in solve order (`0` = points, `1…` = coarse, last = fine).
+ */
+tier_index: number, 
+/**
+ * The tier's lattice spacing, meters (`null` for the discrete-points tier).
+ */
+spacing_m: number | null, 
+/**
+ * The frozen tensor-identity content hash (hex; D-09).
+ */
+tensor_hash: string, 
+/**
+ * Stable receiver UUIDs in this tier, in receiver-major order (TS-minted).
+ */
+receiver_ids: Array<string>, 
+/**
+ * Where this tier's data lives in OPFS (receiver-axis spans).
+ */
+spans: Array<ChunkSpanDto>, };
+
+/**
+ * One emitted tier: its kind, spacing (`null` for discrete points), and the
+ * receivers it introduces (NOT already carried by a coarser tier). Result-facing.
+ */
+export type TierDto = { 
+/**
+ * The tier kind.
+ */
+kind: TierKindDto, 
+/**
+ * Lattice spacing in meters (`null` for the discrete-points tier).
+ */
+spacing_m: number | null, 
+/**
+ * The receivers this tier introduces, row-major, with sequential indices.
+ */
+receivers: Array<TierReceiverDto>, };
+
+/**
+ * Which resolution tier a receiver belongs to (mirror of
+ * `envi_compute::tiers::TierKind`). Serialized `snake_case`. Result-facing.
+ */
+export type TierKindDto = "points" | "coarse" | "fine";
+
+/**
+ * `plan_tiers` result: the ordered tiers `[points, coarse…, fine]` (D-05).
+ * Result-facing.
+ */
+export type TierPlanResult = { 
+/**
+ * The ordered tiers in solve order.
+ */
+tiers: Array<TierDto>, };
+
+/**
+ * One receiver in a tier: its global index (receiver-major) and SceneXY `[x, y]`.
+ * Result-facing.
+ */
+export type TierReceiverDto = { 
+/**
+ * Global receiver index (unique, assigned in emission order).
+ */
+global_index: number, 
+/**
+ * SceneXY position `[x, y]`, meters.
+ */
+position: [number, number], };
 
 /**
  * One covering source tile (mirrors `envi_gis::tiles::TileRef`): the absolute
