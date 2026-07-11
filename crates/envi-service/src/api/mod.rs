@@ -8,10 +8,17 @@
 //!
 //! # Request body limit (Security Domain V5, accepted)
 //!
-//! The axum default request-body limit (~2 MB) is left in place: it is ample for
-//! authored Nord2000 scenes (hundreds of features) and, with the strict
-//! `deny_unknown_fields` DTOs, bounds malformed-body DoS. No streaming uploads
-//! exist in Phase 6.
+//! The axum default request-body limit (~2 MB) is left in place globally: it is
+//! ample for authored Nord2000 scenes (hundreds of features) and, with the strict
+//! `deny_unknown_fields` DTOs, bounds malformed-body DoS.
+//!
+//! The one exception is the whole-scene PUT (`/projects/{id}/scene`): a Phase-8
+//! GIS import decimates terrain to thousands of `elevation_point` features per
+//! tile plus land-cover polygons, so a multi-tile import serializes tens of
+//! thousands of features — well past 2 MB. That single route carries a raised
+//! [`SCENE_BODY_LIMIT`] so a genuine import persists instead of being silently
+//! rejected (WR-01); every other route keeps the tight default. The limit is still
+//! bounded (not unlimited), so it caps import-body DoS.
 //!
 //! # SPA fallback (SVC-03)
 //!
@@ -32,11 +39,18 @@ use std::path::Path;
 use std::sync::Arc;
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::error::ApiError;
 use crate::state::AppState;
+
+/// Request-body limit for the whole-scene PUT only (WR-01). A GIS import can
+/// serialize tens of thousands of decimated terrain/land-cover features; 32 MiB
+/// gives ample headroom while still bounding import-body DoS. Every other route
+/// keeps the axum ~2 MB default.
+const SCENE_BODY_LIMIT: usize = 32 * 1024 * 1024;
 
 /// Build the `/api/v1` sub-router (state-generic; mounted by [`app`]).
 ///
@@ -65,7 +79,10 @@ pub fn api_router() -> Router<Arc<AppState>> {
         .route("/projects/{id}/duplicate", post(projects::duplicate))
         .route(
             "/projects/{id}/scene",
-            get(scene::get_scene).put(scene::put_scene),
+            get(scene::get_scene)
+                .put(scene::put_scene)
+                // Scope the raised limit to this route's handlers only (WR-01).
+                .layer(DefaultBodyLimit::max(SCENE_BODY_LIMIT)),
         )
         .route("/projects/{id}/calculations", post(calc::submit))
         .route("/calculations/{cid}/recondition", post(calc::recondition))

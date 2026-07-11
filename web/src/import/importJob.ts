@@ -118,6 +118,16 @@ function viewportAreaKm2(bbox: BboxDto): number {
 
 // Evaluate the max-area guardrail for a viewport (D-06): null within budget, a warn or a block above it.
 export function evaluateGuardrail(bbox: BboxDto): GuardrailState | null {
+  // Antimeridian / inverted viewport (IN-01): a viewport crossing ±180° arrives as min_lon > max_lon and
+  // the tile planner's `[lo, hi]` grid walk would silently yield ZERO tiles. Report it as unsupported
+  // rather than importing nothing. (An inverted latitude is likewise degenerate.)
+  if (bbox.min_lon > bbox.max_lon || bbox.min_lat > bbox.max_lat) {
+    return {
+      blocked: true,
+      detail:
+        "This viewport crosses the antimeridian (±180°), which import does not support — pan so the view stays on one side.",
+    };
+  }
   const areaKm2 = viewportAreaKm2(bbox);
   if (areaKm2 > GUARDRAIL_BLOCK_KM2) {
     return {
@@ -195,6 +205,12 @@ async function loadTileBytes(
 
 // The read→merge→load→save commit of a layer's features into the scene (D-09 merge preserves user edits).
 // Returns the committed feature count. Runs inside the commit mutex so concurrent layers don't clobber.
+//
+// A persist failure is NOT swallowed (WR-01): the whole-scene PUT is the durability signal, and a large
+// import (thousands of terrain points) can be rejected by the scene-PUT body limit. Reporting `done, N
+// features` while the PUT failed would silently lose the import on reload. So a failed `saveScene` throws
+// here — the layer records a real error (retryable) instead of a false success. The merged features remain
+// in the in-memory store (visible until reload) but are explicitly flagged as un-persisted.
 function commitFeatures(features: RawFeature[], sourceId: string): Promise<number> {
   return serializeCommit(async () => {
     if (features.length === 0) {
@@ -208,12 +224,20 @@ function commitFeatures(features: RawFeature[], sourceId: string): Promise<numbe
     });
     useSceneStore.getState().loadImportedScene(merged.features as unknown as SceneCollection);
     useImportStore.getState().addAttributedSources([sourceId]);
-    // Persist (whole-scene PUT). A transient persist failure leaves the features committed in the store
-    // (autosave will retry on the next committed edit); it is not the layer's success/failure signal.
+    // Persist (whole-scene PUT). Surface a persist failure as the layer's failure — never a false "done".
     try {
       await useSceneStore.getState().saveScene();
-    } catch {
-      /* persisted on next autosave; features are already in the canonical store */
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 413 || err.status === 400)) {
+        throw new ApiError(
+          err.status,
+          "Import is too large to save — zoom in to a smaller area and re-import.",
+        );
+      }
+      throw new ApiError(
+        err instanceof ApiError ? err.status : 0,
+        errorText(err, "Imported features could not be saved."),
+      );
     }
     return incoming.features.length;
   });
