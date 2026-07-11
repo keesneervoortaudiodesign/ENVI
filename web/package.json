@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "vite",
     "build:wasm": "cargo build -p envi-gis-wasm --release --target wasm32-unknown-unknown && wasm-bindgen --target web --out-dir src/generated/wasm --out-name envi_gis_wasm ../target/wasm32-unknown-unknown/release/envi_gis_wasm.wasm",
-    "build": "npm run build:wasm && tsc --noEmit && vite build",
+    "build:wasm:compute": "cargo +nightly-2026-07-11 build -p envi-compute-wasm --release --target wasm32-unknown-unknown --features threads -Z build-std=std,panic_abort --config \"target.wasm32-unknown-unknown.rustflags=['-C', 'target-feature=+atomics,+bulk-memory,+mutable-globals']\" && wasm-bindgen --target web --out-dir src/generated/wasm-compute --out-name envi_compute_wasm ../target/wasm32-unknown-unknown/release/envi_compute_wasm.wasm",
+    "build": "npm run build:wasm && npm run build:wasm:compute && tsc --noEmit && vite build",
     "build:web": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test:unit": "vitest run",

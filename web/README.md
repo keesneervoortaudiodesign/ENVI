@@ -14,8 +14,9 @@ zustand / turf) reach the browser.
 | Command | What it does |
 |---------|--------------|
 | `npm run dev` | Vite dev server (hot reload). |
-| `npm run build:wasm` | Compile the `envi-gis-wasm` cdylib for `wasm32-unknown-unknown` and run `wasm-bindgen` to emit the ESM glue + `.wasm` into `src/generated/wasm/`. |
-| `npm run build` | Full build: `build:wasm` → `tsc --noEmit` → `vite build` (emits `dist/`). |
+| `npm run build:wasm` | Compile the `envi-gis-wasm` cdylib for `wasm32-unknown-unknown` (stable) and run `wasm-bindgen` to emit the ESM glue + `.wasm` into `src/generated/wasm/`. |
+| `npm run build:wasm:compute` | Compile the **threaded** `envi-compute-wasm` cdylib (nightly + `-Zbuild-std` + atomics, SharedArrayBuffer pool) and emit its glue + `.wasm` + rayon worker snippets into `src/generated/wasm-compute/`. See the threaded-build section below. |
+| `npm run build` | Full build: `build:wasm` → `build:wasm:compute` → `tsc --noEmit` → `vite build` (emits `dist/`). |
 | `npm run build:web` | Frontend-only build (skips the wasm step) — use when the wasm glue is already generated. |
 | `npm run preview` | Preview the built `dist/`. |
 | `npm run test:unit` | Vitest unit tests. |
@@ -72,9 +73,68 @@ crate `=` pin and the installed CLI version in the same commit, and re-run
 - Rust toolchain with the `wasm32-unknown-unknown` target:
   `rustup target add wasm32-unknown-unknown`.
 - `wasm-bindgen-cli` at the pinned version (command above).
+- For the threaded compute module (`build:wasm:compute`): the pinned nightly
+  toolchain **with the `rust-src` component** (see the next section).
 
 Missing either? Use `npm run build:web` to build the frontend without
 regenerating the wasm glue.
+
+## Threaded compute WASM boundary (SVC-02 / GRID-02, plan 10-03)
+
+The client-side Nord2000 grid solve runs as **threaded WebAssembly**: the
+`envi-compute-wasm` cdylib wraps the pure `envi-compute` core + the OPFS tensor
+sink and drives a `wasm-bindgen-rayon` thread pool over a `SharedArrayBuffer`
+(sized to `navigator.hardwareConcurrency`). This needs a *different* toolchain
+from the stable `build:wasm` — nightly Rust + `-Zbuild-std=std,panic_abort` +
+`-C target-feature=+atomics,+bulk-memory,+mutable-globals`.
+
+### The build step
+
+```bash
+# From web/:
+npm run build:wasm:compute
+# …which runs, under the hood:
+cargo +nightly-2026-07-11 build -p envi-compute-wasm --release \
+  --target wasm32-unknown-unknown --features threads \
+  -Z build-std=std,panic_abort \
+  --config "target.wasm32-unknown-unknown.rustflags=['-C', 'target-feature=+atomics,+bulk-memory,+mutable-globals']"
+wasm-bindgen --target web \
+  --out-dir src/generated/wasm-compute --out-name envi_compute_wasm \
+  ../target/wasm32-unknown-unknown/release/envi_compute_wasm.wasm
+```
+
+Output (`web/src/generated/wasm-compute/` — glue + `_bg.wasm` + `snippets/` for
+the rayon worker) is a **build artifact**, git-ignored, regenerated from the
+committed Rust crate. Vite consumes the `.wasm` via `assetsInclude`.
+
+### ⚠️ Scoping — the atomics/nightly toolchain MUST stay isolated (Pitfall 1)
+
+The nightly toolchain and the atomics `RUSTFLAGS` are scoped to **this one
+command only**:
+
+- Nightly is selected per-invocation with `cargo +nightly-2026-07-11` — there is
+  **no repo-root `rust-toolchain.toml`** (which would force nightly on every
+  build).
+- The atomics rustflags are passed with an **inline `--config`** (per-invocation,
+  cross-platform — works in both `cmd.exe` and POSIX shells) — there is **no
+  `.cargo/config.toml`** with a `[build]`/`[target] rustflags` (which would force
+  atomics onto the stable `build:wasm` and native `cargo build`/`cargo test`,
+  breaking them without `-Zbuild-std`).
+
+The stable `build:wasm` (gis) is untouched and still builds on stable Rust.
+
+### Prerequisites (threaded module only)
+
+```bash
+rustup toolchain install nightly-2026-07-11 --component rust-src
+```
+
+**Pinned nightly: `nightly-2026-07-11`** (verified to support `-Zbuild-std` for
+`wasm32-unknown-unknown`). The `wasm-bindgen`-crate ↔ `wasm-bindgen-cli`
+`=0.2.126` lockstep above applies to this module too — the same pinned CLI
+generates both bundles; the atomics come from `-Zbuild-std` + the rustflags, not
+the CLI. When bumping the nightly, change the date in `package.json` and here in
+the same commit.
 
 ## Generated wire types (no hand-written TS mirror — D-10)
 

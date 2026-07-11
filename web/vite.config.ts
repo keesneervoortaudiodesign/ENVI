@@ -50,8 +50,15 @@ export default defineConfig({
       "Cross-Origin-Embedder-Policy": "credentialless",
     },
   },
-  // The wasm-bindgen `.wasm` in src/generated/wasm/ is an explicit asset the Vite build consumes.
-  assetsInclude: ["**/src/generated/wasm/*.wasm"],
+  // The wasm-bindgen `.wasm` artifacts are explicit assets the Vite build consumes:
+  // `src/generated/wasm/` is the stable single-threaded GIS boundary (build:wasm);
+  // `src/generated/wasm-compute/` is the THREADED (SharedArrayBuffer/atomics) compute
+  // module (build:wasm:compute — nightly + -Zbuild-std, plan 10-03), git-ignored like
+  // the gis one. Both are regenerated from their committed Rust crates.
+  assetsInclude: [
+    "**/src/generated/wasm/*.wasm",
+    "**/src/generated/wasm-compute/*.wasm",
+  ],
   build: {
     target: "es2022",
     outDir: "dist",
