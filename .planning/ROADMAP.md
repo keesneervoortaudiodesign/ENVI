@@ -158,7 +158,7 @@ Architecture per `.planning/research/ARCHITECTURE.md`: three new crates (`envi-g
 - [x] **Phase 6: Service Foundation & Persistence** - `envi-geo` + `envi-store` + `envi-service` skeleton: project-folder CRUD, single pure-Rust CRS boundary, band-index wire contract, recondition/recompute API split, job state machine, pure-Rust CRS startup self-check (GDAL/PROJ provisioning deferred to Phase 8 per D-01/D-02) (completed 2026-07-09)
 - [x] **Phase 7: Frontend Shell & Scene Editing** - MapLibre/Terra Draw scene editor for all object kinds — including semi-transparent screens/buildings with the isolation-spectrum editor, forests, and elevation editing — with draw-time validation (completed 2026-07-10)
 - [x] **Phase 8: GIS Ingestion & DGM** - Viewport import of GLO-30/LiDAR terrain, WorldCover ground cover, and Overture/OSM buildings onto a triangulated DGM; local-cache compute path; check-and-complete editability (completed 2026-07-11)
-- [ ] **Phase 9: Path Extraction & Weather** - DEM cut-profile extractor (GRASS oracle), impedance segmentation, screening edges, CDT receiver grids; Open-Meteo import → per-azimuth A/B/C; ERA5 groundwork
+- [x] **Phase 9: Path Extraction & Weather** - DEM cut-profile extractor (GRASS oracle), impedance segmentation, screening edges, CDT receiver grids; Open-Meteo import → per-azimuth A/B/C; ERA5 groundwork (completed 2026-07-11)
 - [ ] **Phase 10: Calculation Service** - Chunked tensor store + job runner wiring the promoted engine solver: submit/progress/abort with pre-run cost estimate, hash-keyed manifests, memory-bounded large grids
 - [ ] **Phase 11: Results & Fast Recalc** - Receiver spectra, isophone noise maps with editable color scale, interactive source conditioning via the tensor MAC, named weather scenarios + difference maps, exports
 
@@ -332,7 +332,7 @@ Plans:
   4. Weather import fetches Open-Meteo once per (site, time window), caches it with the project, and derives per-azimuth A/B/C from the multi-level profile; subsequent what-if edits issue zero API calls (verified by network log), and the weighted call cost is logged per fetch
   5. ERA5/CDS groundwork retrieves reanalysis as an async job and derives wind×stability weather-class occurrence statistics (Obukhov length) — full L_den combination stays deferred with GRID-03
 
-**Plans**: 6/6 plans executed
+**Plans**: 6/6 plans executed — Phase COMPLETE (all 5 completion gates closed 2026-07-11)
 
 Plans:
 
@@ -437,7 +437,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 6. Service Foundation & Persistence | 4/4 | Complete (all 5 completion gates closed) | 2026-07-09 |
 | 7. Frontend Shell & Scene Editing | 10/10 | Complete (all 5 completion gates closed) | 2026-07-10 |
 | 8. GIS Ingestion & DGM | 8/8 | Complete (all 5 completion gates closed) | 2026-07-11 |
-| 9. Path Extraction & Weather | 0/6 | Not started | - |
+| 9. Path Extraction & Weather | 6/6 | Complete (all 5 completion gates closed) | 2026-07-11 |
 | 10. Calculation Service | 0/? | Not started | - |
 | 11. Results & Fast Recalc | 0/? | Not started | - |
 

@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 09
 current_phase_name: path-extraction-weather
-status: executing
-stopped_at: Completed 09-06-PLAN.md (offline Playwright weather-import journey + SC4 zero-egress what-if proof)
-last_updated: "2026-07-11T15:16:18.000Z"
+status: complete
+stopped_at: Phase 9 complete — all 5 completion gates green
+last_updated: "2026-07-11T16:34:24.441Z"
 last_activity: 2026-07-11
-last_activity_desc: Completed 09-06-PLAN.md
+last_activity_desc: "Phase 9 CLOSED: 6/6 plans + 5 completion gates green (09-REVIEW 1 critical/3 warnings/3 info all fixed + re-review clean, simplify 11 cleanups applied, 09-SECURITY SECURED 27/27, 09-VERIFICATION passed 5/5, doc-consistency). GIS→engine geometry pipeline (cut-profile+oracle, impedance segmentation, screen-vertex injection, CDT receiver grid) + Open-Meteo per-azimuth A/B/C + ERA5 occurrence-stats groundwork + WASM boundary + flagged ERA5 endpoint + PropagationPathInputs/PathCacheKey + web weather panel; offline Playwright 19/19"
 progress:
   total_phases: 11
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 47
   completed_plans: 47
-  percent: 73
+  percent: 82
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 09 (path-extraction-weather) — EXECUTING (all 6 plans executed; phase-completion gates pending)
-Plan: 6 of 6 — complete
-Status: All Phase-9 plans executed — 09-06 complete (offline Playwright weather-import journey: drives the real WeatherPanel over committed Open-Meteo fixtures, both date-switch branches, and proves SC4 — a what-if edit after a cached import issues ZERO Open-Meteo calls, egress collector []; suite 19/19 green, fully offline). METX-01 automated proof landed. Remaining before phase close: the five CLAUDE.md completion gates (code-review · simplify · secure · verify · doc-consistency).
-Last activity: 2026-07-11 — Completed 09-06-PLAN.md
+Phase: 09 (path-extraction-weather) — COMPLETE
+Plan: 6 of 6 complete (09-01 … 09-06)
+Status: Phase 9 COMPLETE — all 5 completion gates closed (code-review 1 critical/3 warnings/3 info fixed + re-review clean · simplify 11 cleanups applied · secure SECURED 27/27 · verify passed 5/5 · doc-consistency). GEOX-01/02/03 + GRID-01 + METX-01/02 delivered: the GIS→engine geometry pipeline (cut-profile with committed r.profile oracle, impedance segmentation drawn>imported>default, screen-vertex injection into TerrainProfile, building-aware CDT receiver grid) + Open-Meteo per-azimuth A/B/C + ERA5 Obukhov/occurrence-stats groundwork + WASM boundary + flagged-off ERA5 endpoint + PropagationPathInputs/PathCacheKey + web weather panel. Next: Phase 10 (Calculation Service).
+Last activity: 2026-07-11 — Phase 9 closed: 6/6 plans + 5 gates green (offline Playwright 19/19)
 
 Progress: [██████████] Phase 9 — 6/6 plans complete (GEOX-01/02 cut-profile+impedance · GEOX-03/GRID-01 screening+receiver grid · METX-01/02 Open-Meteo A/B/C lift + ERA5 Obukhov/occurrence derivation · WASM boundary+flagged ERA5 endpoint+PropagationPathInputs/PathCacheKey · web weather-import panel+overlays · offline Playwright SC4 zero-egress proof)
 
@@ -39,7 +39,7 @@ Progress: [██████████] Phase 9 — 6/6 plans complete (GEOX-
 
 **Velocity:**
 
-- Total plans completed: 12
+- Total plans completed: 18
 - Average duration: ~28min
 - Total execution time: ~6 hours
 
@@ -48,6 +48,7 @@ Progress: [██████████] Phase 9 — 6/6 plans complete (GEOX-
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 | 3 | 77min | 26min |
+| 9 | 6 | - | - |
 
 **Recent Trend:**
 
