@@ -209,7 +209,11 @@ mod tests {
         let tin = plane_z_eq_y();
         // The receiver is well outside the [0,10]^2 hull, so a late sample misses.
         let err = cut_profile(&tin, [5.0, 5.0], [100.0, 100.0], 1.0).unwrap_err();
-        assert_eq!(err, GisError::OutsideHull, "hull miss is OutsideHull, got {err:?}");
+        assert_eq!(
+            err,
+            GisError::OutsideHull,
+            "hull miss is OutsideHull, got {err:?}"
+        );
     }
 
     #[test]

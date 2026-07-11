@@ -114,9 +114,7 @@ fn cut_profile_matches_the_rprofile_oracle_within_tolerance() {
             let z = raster
                 .get(col, row)
                 .expect("the DEM extract has no nodata holes");
-            let (mx, my) = raster
-                .geo
-                .pixel_to_map(col as f64 + 0.5, row as f64 + 0.5);
+            let (mx, my) = raster.geo.pixel_to_map(col as f64 + 0.5, row as f64 + 0.5);
             points.push([mx, my, f64::from(z)]);
         }
     }
