@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 09
 current_phase_name: path-extraction-weather
 status: executing
-stopped_at: Completed 09-02-PLAN.md (GEOX-03 + GRID-01)
-last_updated: "2026-07-11T13:31:02.421Z"
+stopped_at: Completed 09-03-PLAN.md (METX-01/02 derivation)
+last_updated: "2026-07-11T14:20:00.000Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 09 execution started
 progress:
   total_phases: 11
   completed_phases: 8
   total_plans: 47
-  completed_plans: 43
+  completed_plans: 44
   percent: 73
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 09 (path-extraction-weather) — EXECUTING
-Plan: 3 of 6
-Status: Executing — 09-01 complete (GEOX-01 cut-profile + GEOX-02 impedance segmentation)
+Plan: 4 of 6
+Status: Executing — 09-03 complete (METX-01 Open-Meteo→per-azimuth A/B/C via the lifted Phase-3 fit + METX-02 ERA5 Obukhov/occurrence-stats derivation)
 Last activity: 2026-07-11 — Phase 09 execution started
 
 Progress: [██████████] Phase 8 — 8/8 plans complete (envi-geo RD-New · envi-gis sans-I/O COG core · allowlisted byte proxy · source registry+terrain+σ table+Overpass buildings+re-import merge · WorldCover→ground_zone vectorization · envi-gis-wasm cdylib+generated DTOs · web OPFS import path+ImportPanel+overlay+attribution · offline Playwright import+DATA-04 replay)
@@ -91,6 +91,7 @@ Progress: [██████████] Phase 8 — 8/8 plans complete (envi-
 | Phase 08 P08 | 150 | 2 tasks | 13 files |
 | Phase 09 P01 | 45min | 2 tasks | 10 files |
 | Phase 09 P02 | 40min | 2 tasks | 5 files |
+| Phase 09 P03 | 40min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -161,6 +162,9 @@ Recent decisions affecting current work:
 - [Phase 09]: GEOX-02 segment_ground returns GroundSegmentation { points, planar_xy, segments } so boundary-spliced points stay in sync with segments for a valid TerrainProfile
 - [Phase ?]: GEOX-03 injects screen tops as (x,z) vertices into the TerrainProfile (no separate screens field); through-building = two tops + hard-sigma span, engine caps diffraction at <=2 screens
 - [Phase ?]: GRID-01 emits a regular lattice clipped to calc_area minus footprints (build_tin used only as the intersecting-ring validity guard); receiver z from the DGM TIN, acoustic height added at SolveJob assembly
+- [Phase 09, 09-03] METX-01: the Phase-3 weather LSQ (3×3 Cramer fit_profile) + WeatherComponents/WeatherProfile/profile_for_bearing/ReflectionProfiles LIFTED verbatim into WASM-safe envi_gis::weather (single source of truth); envi-harness now depends on envi-gis, re-exports the types (weather/mod.rs) and DELEGATES fit_profile (route3.rs maps GisError→CaseLoadError) so every Phase-3 call site + test is unchanged — no duplicate LSQ, engine still exactly 3 deps, no async/network edge in envi-gis
+- [Phase 09, 09-03] METX-01 components_from_levels uses the validated Route-2 [ASSUMED] SEPARABLE model (a_temp=0, linear temperature gradient→B/C, neutral-log-law→a_wind), NOT a naive 3-param fit of both terms: real Open-Meteo pressure levels are sparse/≥90 m AGL so the [ln(z),z,1] basis is ill-conditioned (singular) — the separable model is well-conditioned and physically matches route2. AMSL geopotential→AGL via elevation subtract; near-surface 2m/10m anchor conditions/enriches the fit. Structural/direction/round-trip tests ONLY on committed openmeteo_{archive,forecast}.json — [ASSUMED] quarantine intact, NO false FORCE pass
+- [Phase 09, 09-03] METX-02: envi_gis::era5 obukhov (1/L from iews/inss/ishf/2t/2d/sp; downward-positive ⇒ daytime unstable/night stable) + occurrence_stats (wind×stability class-occurrence table + sdfor reliability). Occurrence statistics ONLY (D-05) — NO class→A/B/C, NO L_den (deferred GRID-03). Committed era5_synthetic.toml with an INDEPENDENT-recipe 1/L oracle + exact class counts; named [ASSUMED] bin edges; new GisError::{WeatherFit, Era5Field}
 
 ### Pending Todos
 
@@ -188,6 +192,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T13:31:02.410Z
-Stopped at: Completed 09-02-PLAN.md (GEOX-03 + GRID-01)
+Last session: 2026-07-11T14:20:00.000Z
+Stopped at: Completed 09-03-PLAN.md (METX-01/02 derivation)
 Resume file: None
