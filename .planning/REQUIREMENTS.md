@@ -75,10 +75,10 @@
 
 ### GIS data ingestion (DATA)
 
-- [ ] **DATA-01**: Fetch terrain — Copernicus GLO-30 DEM (COG `/vsicurl/` windowed reads) + national LiDAR DTM where available
+- [ ] **DATA-01**: Fetch terrain — Copernicus GLO-30 DEM + national LiDAR DTM where available (client-side whole-tile browser fetch, cached in OPFS, windowed locally in WASM — pivot per Phase-8 CONTEXT D-02/D-03)
 - [ ] **DATA-02**: Fetch ESA WorldCover land cover and map classes → Nordtest σ / impedance class (reviewed mapping table)
 - [ ] **DATA-03**: Fetch buildings (Overture GeoParquet / OSM) with a height-resolution fallback chain
-- [ ] **DATA-04**: Cache fetched tiles/data locally on disk; the compute path reads only the local cache
+- [ ] **DATA-04**: Cache fetched tiles/data locally in the browser (OPFS), per project; the compute path reads only the local cache (verified with the network off) — pivot per Phase-8 CONTEXT D-03
 
 ### Real GIS geometry pipeline (GEOX)
 

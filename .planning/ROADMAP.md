@@ -273,7 +273,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
 
   1. A viewport import job fetches Copernicus GLO-30 (national LiDAR DTM preferred where available, GLO-30 flagged as a surface model when used), ESA WorldCover, and Overture/OSM buildings, and materializes them as editable scene objects on a DGM TIN — with live progress and clear failure states
-  2. All fetched data is cached on disk per project (DATA-04); the compute path reads only the local cache — verified by running with the network off — and `/vsicurl/` is touched only at ingestion time
+  2. All fetched data is cached locally per project (DATA-04) — in the browser's OPFS under the Phase-8 client-side-WASM pivot (CONTEXT D-03); the compute path reads only the local cache — verified by running with the network off — and the network (whole-tile browser fetch / byte proxy) is touched only at ingestion time
   3. The WorldCover class → Nordtest σ/impedance mapping is a reviewed data table with a unit test asserting every row, and an impedance debug overlay shows the effective ground class everywhere on the map
   4. Buildings missing height data get heights via the documented fallback chain (measured → height tag → levels×3+1.5 → user default) with per-feature provenance (source + license + retrieval date), and base elevations are sampled from footprint-boundary ground, never DSM-under-building
   5. The map shows attribution for OSM/Overture/ESA WorldCover/Copernicus data
