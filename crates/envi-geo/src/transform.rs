@@ -23,8 +23,63 @@
 //! eastings are ~166_000..834_000 m and northings 0..10_000_000 m — many orders
 //! of magnitude above the guard, so real scene coordinates are never rejected.
 
+use proj4rs::proj::Proj;
+
 use crate::crs::{RdNewCrs, proj_err};
 use crate::{GeoError, LonLat, ProjectCrs, SceneXY};
+
+/// Shared WGS84 lon/lat (degrees) → projected meters forward transform.
+///
+/// Rejects non-finite and out-of-range lon/lat with typed errors **before**
+/// proj4rs sees them (never panics on data), then converts degrees → radians on
+/// entry (Pitfall 1: proj4rs longlat is radians) and drives the projection. The
+/// projected output (UTM or sterea) is already in meters.
+fn forward(wgs84: &Proj, target: &Proj, p: LonLat) -> Result<SceneXY, GeoError> {
+    if !p.lon_deg.is_finite() || !p.lat_deg.is_finite() {
+        return Err(GeoError::NonFinite {
+            what: format!("lon/lat = ({}, {})", p.lon_deg, p.lat_deg),
+        });
+    }
+    if !(-180.0..=180.0).contains(&p.lon_deg) || !(-90.0..=90.0).contains(&p.lat_deg) {
+        return Err(GeoError::LonLatOutOfRange {
+            lon: p.lon_deg,
+            lat: p.lat_deg,
+        });
+    }
+    // proj4rs longlat is RADIANS — converted here and ONLY here (Pitfall 1).
+    let mut pt = (p.lon_deg.to_radians(), p.lat_deg.to_radians(), 0.0);
+    proj4rs::transform::transform(wgs84, target, &mut pt).map_err(proj_err)?;
+    Ok(SceneXY {
+        x_m: pt.0,
+        y_m: pt.1,
+    })
+}
+
+/// Shared projected meters → WGS84 lon/lat (degrees) inverse transform.
+///
+/// Rejects non-finite and **degree-magnitude** scene coordinates with typed
+/// errors before any transform (SC3 loud rejection; threats T-06-01-01 /
+/// T-08-01-01): a `|x| <= 360` AND `|y| <= 90` value is almost certainly WGS84
+/// degrees mislabeled as scene meters. On exit, radians → degrees (Pitfall 1).
+fn inverse(source: &Proj, wgs84: &Proj, p: SceneXY) -> Result<LonLat, GeoError> {
+    if !p.x_m.is_finite() || !p.y_m.is_finite() {
+        return Err(GeoError::NonFinite {
+            what: format!("scene x/y = ({}, {})", p.x_m, p.y_m),
+        });
+    }
+    // SC3: degree-magnitude values are NOT scene meters — reject loudly BEFORE
+    // proj4rs so garbage never round-trips as plausible.
+    if p.x_m.abs() <= 360.0 && p.y_m.abs() <= 90.0 {
+        return Err(GeoError::DegreeMagnitudeSceneCoord { x: p.x_m, y: p.y_m });
+    }
+    let mut pt = (p.x_m, p.y_m, 0.0);
+    proj4rs::transform::transform(source, wgs84, &mut pt).map_err(proj_err)?;
+    // proj4rs longlat is RADIANS — converted back to degrees here and ONLY here.
+    Ok(LonLat {
+        lon_deg: pt.0.to_degrees(),
+        lat_deg: pt.1.to_degrees(),
+    })
+}
 
 impl ProjectCrs {
     /// Project a WGS84 lon/lat (degrees) into project-local UTM meters.
@@ -32,30 +87,15 @@ impl ProjectCrs {
     /// Rejects non-finite and out-of-range inputs with typed errors **before**
     /// proj4rs sees them (threat T-06-01-02: never panics on data).
     pub fn to_utm(&self, p: LonLat) -> Result<SceneXY, GeoError> {
-        if !p.lon_deg.is_finite() || !p.lat_deg.is_finite() {
-            return Err(GeoError::NonFinite {
-                what: format!("lon/lat = ({}, {})", p.lon_deg, p.lat_deg),
-            });
-        }
-        if !(-180.0..=180.0).contains(&p.lon_deg) || !(-90.0..=90.0).contains(&p.lat_deg) {
-            return Err(GeoError::LonLatOutOfRange {
-                lon: p.lon_deg,
-                lat: p.lat_deg,
-            });
-        }
-        // UTM is undefined outside [-80, 84]° latitude (LOW-1) — reject before
-        // proj4rs silently distorts near the poles.
+        // Shared guard-first forward (finiteness + lon/lat range + transform);
+        // the UTM-band check below is the ProjectCrs-only extra on top.
+        let xy = forward(&self.wgs84, &self.proj, p)?;
+        // UTM is undefined outside [-80, 84]° latitude (LOW-1) — reject so a
+        // near-pole sample never round-trips as a silently distorted coordinate.
         if !(crate::crs::UTM_LAT_MIN..=crate::crs::UTM_LAT_MAX).contains(&p.lat_deg) {
             return Err(GeoError::LatitudeOutsideUtm { lat: p.lat_deg });
         }
-        // proj4rs longlat is RADIANS — converted here and ONLY here (Pitfall 1).
-        let mut pt = (p.lon_deg.to_radians(), p.lat_deg.to_radians(), 0.0);
-        proj4rs::transform::transform(&self.wgs84, &self.proj, &mut pt).map_err(proj_err)?;
-        // proj4rs UTM output is already meters.
-        Ok(SceneXY {
-            x_m: pt.0,
-            y_m: pt.1,
-        })
+        Ok(xy)
     }
 
     /// Project project-local UTM meters back to a WGS84 lon/lat (degrees).
@@ -63,23 +103,7 @@ impl ProjectCrs {
     /// Rejects non-finite and **degree-magnitude** inputs with typed errors
     /// before any transform (SC3 loud rejection; threat T-06-01-01).
     pub fn to_wgs84(&self, p: SceneXY) -> Result<LonLat, GeoError> {
-        if !p.x_m.is_finite() || !p.y_m.is_finite() {
-            return Err(GeoError::NonFinite {
-                what: format!("scene x/y = ({}, {})", p.x_m, p.y_m),
-            });
-        }
-        // SC3: degree-magnitude values are NOT scene meters — reject loudly
-        // BEFORE reaching proj4rs so garbage never round-trips as plausible.
-        if p.x_m.abs() <= 360.0 && p.y_m.abs() <= 90.0 {
-            return Err(GeoError::DegreeMagnitudeSceneCoord { x: p.x_m, y: p.y_m });
-        }
-        let mut pt = (p.x_m, p.y_m, 0.0);
-        proj4rs::transform::transform(&self.proj, &self.wgs84, &mut pt).map_err(proj_err)?;
-        // proj4rs longlat is RADIANS — converted back to degrees here and ONLY here.
-        Ok(LonLat {
-            lon_deg: pt.0.to_degrees(),
-            lat_deg: pt.1.to_degrees(),
-        })
+        inverse(&self.proj, &self.wgs84, p)
     }
 }
 
@@ -90,25 +114,7 @@ impl RdNewCrs {
     /// proj4rs sees them (threat T-08-01-02: never panics on data). No UTM-band
     /// guard applies — RD New is a national projected CRS, not UTM.
     pub fn to_rd(&self, p: LonLat) -> Result<SceneXY, GeoError> {
-        if !p.lon_deg.is_finite() || !p.lat_deg.is_finite() {
-            return Err(GeoError::NonFinite {
-                what: format!("lon/lat = ({}, {})", p.lon_deg, p.lat_deg),
-            });
-        }
-        if !(-180.0..=180.0).contains(&p.lon_deg) || !(-90.0..=90.0).contains(&p.lat_deg) {
-            return Err(GeoError::LonLatOutOfRange {
-                lon: p.lon_deg,
-                lat: p.lat_deg,
-            });
-        }
-        // proj4rs longlat is RADIANS — converted here and ONLY here (Pitfall 1).
-        let mut pt = (p.lon_deg.to_radians(), p.lat_deg.to_radians(), 0.0);
-        proj4rs::transform::transform(&self.wgs84, &self.proj, &mut pt).map_err(proj_err)?;
-        // proj4rs sterea output is already meters.
-        Ok(SceneXY {
-            x_m: pt.0,
-            y_m: pt.1,
-        })
+        forward(&self.wgs84, &self.proj, p)
     }
 
     /// Project RD New meters (EPSG:28992) back to a WGS84 lon/lat (degrees).
@@ -118,23 +124,7 @@ impl RdNewCrs {
     /// coordinates are ~ (155000, 463000) m, orders of magnitude above the guard,
     /// so real terrain samples are never rejected.
     pub fn to_wgs84(&self, p: SceneXY) -> Result<LonLat, GeoError> {
-        if !p.x_m.is_finite() || !p.y_m.is_finite() {
-            return Err(GeoError::NonFinite {
-                what: format!("rd x/y = ({}, {})", p.x_m, p.y_m),
-            });
-        }
-        // SC3: degree-magnitude values are NOT RD meters — reject loudly BEFORE
-        // proj4rs so garbage never round-trips as plausible.
-        if p.x_m.abs() <= 360.0 && p.y_m.abs() <= 90.0 {
-            return Err(GeoError::DegreeMagnitudeSceneCoord { x: p.x_m, y: p.y_m });
-        }
-        let mut pt = (p.x_m, p.y_m, 0.0);
-        proj4rs::transform::transform(&self.proj, &self.wgs84, &mut pt).map_err(proj_err)?;
-        // proj4rs longlat is RADIANS — converted back to degrees here and ONLY here.
-        Ok(LonLat {
-            lon_deg: pt.0.to_degrees(),
-            lat_deg: pt.1.to_degrees(),
-        })
+        inverse(&self.proj, &self.wgs84, p)
     }
 }
 
