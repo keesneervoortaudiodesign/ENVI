@@ -340,10 +340,7 @@ pub fn terrain_features(tile_bytes: &[u8], req: JsValue) -> Result<JsValue, JsVa
     )
     .map_err(gis_err)?;
     let provenance = build_provenance(&req.provenance)?;
-    let crs = match req.source_crs {
-        TerrainSourceCrsDto::RdNew => TerrainSourceCrs::RdNew,
-        TerrainSourceCrsDto::Wgs84 => TerrainSourceCrs::Wgs84,
-    };
+    let crs = terrain_source_crs(req.source_crs);
     let feats =
         envi_gis::terrain::terrain_features(&raster, req.target_points as usize, crs, &provenance)
             .map_err(gis_err)?;
