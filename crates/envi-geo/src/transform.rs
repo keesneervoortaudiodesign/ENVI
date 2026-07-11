@@ -23,7 +23,7 @@
 //! eastings are ~166_000..834_000 m and northings 0..10_000_000 m — many orders
 //! of magnitude above the guard, so real scene coordinates are never rejected.
 
-use crate::crs::proj_err;
+use crate::crs::{RdNewCrs, proj_err};
 use crate::{GeoError, LonLat, ProjectCrs, SceneXY};
 
 impl ProjectCrs {
@@ -83,6 +83,61 @@ impl ProjectCrs {
     }
 }
 
+impl RdNewCrs {
+    /// Project a WGS84 lon/lat (degrees) into RD New meters (EPSG:28992).
+    ///
+    /// Rejects non-finite and out-of-range inputs with typed errors **before**
+    /// proj4rs sees them (threat T-08-01-02: never panics on data). No UTM-band
+    /// guard applies — RD New is a national projected CRS, not UTM.
+    pub fn to_rd(&self, p: LonLat) -> Result<SceneXY, GeoError> {
+        if !p.lon_deg.is_finite() || !p.lat_deg.is_finite() {
+            return Err(GeoError::NonFinite {
+                what: format!("lon/lat = ({}, {})", p.lon_deg, p.lat_deg),
+            });
+        }
+        if !(-180.0..=180.0).contains(&p.lon_deg) || !(-90.0..=90.0).contains(&p.lat_deg) {
+            return Err(GeoError::LonLatOutOfRange {
+                lon: p.lon_deg,
+                lat: p.lat_deg,
+            });
+        }
+        // proj4rs longlat is RADIANS — converted here and ONLY here (Pitfall 1).
+        let mut pt = (p.lon_deg.to_radians(), p.lat_deg.to_radians(), 0.0);
+        proj4rs::transform::transform(&self.wgs84, &self.proj, &mut pt).map_err(proj_err)?;
+        // proj4rs sterea output is already meters.
+        Ok(SceneXY {
+            x_m: pt.0,
+            y_m: pt.1,
+        })
+    }
+
+    /// Project RD New meters (EPSG:28992) back to a WGS84 lon/lat (degrees).
+    ///
+    /// Rejects non-finite and **degree-magnitude** inputs with typed errors
+    /// before any transform (SC3 loud rejection; threat T-06-01-01). RD New
+    /// coordinates are ~ (155000, 463000) m, orders of magnitude above the guard,
+    /// so real terrain samples are never rejected.
+    pub fn to_wgs84(&self, p: SceneXY) -> Result<LonLat, GeoError> {
+        if !p.x_m.is_finite() || !p.y_m.is_finite() {
+            return Err(GeoError::NonFinite {
+                what: format!("rd x/y = ({}, {})", p.x_m, p.y_m),
+            });
+        }
+        // SC3: degree-magnitude values are NOT RD meters — reject loudly BEFORE
+        // proj4rs so garbage never round-trips as plausible.
+        if p.x_m.abs() <= 360.0 && p.y_m.abs() <= 90.0 {
+            return Err(GeoError::DegreeMagnitudeSceneCoord { x: p.x_m, y: p.y_m });
+        }
+        let mut pt = (p.x_m, p.y_m, 0.0);
+        proj4rs::transform::transform(&self.proj, &self.wgs84, &mut pt).map_err(proj_err)?;
+        // proj4rs longlat is RADIANS — converted back to degrees here and ONLY here.
+        Ok(LonLat {
+            lon_deg: pt.0.to_degrees(),
+            lat_deg: pt.1.to_degrees(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,6 +167,62 @@ mod tests {
         assert!(
             err <= 1e-3,
             "round-trip error {err} m > 1e-3 m (accuracy regression?)"
+        );
+    }
+
+    #[test]
+    fn rd_new_origin_maps_to_amersfoort() {
+        let crs = RdNewCrs::new().expect("valid RD New CRS");
+        // The RD false origin (155000, 463000) m inverts to the WGS84 position of
+        // the Amersfoort datum point (Onze Lieve Vrouwetoren) ≈ (lon 5.38720, lat
+        // 52.15517) — the towgs84 datum shift separates this from the bessel-datum
+        // lat_0/lon_0. Forward again returns the origin within 1.0 m.
+        let origin_rd = SceneXY {
+            x_m: 155_000.0,
+            y_m: 463_000.0,
+        };
+        let ll = crs.to_wgs84(origin_rd).expect("RD -> WGS84");
+        assert!(
+            (ll.lon_deg - 5.38720).abs() <= 1e-3 && (ll.lat_deg - 52.15517).abs() <= 1e-3,
+            "RD origin inverted to ({}, {}), expected ≈ (5.38720, 52.15517)",
+            ll.lon_deg,
+            ll.lat_deg
+        );
+        let fwd = crs.to_rd(ll).expect("WGS84 -> RD");
+        assert!(
+            (fwd.x_m - 155_000.0).abs() <= 1.0 && (fwd.y_m - 463_000.0).abs() <= 1.0,
+            "forward returned ({}, {}) m, expected ≈ (155000, 463000)",
+            fwd.x_m,
+            fwd.y_m
+        );
+    }
+
+    #[test]
+    fn rd_new_round_trip_within_one_meter() {
+        let crs = RdNewCrs::new().expect("valid RD New CRS");
+        // Dam Square, Amsterdam — well inside the RD New domain.
+        let dam = LonLat {
+            lon_deg: 4.8936,
+            lat_deg: 52.3731,
+        };
+        let rd = crs.to_rd(dam).expect("forward WGS84 -> RD");
+        let back = crs.to_wgs84(rd).expect("inverse RD -> WGS84");
+        let err = error_m(dam, back);
+        assert!(err <= 1.0, "RD New round-trip error {err} m > 1 m");
+    }
+
+    #[test]
+    fn rd_new_to_wgs84_rejects_degree_magnitude_input() {
+        let crs = RdNewCrs::new().expect("valid RD New CRS");
+        // Degrees mislabeled as RD meters — rejected before proj4rs (SC3).
+        let bad = SceneXY {
+            x_m: 5.4,
+            y_m: 52.2,
+        };
+        let got = crs.to_wgs84(bad);
+        assert!(
+            matches!(got, Err(GeoError::DegreeMagnitudeSceneCoord { .. })),
+            "got {got:?}"
         );
     }
 

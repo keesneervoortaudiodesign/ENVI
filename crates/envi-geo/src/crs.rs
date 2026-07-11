@@ -20,7 +20,22 @@ use crate::{GeoError, LonLat};
 
 /// The WGS84 geographic projection string (proj4rs longlat, radians on the wire
 /// — converted in [`transform`](crate::transform) and ONLY there).
-const WGS84_PROJ: &str = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs";
+pub(crate) const WGS84_PROJ: &str = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs";
+
+/// The Dutch **RD New** (EPSG:28992) projected CRS string.
+///
+/// Oblique-stereographic on the Bessel 1841 ellipsoid, Amersfoort origin, with
+/// the 7-parameter Helmert `towgs84` datum shift so the transform speaks WGS84 at
+/// the boundary. Values transcribed from <https://epsg.io/28992> (matching the
+/// proj4rs `towgs84` example). Accuracy: the 7-parameter Helmert is ~0.5 m
+/// against the official RDNAPTRANS™ grid transform — well inside the ≤ 1.0 m
+/// oracle tolerance this crate pins RD New to, and adequate for terrain import.
+///
+/// This is the single reprojection boundary for RD New (GEOX-04): AHN terrain
+/// (published in RD New) reprojects to WGS84 here and nowhere else.
+const RD_NEW: &str = "+proj=sterea +lat_0=52.15616055555555 +lon_0=5.38763888888889 \
++k=0.9999079 +x_0=155000 +y_0=463000 +ellps=bessel \
++towgs84=565.417,50.3319,465.552,-0.398957,0.343988,-1.8774,4.0725 +units=m +no_defs";
 
 /// Southern edge of the UTM domain, degrees. Below this (toward the South Pole)
 /// UTM is undefined (UPS territory) — see [`GeoError::LatitudeOutsideUtm`].
@@ -127,6 +142,55 @@ impl std::fmt::Debug for ProjectCrs {
             .field("utm_zone", &self.utm_zone)
             .field("south", &self.south)
             .field("label", &self.label())
+            .finish()
+    }
+}
+
+/// The Dutch **RD New** (EPSG:28992) projected CRS — a *source* CRS for
+/// importing AHN terrain, distinct from the pinned project CRS ([`ProjectCrs`]).
+///
+/// Holds the RD projection plus WGS84 so [`transform`](crate::transform) can
+/// drive WGS84 ⇄ RD New. The import path reprojects RD samples to WGS84 here,
+/// then feeds them to the project's [`ProjectCrs`] — RD New never becomes a
+/// second reprojection site (GEOX-04: one boundary).
+pub struct RdNewCrs {
+    /// The RD New projection (`+proj=sterea ... +towgs84=...`).
+    pub(crate) proj: Proj,
+    /// The WGS84 longlat projection (driven only by [`transform`](crate::transform)).
+    pub(crate) wgs84: Proj,
+}
+
+impl RdNewCrs {
+    /// Build the RD New (EPSG:28992) CRS.
+    ///
+    /// Fallible: a malformed proj string surfaces [`GeoError::Proj`], never a
+    /// panic (threat T-08-01-02).
+    pub fn new() -> Result<Self, GeoError> {
+        Self::from_proj_string(RD_NEW)
+    }
+
+    /// Build the CRS from an explicit RD proj string. Private so the public
+    /// surface only ever constructs the pinned [`RD_NEW`] definition; exists so
+    /// the error path (bad proj string ⇒ [`GeoError::Proj`]) is unit-testable.
+    fn from_proj_string(rd_proj: &str) -> Result<Self, GeoError> {
+        let proj = Proj::from_proj_string(rd_proj).map_err(proj_err)?;
+        let wgs84 = Proj::from_proj_string(WGS84_PROJ).map_err(proj_err)?;
+        Ok(Self { proj, wgs84 })
+    }
+
+    /// The RD New proj string for persistence/logging.
+    #[must_use]
+    pub fn proj_string(&self) -> &'static str {
+        RD_NEW
+    }
+}
+
+impl std::fmt::Debug for RdNewCrs {
+    // `proj4rs::proj::Proj` is not `Debug`; surface the load-bearing identity.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RdNewCrs")
+            .field("epsg", &28992)
+            .field("label", &"rd-new")
             .finish()
     }
 }
@@ -289,53 +353,6 @@ mod tests {
             ProjectCrs::from_zone(61, false),
             Err(GeoError::BadZone { .. })
         ));
-    }
-
-    /// Meter error between two WGS84 points (small-angle, mirrors the transform
-    /// self-check math) — local helper so the RD assertions read in meters.
-    fn error_m(a: LonLat, b: LonLat) -> f64 {
-        let dlat_m = (a.lat_deg - b.lat_deg).abs() * 111_320.0;
-        let dlon_m = (a.lon_deg - b.lon_deg).abs() * 111_320.0 * a.lat_deg.to_radians().cos();
-        (dlat_m.powi(2) + dlon_m.powi(2)).sqrt()
-    }
-
-    #[test]
-    fn rd_new_origin_maps_to_amersfoort() {
-        let crs = RdNewCrs::new().expect("valid RD New CRS");
-        // The RD false origin (155000, 463000) m inverts to the Amersfoort datum
-        // point ≈ (lon 5.3876, lat 52.1562); forward again returns the origin.
-        let origin_rd = crate::SceneXY {
-            x_m: 155_000.0,
-            y_m: 463_000.0,
-        };
-        let ll = crs.to_wgs84(origin_rd).expect("RD -> WGS84");
-        assert!(
-            (ll.lon_deg - 5.3876).abs() <= 1e-3 && (ll.lat_deg - 52.1562).abs() <= 1e-3,
-            "RD origin inverted to ({}, {}), expected ≈ (5.3876, 52.1562)",
-            ll.lon_deg,
-            ll.lat_deg
-        );
-        let fwd = crs.to_rd(ll).expect("WGS84 -> RD");
-        assert!(
-            (fwd.x_m - 155_000.0).abs() <= 1.0 && (fwd.y_m - 463_000.0).abs() <= 1.0,
-            "forward returned ({}, {}) m, expected ≈ (155000, 463000)",
-            fwd.x_m,
-            fwd.y_m
-        );
-    }
-
-    #[test]
-    fn rd_new_round_trip_within_one_meter() {
-        let crs = RdNewCrs::new().expect("valid RD New CRS");
-        // Dam Square, Amsterdam — well inside the RD New domain.
-        let dam = LonLat {
-            lon_deg: 4.8936,
-            lat_deg: 52.3731,
-        };
-        let rd = crs.to_rd(dam).expect("forward WGS84 -> RD");
-        let back = crs.to_wgs84(rd).expect("inverse RD -> WGS84");
-        let err = error_m(dam, back);
-        assert!(err <= 1.0, "RD New round-trip error {err} m > 1 m");
     }
 
     #[test]

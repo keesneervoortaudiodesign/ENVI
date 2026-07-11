@@ -30,7 +30,7 @@ use thiserror::Error;
 // Re-export the public surface so callers use `envi_geo::ProjectCrs` etc.
 // without submodule paths. `to_utm` / `to_wgs84` are inherent methods on
 // `ProjectCrs` (defined in `transform`), reachable through this re-export.
-pub use crs::{ProjectCrs, utm_zone_for};
+pub use crs::{ProjectCrs, RdNewCrs, utm_zone_for};
 
 /// WGS84 geographic coordinate, in **degrees**. The ONLY wire-facing coordinate
 /// type — every coordinate that crosses the network (GeoJSON) is a `LonLat`.
