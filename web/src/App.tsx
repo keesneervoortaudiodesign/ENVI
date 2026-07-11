@@ -17,10 +17,12 @@ import { Inspector } from "./panels/Inspector";
 import { ProjectBar } from "./panels/ProjectBar";
 import { RejectBanner } from "./panels/RejectBanner";
 import { ValidationPanel } from "./panels/ValidationPanel";
+import { ImportPanel } from "./panels/ImportPanel";
 import { SpectrumEditor } from "./spectrum/SpectrumEditor";
 import { useSceneStore } from "./store/sceneStore";
 import { useAutosave } from "./store/autosave";
 import { reopenLast } from "./store/projectActions";
+import { teardownImport } from "./import/importJob";
 
 export function App(): ReactElement {
   const spectrumEditor = useSceneStore((s) => s.spectrumEditor);
@@ -32,6 +34,8 @@ export function App(): ReactElement {
   // last-project resolves to the ordinary "No project" empty state, never an error (SC4 reopen path).
   useEffect(() => {
     void reopenLast();
+    // Abort any in-flight imports + drop retained terrain on unmount (effect-cleanup teardown).
+    return () => teardownImport();
   }, []);
 
   return (
@@ -53,6 +57,7 @@ export function App(): ReactElement {
         {/* Region 4 — right rail: property inspector + validation panel. */}
         <aside className="right-rail" data-testid="right-rail" aria-label="Inspector and validation">
           <Inspector />
+          <ImportPanel />
           <ValidationPanel />
         </aside>
       </div>

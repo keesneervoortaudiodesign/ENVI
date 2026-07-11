@@ -20,9 +20,13 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { DARK_BASEMAP_STYLE } from "./basemap";
 import { useTerraDraw } from "./useTerraDraw";
 import { DgmOverlay } from "./DgmOverlay";
+import { ImpedanceOverlay } from "./impedanceOverlay";
 import { useDgmTrigger } from "../dgm/dgmTrigger";
 import { useSceneStore } from "../store/sceneStore";
 import { useDgmStore } from "../store/dgm";
+import { useImportStore } from "../store/import";
+import { evaluateGuardrail } from "../import/importJob";
+import { attachImportAttribution } from "../import/attribution";
 
 // The Terra Draw controller + Gate-1 scene overlay. Rendered as a child of <Map> so `useMap()` (used by
 // the hook) resolves to this map instance.
@@ -159,6 +163,57 @@ function ZoomController(): null {
   return null;
 }
 
+// Track the map viewport into the import store (D-06: import region = current viewport) and keep the
+// max-area guardrail live as the user pans/zooms. Updates on load + every `moveend`; torn down on unmount.
+function ViewportTracker(): null {
+  const map = useMap();
+  const setViewport = useImportStore((s) => s.setViewport);
+  const setGuardrail = useImportStore((s) => s.setGuardrail);
+  useEffect(() => {
+    const instance = map.current?.getMap() as unknown as MapLibreMap | undefined;
+    if (!instance) {
+      return;
+    }
+    const update = (): void => {
+      const b = instance.getBounds();
+      const bbox = {
+        min_lon: b.getWest(),
+        min_lat: b.getSouth(),
+        max_lon: b.getEast(),
+        max_lat: b.getNorth(),
+      };
+      setViewport(bbox);
+      setGuardrail(evaluateGuardrail(bbox));
+    };
+    if (instance.isStyleLoaded()) {
+      update();
+    } else {
+      instance.once("load", update);
+    }
+    instance.on("moveend", update);
+    return () => {
+      instance.off("moveend", update);
+      instance.off("load", update);
+    };
+  }, [map, setViewport, setGuardrail]);
+  return null;
+}
+
+// Sync a MapLibre AttributionControl with the SC5 credits for the sources that have contributed imported
+// features (recreated when the set changes). Torn down in the effect cleanup (T-07-06-03).
+function ImportAttribution(): null {
+  const map = useMap();
+  const sources = useImportStore((s) => s.attributedSources);
+  useEffect(() => {
+    const instance = map.current?.getMap() as unknown as MapLibreMap | undefined;
+    if (!instance) {
+      return;
+    }
+    return attachImportAttribution(instance, sources);
+  }, [map, sources]);
+  return null;
+}
+
 // A one-shot resize nudge: the map mounts into a flex/grid slot whose final size settles after first
 // paint; without this the canvas can render at 0px. Torn down on unmount (subscription discipline).
 function ResizeOnMount(): null {
@@ -185,7 +240,10 @@ export function MapCanvas(): ReactElement {
     >
       <ResizeOnMount />
       <ZoomController />
+      <ViewportTracker />
+      <ImportAttribution />
       <DgmOverlay />
+      <ImpedanceOverlay />
       <SceneOverlay />
     </Map>
   );
