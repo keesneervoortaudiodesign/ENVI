@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 08
 current_phase_name: gis-ingestion-dgm
-status: verifying
-stopped_at: Completed 08-07-PLAN.md
+status: complete
+stopped_at: Phase 8 complete — all 5 completion gates green
 last_updated: "2026-07-11T04:38:55.486Z"
 last_activity: 2026-07-11
-last_activity_desc: "Completed 08-06 (envi-gis-wasm: repo's first WASM crate — thin wasm-bindgen cdylib exposing the pure envi-gis core to the browser; version-locked wasm-bindgen 0.2.126; u8 landcover decode seam closed; all boundary DTOs generated via ts-rs into the single committed wire.ts, no-drift green)"
+last_activity_desc: "Phase 8 CLOSED: 8/8 plans + 5 completion gates green (08-REVIEW 1 critical/4 warnings all fixed, simplify 7 cleanups applied, 08-SECURITY SECURED 25/25, 08-VERIFICATION passed 5/5, doc-consistency). Client-side WASM GIS-ingestion pivot delivered: pure-Rust envi-gis + envi-gis-wasm, allowlisted byte proxy, OPFS import path, offline Playwright 17/17"
 progress:
   total_phases: 11
   completed_phases: 8
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 08 (gis-ingestion-dgm) — EXECUTING
-Plan: 8 of 8
-Status: Phase complete — ready for verification
-Last activity: 2026-07-11 — Completed 08-06 (envi-gis-wasm: repo's first WASM crate — thin wasm-bindgen cdylib exposing the pure envi-gis core to the browser; version-locked wasm-bindgen 0.2.126; u8 landcover decode seam closed; all boundary DTOs generated via ts-rs into the single committed wire.ts, no-drift green)
+Phase: 08 (gis-ingestion-dgm) — COMPLETE
+Plan: 8 of 8 complete (08-01 … 08-08)
+Status: Phase 8 COMPLETE — all 5 completion gates closed (code-review 1 critical/4 warnings fixed + simplify 7 cleanups + secure SECURED 25/25 + verify passed 5/5 + doc-consistency). DATA-01..04 delivered via the client-side WASM pivot. Next: Phase 9 (Path Extraction & Weather).
+Last activity: 2026-07-11 — Phase 8 closed: 8/8 plans + 5 gates green (offline Playwright 17/17)
 
-Progress: [██████████] Phase 7 — 10/10 plans complete (envi-store DTOs · envi-dgm TIN · endpoints · web scaffold+theme · Terra Draw lifecycle · generated wire types · 9-kind palette+DGM producer · spectrum editor+ring-diff · validation+autosave · SC1–SC4 E2E)
+Progress: [██████████] Phase 8 — 8/8 plans complete (envi-geo RD-New · envi-gis sans-I/O COG core · allowlisted byte proxy · source registry+terrain+σ table+Overpass buildings+re-import merge · WorldCover→ground_zone vectorization · envi-gis-wasm cdylib+generated DTOs · web OPFS import path+ImportPanel+overlay+attribution · offline Playwright import+DATA-04 replay)
 
 ## Performance Metrics
 

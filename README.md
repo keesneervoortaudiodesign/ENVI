@@ -300,7 +300,7 @@ milestone a user can:
 
 | Piece | Role |
 |-------|------|
-| `envi-gis` | The single C-linked boundary: GDAL/PROJ + data acquisition (DEM COG `/vsicurl/` reads, WorldCover, Overture, Open-Meteo/ERA5) + geometry derivation (auto-UTM, DGM TIN, **DEM cut-profile** extraction, impedance segmentation, screening edges, CDT receiver grids, contouring). |
+| `envi-gis` + `envi-gis-wasm` | **Pure-Rust, sans-I/O** GIS-ingestion core + a thin `wasm-bindgen` cdylib (Phase-8 pivot, 08-CONTEXT D-01): COG/BigTIFF decode over cached tile bytes, source registry + tile planning, terrain decimation, WorldCover→σ table + land-cover vectorization, Overpass buildings, re-import merge. **No GDAL/PROJ-C** — the client runs as WASM in the browser; TypeScript owns `fetch`+OPFS and reads cached tiles back with the network off. Later geometry derivation (DEM cut-profile, impedance segmentation, screening edges, CDT receiver grids, contouring) and weather (Open-Meteo/ERA5) land in Phases 9–11. Cross-origin S3 sources go through `envi-service`'s allowlisted byte proxy. |
 | `envi-store` | serde DTO mirror of the engine scene types (keeps serde **out** of `envi-engine`), project-folder layout, **receiver-axis-chunked** tensor store. |
 | `envi-service` | axum HTTP API + job registry (SSE progress, cancellation) + the **recondition/recompute** recalc router; serves the built frontend as one deployable binary. |
 | `web/` | Vite + React, **MapLibre GL JS 5 + react-map-gl 8 + Terra Draw** scene editor, property panels, weather what-if, job status, spectra charts, isophone overlay. |

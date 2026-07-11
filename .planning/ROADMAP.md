@@ -401,7 +401,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 5. Engine Extensions — Forest & Semi-Transparent Partitions | 3/3 | Complete (all 5 completion gates closed) | 2026-07-09 |
 | 6. Service Foundation & Persistence | 4/4 | Complete (all 5 completion gates closed) | 2026-07-09 |
 | 7. Frontend Shell & Scene Editing | 10/10 | Complete (all 5 completion gates closed) | 2026-07-10 |
-| 8. GIS Ingestion & DGM | 5/8 | In Progress | - |
+| 8. GIS Ingestion & DGM | 8/8 | Complete (all 5 completion gates closed) | 2026-07-11 |
 | 9. Path Extraction & Weather | 0/? | Not started | - |
 | 10. Calculation Service | 0/? | Not started | - |
 | 11. Results & Fast Recalc | 0/? | Not started | - |
