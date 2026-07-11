@@ -50,9 +50,46 @@ function localPath(rel: string): string {
   return /^\/[A-Za-z]:\//.test(p) ? p.slice(1) : p;
 }
 
+// wasm-bindgen-rayon (the threaded compute glue's pool) emits a worker helper that
+// re-imports the wasm package by BARE DIRECTORY: `await import('../../..')` from
+// `src/generated/wasm-compute/snippets/wasm-bindgen-rayon-*/src/workerHelpers.js`,
+// which resolves to the `src/generated/wasm-compute/` directory. Neither Vite's dev
+// import-analysis nor the rolldown build (incl. the worker sub-build) can resolve a
+// directory without an index/extension, so the threaded glue fails to load in the
+// browser the moment anything imports it (surfaced by the 10-05 CalcPanel — the
+// first app code to pull the glue in; 10-03/10-04 only unit-tested the worker with a
+// MOCK wasm + a guarded real-worker path, so this browser-load seam was never
+// exercised). This transform rewrites ONLY that exact `import('../../..')` in ONLY
+// that snippet file to the real glue ESM entry (`../../../envi_compute_wasm.js`), a
+// resolvable relative path — leaving every other import untouched. Applied as a
+// `transform` (not `resolveId`) so it also reaches the worker sub-build.
+function resolveRayonWorkerHelperImport() {
+  return {
+    name: "envi-rayon-worker-helper-resolve",
+    enforce: "pre" as const,
+    transform(code: string, id: string): { code: string; map: null } | null {
+      if (!/wasm-bindgen-rayon.*workerHelpers\.js/.test(id)) {
+        return null;
+      }
+      const rewritten = code.replace(
+        /import\((['"])\.\.\/\.\.\/\.\.\1\)/,
+        'import("../../../envi_compute_wasm.js")',
+      );
+      return rewritten === code ? null : { code: rewritten, map: null };
+    },
+  };
+}
+
 export default defineConfig({
   base: "./",
-  plugins: [react()],
+  plugins: [react(), resolveRayonWorkerHelperImport()],
+  // The compute Web Worker (`new Worker(new URL("./worker.ts", …), { type: "module" })`) is bundled by Vite
+  // in a SEPARATE sub-build that does NOT inherit the top-level `plugins`; it uses `worker.plugins`. The
+  // rayon worker helper's bare-directory import lives in that graph, so the rewrite plugin must be here too.
+  worker: {
+    format: "es",
+    plugins: () => [resolveRayonWorkerHelperImport()],
+  },
   resolve: {
     alias: {
       // The Rust OPFS sink binds a bare `envi-compute-opfs` extern specifier
