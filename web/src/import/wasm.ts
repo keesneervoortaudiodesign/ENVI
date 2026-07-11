@@ -109,12 +109,12 @@ async function callBytes<Req, Res>(
 
 /** Pick each layer's source for a WGS84 viewport (registry coverage lookup, D-04). */
 export function planImport(req: ImportPlanReq): Promise<ImportPlanResult> {
-  return call<ImportPlanReq, ImportPlanResult>(wasmPlanImport as (r: ImportPlanReq) => unknown, req);
+  return call<ImportPlanReq, ImportPlanResult>(wasmPlanImport, req);
 }
 
 /** Enumerate the covering source tiles for a viewport (terrain + land cover). */
 export function planTiles(req: PlanTilesReq): Promise<PlanTilesResult> {
-  return call<PlanTilesReq, PlanTilesResult>(wasmPlanTiles as (r: PlanTilesReq) => unknown, req);
+  return call<PlanTilesReq, PlanTilesResult>(wasmPlanTiles, req);
 }
 
 /** Resolve the pixel window of a viewport within a cached tile (`null` = no overlap). */
@@ -122,19 +122,12 @@ export function windowForBbox(
   tileBytes: Uint8Array,
   req: WindowForBboxReq,
 ): Promise<WindowForBboxResult> {
-  return callBytes<WindowForBboxReq, WindowForBboxResult>(
-    wasmWindowForBbox as (b: Uint8Array, r: WindowForBboxReq) => unknown,
-    tileBytes,
-    req,
-  );
+  return callBytes<WindowForBboxReq, WindowForBboxResult>(wasmWindowForBbox, tileBytes, req);
 }
 
 /** Reproject a WGS84 footprint ring into a terrain tile's source CRS (GEOX-04). */
 export function reprojectRing(req: ReprojectRingReq): Promise<ReprojectRingResult> {
-  return call<ReprojectRingReq, ReprojectRingResult>(
-    wasmReprojectRing as (r: ReprojectRingReq) => unknown,
-    req,
-  );
+  return call<ReprojectRingReq, ReprojectRingResult>(wasmReprojectRing, req);
 }
 
 /** Decode a terrain window and build WGS84 `elevation_point` features. */
@@ -142,11 +135,7 @@ export function terrainFeatures(
   tileBytes: Uint8Array,
   req: TerrainFeaturesReq,
 ): Promise<TerrainFeaturesResult> {
-  return callBytes<TerrainFeaturesReq, TerrainFeaturesResult>(
-    wasmTerrainFeatures as (b: Uint8Array, r: TerrainFeaturesReq) => unknown,
-    tileBytes,
-    req,
-  );
+  return callBytes<TerrainFeaturesReq, TerrainFeaturesResult>(wasmTerrainFeatures, tileBytes, req);
 }
 
 /** Footprint-boundary median base elevation from a decoded terrain window (`null` when absent). */
@@ -155,7 +144,7 @@ export function sampleBaseElevation(
   req: BaseElevationReq,
 ): Promise<BaseElevationResult> {
   return callBytes<BaseElevationReq, BaseElevationResult>(
-    wasmSampleBaseElevation as (b: Uint8Array, r: BaseElevationReq) => unknown,
+    wasmSampleBaseElevation,
     tileBytes,
     req,
   );
@@ -163,56 +152,37 @@ export function sampleBaseElevation(
 
 /** Decode a WorldCover `u8` window and vectorize it into `ground_zone` features. */
 export function mapLandcover(tileBytes: Uint8Array, req: MapLandcoverReq): Promise<LandcoverResult> {
-  return callBytes<MapLandcoverReq, LandcoverResult>(
-    wasmMapLandcover as (b: Uint8Array, r: MapLandcoverReq) => unknown,
-    tileBytes,
-    req,
-  );
+  return callBytes<MapLandcoverReq, LandcoverResult>(wasmMapLandcover, tileBytes, req);
 }
 
 /** Parse Overpass JSON into `building` features + per-element skip reports. */
 export function parseBuildings(req: ParseBuildingsReq): Promise<BuildingsResult> {
-  return call<ParseBuildingsReq, BuildingsResult>(
-    wasmParseBuildings as (r: ParseBuildingsReq) => unknown,
-    req,
-  );
+  return call<ParseBuildingsReq, BuildingsResult>(wasmParseBuildings, req);
 }
 
 /** Merge a fresh import into the existing scene by feature identity (D-09). */
 export function mergeFeatures(req: MergeReq): Promise<MergeResult> {
-  return call<MergeReq, MergeResult>(wasmMergeFeatures as (r: MergeReq) => unknown, req);
+  return call<MergeReq, MergeResult>(wasmMergeFeatures, req);
 }
 
 /** Extract the source→receiver DEM cut-profile (GEOX-01): strictly-ascending `(x, z)` ground points. */
 export function extractCutProfile(req: CutProfileReq): Promise<CutProfileResult> {
-  return call<CutProfileReq, CutProfileResult>(
-    wasmExtractCutProfile as (r: CutProfileReq) => unknown,
-    req,
-  );
+  return call<CutProfileReq, CutProfileResult>(wasmExtractCutProfile, req);
 }
 
 /** Segment the cut-profile into per-interval ground impedance segments (GEOX-02, drawn > imported > default). */
 export function segmentCutProfile(req: SegmentGroundReq): Promise<GroundSegmentationDto> {
-  return call<SegmentGroundReq, GroundSegmentationDto>(
-    wasmSegmentCutProfile as (r: SegmentGroundReq) => unknown,
-    req,
-  );
+  return call<SegmentGroundReq, GroundSegmentationDto>(wasmSegmentCutProfile, req);
 }
 
 /** Inject screening edges (building/wall/barrier tops) into a base segmentation as `(x, z)` vertices (GEOX-03). */
 export function injectScreenEdges(req: InjectScreensReq): Promise<GroundSegmentationDto> {
-  return call<InjectScreensReq, GroundSegmentationDto>(
-    wasmInjectScreenEdges as (r: InjectScreensReq) => unknown,
-    req,
-  );
+  return call<InjectScreensReq, GroundSegmentationDto>(wasmInjectScreenEdges, req);
 }
 
 /** Build the building-aware constrained-Delaunay receiver grid (GRID-01): receiver positions `[x, y, z]`. */
 export function buildReceiverGrid(req: ReceiverGridReq): Promise<ReceiverGridResult> {
-  return call<ReceiverGridReq, ReceiverGridResult>(
-    wasmBuildReceiverGrid as (r: ReceiverGridReq) => unknown,
-    req,
-  );
+  return call<ReceiverGridReq, ReceiverGridResult>(wasmBuildReceiverGrid, req);
 }
 
 /**
@@ -221,8 +191,5 @@ export function buildReceiverGrid(req: ReceiverGridReq): Promise<ReceiverGridRes
  * (the wire contract, threat T-09-05-04). Callers pass the OPFS-cached Open-Meteo JSON verbatim.
  */
 export function deriveWeather(req: WeatherDeriveReq): Promise<WeatherDeriveResult> {
-  return call<WeatherDeriveReq, WeatherDeriveResult>(
-    wasmDeriveWeather as (r: WeatherDeriveReq) => unknown,
-    req,
-  );
+  return call<WeatherDeriveReq, WeatherDeriveResult>(wasmDeriveWeather, req);
 }

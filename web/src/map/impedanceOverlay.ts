@@ -32,8 +32,9 @@ const ZONE_LAYER = "envi-impedance-zone-fill";
 const DEFAULT_GROUND_CLASS = KIND_DEFAULTS.ground_zone.impedance_class as string;
 
 // A per-class debug palette A (soft) → H (hard). Fixed debug colours (not the design-system chart palette);
-// distinct enough to read the effective ground class at a glance.
-const IMPEDANCE_COLORS: Readonly<Record<string, string>> = {
+// distinct enough to read the effective ground class at a glance. Exported so the weather σ-ramp overlay
+// reuses the SAME soft (`A`) / hard (`H`) endpoints instead of re-hardcoding the two hex literals.
+export const IMPEDANCE_COLORS: Readonly<Record<string, string>> = {
   A: "#2c7fb8",
   B: "#41b6c4",
   C: "#7fcdbb",

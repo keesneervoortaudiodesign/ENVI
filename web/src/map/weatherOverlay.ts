@@ -12,12 +12,13 @@
 // - Valid input range: absent geometry renders an empty collection (the overlay clears) — never a fabricated
 //   feature.
 
-import { useEffect, type ReactElement } from "react";
+import { useEffect, useMemo, type ReactElement } from "react";
 import { useMap } from "react-map-gl/maplibre";
 import type { Map as MapLibreMap, GeoJSONSource } from "maplibre-gl";
 
 import { useWeatherStore } from "../store/weather";
 import type { DebugSegment } from "../import/sceneDebug";
+import { IMPEDANCE_COLORS } from "./impedanceOverlay";
 
 const GRID_SOURCE = "envi-weather-grid";
 const GRID_LAYER = "envi-weather-grid-pts";
@@ -26,12 +27,23 @@ const SEG_LAYER = "envi-weather-seg-lines";
 const SCREEN_SOURCE = "envi-weather-screens";
 const SCREEN_LAYER = "envi-weather-screen-pts";
 
-// Soft (class A) and hard (class H) σ endpoints on a log scale, and the debug palette endpoints (reused from
-// the impedance overlay). A segment's σ is mapped soft→hard for a readable ground-class ramp.
+// Soft (class A) and hard (class H) σ endpoints on a log scale. A segment's σ is mapped soft→hard for a
+// readable ground-class ramp.
 const SIGMA_SOFT = 12.5;
 const SIGMA_HARD = 200_000;
-const SOFT_RGB: [number, number, number] = [0x2c, 0x7f, 0xb8];
-const HARD_RGB: [number, number, number] = [0xe3, 0x1a, 0x1c];
+
+// The debug ramp endpoints reuse the impedance overlay's class-A (soft) and class-H (hard) palette colours —
+// one source of truth for the two ground-class endpoints, not a second pair of hex literals.
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+const SOFT_RGB: [number, number, number] = hexToRgb(IMPEDANCE_COLORS.A);
+const HARD_RGB: [number, number, number] = hexToRgb(IMPEDANCE_COLORS.H);
 
 // Map a σ (flow resistivity) to a soft→hard debug colour on a log scale.
 function sigmaColor(sigma: number): string {
@@ -130,11 +142,15 @@ function useDebugLayer(
 export function ReceiverGridOverlay(): ReactElement | null {
   const debug = useWeatherStore((s) => s.debug);
   const visible = useWeatherStore((s) => s.showGrid);
+  // Rebuild the FeatureCollection only when the receiver geometry itself changes, so an
+  // unrelated store update does not re-fire the overlay's `setData` (the `data` identity
+  // is stable across renders otherwise).
+  const data = useMemo(() => pointsGeoJson(debug?.receivers ?? []), [debug?.receivers]);
   useDebugLayer(
     GRID_SOURCE,
     GRID_LAYER,
     visible,
-    pointsGeoJson(debug?.receivers ?? []),
+    data,
     (instance) =>
       instance.addLayer({
         id: GRID_LAYER,
@@ -156,11 +172,12 @@ export function ReceiverGridOverlay(): ReactElement | null {
 export function ImpedanceSegOverlay(): ReactElement | null {
   const debug = useWeatherStore((s) => s.debug);
   const visible = useWeatherStore((s) => s.showImpedance);
+  const data = useMemo(() => segmentsGeoJson(debug?.segments ?? []), [debug?.segments]);
   useDebugLayer(
     SEG_SOURCE,
     SEG_LAYER,
     visible,
-    segmentsGeoJson(debug?.segments ?? []),
+    data,
     (instance) =>
       instance.addLayer({
         id: SEG_LAYER,
@@ -176,11 +193,12 @@ export function ImpedanceSegOverlay(): ReactElement | null {
 export function ScreenVertexOverlay(): ReactElement | null {
   const debug = useWeatherStore((s) => s.debug);
   const visible = useWeatherStore((s) => s.showScreens);
+  const data = useMemo(() => pointsGeoJson(debug?.screenVertices ?? []), [debug?.screenVertices]);
   useDebugLayer(
     SCREEN_SOURCE,
     SCREEN_LAYER,
     visible,
-    pointsGeoJson(debug?.screenVertices ?? []),
+    data,
     (instance) =>
       instance.addLayer({
         id: SCREEN_LAYER,
