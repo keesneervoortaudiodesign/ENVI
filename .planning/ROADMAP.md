@@ -278,7 +278,7 @@ Plans:
   4. Buildings missing height data get heights via the documented fallback chain (measured → height tag → levels×3+1.5 → user default) with per-feature provenance (source + license + retrieval date), and base elevations are sampled from footprint-boundary ground, never DSM-under-building
   5. The map shows attribution for OSM/Overture/ESA WorldCover/Copernicus data
 
-**Plans**: 4/8 plans executed
+**Plans**: 5/8 plans executed
 
 Plans:
 
@@ -286,7 +286,7 @@ Plans:
 - [x] 08-02-PLAN.md — envi-gis crate + sans-I/O COG decode core + committed COG fixtures (DATA-01)
 - [x] 08-03-PLAN.md — envi-service allowlisted byte proxy (GLO-30/WorldCover) + SSRF contract tests (DATA-01/02)
 - [x] 08-04-PLAN.md — envi-gis feature layer: source registry + terrain decimation/base-elevation + WorldCover→σ table + Overpass buildings/height-chain + re-import merge (DATA-01/02/03)
-- [ ] 08-05-PLAN.md — envi-gis WorldCover→ground_zone vectorization (contour dep human-verify gate) (DATA-02)
+- [x] 08-05-PLAN.md — envi-gis WorldCover→ground_zone vectorization (contour dep DECLINED — hand-rolled marching squares) (DATA-02) (completed 2026-07-11)
 - [ ] 08-06-PLAN.md — envi-gis-wasm cdylib bindings + Vite/wasm build + version-locked CLI + generated boundary DTOs (DATA-01/02/03)
 - [ ] 08-07-PLAN.md — web import path: OPFS cache + direct/proxy fetchers + per-layer state machine + ImportPanel + impedance overlay + attribution (DATA-01/02/03/04)
 - [ ] 08-08-PLAN.md — Playwright offline import journey + DATA-04 network-off replay (DATA-01/02/03/04)
@@ -303,7 +303,7 @@ Plans:
 
 **Wave 3** *(blocked on 08-04)*
 
-- [ ] 08-05: WorldCover vectorization (contour gate)
+- [x] 08-05: WorldCover vectorization (contour declined — hand-rolled)
 
 **Wave 4** *(blocked on 08-04, 08-05)*
 
@@ -401,7 +401,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 5. Engine Extensions — Forest & Semi-Transparent Partitions | 3/3 | Complete (all 5 completion gates closed) | 2026-07-09 |
 | 6. Service Foundation & Persistence | 4/4 | Complete (all 5 completion gates closed) | 2026-07-09 |
 | 7. Frontend Shell & Scene Editing | 10/10 | Complete (all 5 completion gates closed) | 2026-07-10 |
-| 8. GIS Ingestion & DGM | 0/? | Not started | - |
+| 8. GIS Ingestion & DGM | 5/8 | In Progress | - |
 | 9. Path Extraction & Weather | 0/? | Not started | - |
 | 10. Calculation Service | 0/? | Not started | - |
 | 11. Results & Fast Recalc | 0/? | Not started | - |
