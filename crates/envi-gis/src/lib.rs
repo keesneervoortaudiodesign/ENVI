@@ -49,6 +49,7 @@ pub mod impedance;
 pub mod impedance_table;
 pub mod landcover;
 pub mod merge;
+pub mod path;
 pub mod profile;
 pub mod provenance;
 pub mod registry;
