@@ -225,6 +225,49 @@ export async function installMetaMocks(page: Page): Promise<void> {
   });
 }
 
+// --- Open-Meteo weather mocks (09-06 METX-01 offline weather-import journey + SC4) ------------------
+//
+// Serve the committed synthetic Open-Meteo pressure-level fixtures for BOTH date-switched hosts the real
+// `fetchWeather` targets: the Forecast product (`https://api.open-meteo.com/v1/forecast`, recent dates) and
+// the Archive/ERA5 product (`https://archive-api.open-meteo.com/v1/archive`, historical dates). The two
+// hosts are HARD-CODED in `weather.ts` (SSRF T-09-05-03); we mock them by host so the real bundle fetches
+// offline. `//api.open-meteo.com/` is matched with the leading `//` so it does NOT also swallow the archive
+// host (whose `api` is preceded by `-`). Registered AFTER `bootOffline` so each specific route wins the
+// most-recent-route match over the offline guard (an Open-Meteo body must be the fixture JSON, not aborted).
+//
+// Every route bumps a per-product counter so the journey can assert the correct product was hit for a given
+// date (the D-02 date-switch branch coverage). The fixtures are synthetic (no copyrighted weather data) and
+// carry a full 24-hour hourly block so any requested `hour_index` resolves.
+
+export interface WeatherMockControl {
+  readonly counts: {
+    forecast: number;
+    archive: number;
+  };
+}
+
+// Install the fixture-serving Open-Meteo routes. Call AFTER `bootOffline(page)`. The served bytes are the
+// exact JSON the real WASM `derive_weather` parse+fit path consumes (never a reimplementation of the app).
+export async function installWeatherMocks(page: Page): Promise<WeatherMockControl> {
+  const forecast = FIXTURE("openmeteo_forecast.json").toString("utf-8");
+  const archive = FIXTURE("openmeteo_archive.json").toString("utf-8");
+  const control: WeatherMockControl = { counts: { forecast: 0, archive: 0 } };
+
+  // Forecast product — recent / near-future dates. The leading `//` anchors the host so the archive host
+  // (`archive-api.open-meteo.com`) is NOT matched by this route.
+  await page.route(/\/\/api\.open-meteo\.com\//, (route: Route) => {
+    control.counts.forecast += 1;
+    return route.fulfill({ status: 200, contentType: "application/json", body: forecast });
+  });
+  // Archive (ERA5) product — historical dates.
+  await page.route(/archive-api\.open-meteo\.com\//, (route: Route) => {
+    control.counts.archive += 1;
+    return route.fulfill({ status: 200, contentType: "application/json", body: archive });
+  });
+
+  return control;
+}
+
 // A deterministic single-triangle TIN for a valid elevation set (three non-collinear points → one face).
 const STUB_TIN = {
   vertices: [
