@@ -24,3 +24,6 @@ Out-of-scope discoveries logged during execution (not fixed here — see the dev
 - **Suggested owner:** a follow-up fix in `crates/envi-gis/src/merge.rs` (make the D-09 merge
   idempotent/panic-free when an incoming feature identity collides with an existing imported
   one), with a WASM-boundary regression test.
+
+## Post-review informational (2026-07-11, code-review gate)
+- **Antimeridian world-copy bbox normalization:** `evaluateGuardrail` blocks the inverted `min_lon>max_lon` representation, but a viewport panned across the antimeridian in a world-copy map can arrive as `min_lon=170,max_lon=190` (both increasing), passing the guard and enumerating non-existent `lon>180` tiles — these fetch-fail / zero-cover, never crash. Pre-existing (not a Phase-8 regression). Fix = normalize bbox longitude to [-180,180] before tile planning. Low priority (NL-focused tool).
