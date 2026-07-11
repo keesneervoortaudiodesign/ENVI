@@ -21,6 +21,11 @@ import { DARK_BASEMAP_STYLE } from "./basemap";
 import { useTerraDraw } from "./useTerraDraw";
 import { DgmOverlay } from "./DgmOverlay";
 import { ImpedanceOverlay } from "./impedanceOverlay";
+import {
+  ReceiverGridOverlay,
+  ImpedanceSegOverlay,
+  ScreenVertexOverlay,
+} from "./weatherOverlay";
 import { useDgmTrigger } from "../dgm/dgmTrigger";
 import { useSceneStore } from "../store/sceneStore";
 import { useDgmStore } from "../store/dgm";
@@ -244,6 +249,9 @@ export function MapCanvas(): ReactElement {
       <ImportAttribution />
       <DgmOverlay />
       <ImpedanceOverlay />
+      <ReceiverGridOverlay />
+      <ImpedanceSegOverlay />
+      <ScreenVertexOverlay />
       <SceneOverlay />
     </Map>
   );

@@ -18,6 +18,7 @@ import { ProjectBar } from "./panels/ProjectBar";
 import { RejectBanner } from "./panels/RejectBanner";
 import { ValidationPanel } from "./panels/ValidationPanel";
 import { ImportPanel } from "./panels/ImportPanel";
+import { WeatherPanel } from "./panels/WeatherPanel";
 import { SpectrumEditor } from "./spectrum/SpectrumEditor";
 import { useSceneStore } from "./store/sceneStore";
 import { useAutosave } from "./store/autosave";
@@ -58,6 +59,7 @@ export function App(): ReactElement {
         <aside className="right-rail" data-testid="right-rail" aria-label="Inspector and validation">
           <Inspector />
           <ImportPanel />
+          <WeatherPanel />
           <ValidationPanel />
         </aside>
       </div>
