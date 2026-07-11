@@ -508,7 +508,10 @@ dependencies = [
 name = "envi-gis-wasm"
 version = "0.1.0"
 dependencies = [
+ "envi-dgm",
+ "envi-engine",
  "envi-gis",
+ "geo",
  "geojson",
  "js-sys",
  "serde",

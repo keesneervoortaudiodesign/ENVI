@@ -430,3 +430,315 @@ pub struct ReprojectRingResult {
     /// Footprint exterior ring `[x, y]` in the source CRS (RD meters / WGS84).
     pub ring: Vec<[f64; 2]>,
 }
+
+// --- Phase-9 geometry + weather boundary DTOs (GEOX/GRID/METX) -------------
+//
+// The Phase-9 `envi-gis` core (`profile`/`impedance`/`screening`/`grid`/
+// `weather`/`era5`) is exposed to the browser through these DTOs + the shims in
+// [`crate`]. Every geometry fn that needs the DGM surface takes the elevation
+// points (`tin_points` + optional `tin_breaklines`) as data — the shim rebuilds
+// the sans-I/O `envi_dgm` TIN at the boundary (no persistent handle crosses the
+// wire). GeoJSON-free: rings/lines cross as `Vec<[f64; 2]>` planar coordinate
+// lists, never a `serde_json::Value`.
+
+/// One ground segment `(σ, roughness)` on a derived cut-plane — the geometry
+/// pipeline's mirror of `envi_engine::scene::GroundSegment` (a distinct wire type
+/// from the HTTP scene's `GroundSegmentDto`, so the two boundaries stay
+/// independent single-sources). Both request- and result-facing.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct ProfileSegmentDto {
+    /// Ground flow resistivity σ, kNs·m⁻⁴ (resolved through the engine only).
+    pub flow_resistivity: f64,
+    /// Terrain roughness, meters (class N = 0).
+    pub roughness: f64,
+}
+
+/// The `(x, z)` + planar cut-plane and its per-interval segments — the wire mirror
+/// of `envi_gis::impedance::GroundSegmentation`. It is BOTH a result (of
+/// cut/segment) and a request input (the `base` screening consumes), so it derives
+/// both serde sides. `segments.len() == points.len() − 1`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct GroundSegmentationDto {
+    /// The `(x, z)` profile points, strictly ascending in x.
+    pub points: Vec<[f64; 2]>,
+    /// The planar `(x, y)` preimage of each point on the S→R line.
+    pub planar_xy: Vec<[f64; 2]>,
+    /// One segment per interval (`len() == points.len() − 1`).
+    pub segments: Vec<ProfileSegmentDto>,
+}
+
+/// A user-drawn ground-impedance zone (wire mirror of
+/// `envi_gis::impedance::DrawnZone`): a planar exterior ring + explicit class
+/// letter + roughness. Request-facing.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct DrawnZoneDto {
+    /// The zone footprint exterior ring in planar scene coordinates `(x, y)`.
+    pub polygon: Vec<[f64; 2]>,
+    /// The Nord2000 impedance class letter (`A..=H`); a single character.
+    pub class: String,
+    /// Terrain roughness in meters (class N = `0.0`).
+    pub roughness_m: f64,
+}
+
+/// An imported land-cover ground zone (wire mirror of
+/// `envi_gis::impedance::ImportedZone`): a planar exterior ring + WorldCover code.
+/// Request-facing.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct ImportedZoneDto {
+    /// The zone footprint exterior ring in planar scene coordinates `(x, y)`.
+    pub polygon: Vec<[f64; 2]>,
+    /// ESA WorldCover v200 class code (resolved to a letter through the engine).
+    pub worldcover_code: u8,
+}
+
+/// A height-bearing scene object that screens along a path (wire mirror of
+/// `envi_gis::screening::ScreenObject`, D-08). Externally tagged. Request-facing.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "wire.ts")]
+pub enum ScreenObjectDto {
+    /// A building: the footprint exterior ring screens at `eaves_height_m`.
+    Building {
+        /// Footprint exterior ring in planar scene coordinates `(x, y)`.
+        footprint: Vec<[f64; 2]>,
+        /// Eaves height above local ground, meters.
+        eaves_height_m: f64,
+    },
+    /// A wall or barrier: the top polyline screens at `height_m`.
+    Barrier {
+        /// Barrier/wall top polyline in planar scene coordinates `(x, y)`.
+        line: Vec<[f64; 2]>,
+        /// Screen top height above local ground, meters.
+        height_m: f64,
+    },
+}
+
+/// The bearing-independent weather decomposition (wire mirror of
+/// `envi_gis::weather::WeatherComponents`). Result-facing.
+#[derive(Debug, Clone, Copy, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct WeatherComponentsDto {
+    /// Isotropic temperature part of `A` (computed once), m/s.
+    pub a_temp: f64,
+    /// Wind magnitude of `A` (projected per bearing), m/s.
+    pub a_wind: f64,
+    /// Linear coefficient `B`, s⁻¹ (bearing-independent).
+    pub b: f64,
+    /// Ground sound speed `C`, m/s.
+    pub c: f64,
+    /// Std-dev of `A`, m/s.
+    pub s_a: f64,
+    /// Std-dev of `B`, s⁻¹.
+    pub s_b: f64,
+    /// Roughness length `z₀`, m.
+    pub z0: f64,
+}
+
+/// A concrete per-azimuth sound-speed profile (wire mirror of the engine
+/// `SoundSpeedProfile` `(A, B, C, sA, sB, z₀)`). Result-facing.
+#[derive(Debug, Clone, Copy, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct SoundSpeedProfileDto {
+    /// Logarithmic coefficient `A`, m/s (wind-projected onto the path azimuth).
+    pub a: f64,
+    /// Linear coefficient `B`, s⁻¹.
+    pub b: f64,
+    /// Ground sound speed `C`, m/s.
+    pub c: f64,
+    /// Std-dev of `A`, m/s (0 for a single-hour profile).
+    pub s_a: f64,
+    /// Std-dev of `B`, s⁻¹ (0 for a single-hour profile).
+    pub s_b: f64,
+    /// Roughness length `z₀`, m (clamped ≥ 0.001 m).
+    pub z0: f64,
+}
+
+/// One hour of ERA5 single-level fields (wire mirror of
+/// `envi_gis::era5::Era5Hour`, ECMWF short names, SI units). Request-facing.
+#[derive(Debug, Clone, Copy, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct Era5HourDto {
+    /// Eastward turbulent surface stress `iews`, N/m².
+    pub iews: f64,
+    /// Northward turbulent surface stress `inss`, N/m².
+    pub inss: f64,
+    /// Instantaneous surface sensible heat flux `ishf`, W/m² (downward-positive).
+    pub ishf: f64,
+    /// 2 m air temperature `2t`, K.
+    pub t2m_k: f64,
+    /// 2 m dewpoint temperature `2d`, K.
+    pub d2m_k: f64,
+    /// Surface pressure `sp`, Pa.
+    pub sp_pa: f64,
+    /// Std-dev of sub-grid orography `sdfor`, m (reliability gate).
+    pub sdfor_m: f64,
+    /// Eastward 10 m wind component `u10`, m/s.
+    pub u10_ms: f64,
+    /// Northward 10 m wind component `v10`, m/s.
+    pub v10_ms: f64,
+}
+
+/// The wind-speed × stability occurrence table (wire mirror of
+/// `envi_gis::era5::ClassOccurrence`, D-05: counts only). `counts[wind_bin]
+/// [stability]`. Result-facing.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct ClassOccurrenceDto {
+    /// `counts[wind_bin][stability]` — hours falling in each class.
+    pub counts: Vec<Vec<u32>>,
+    /// Total hours counted.
+    pub total: u32,
+    /// Hours flagged reliable (`sdfor < threshold`).
+    pub reliable: u32,
+}
+
+/// `cut_profile` request: the DGM elevation points + the S→R endpoints + step.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct CutProfileReq {
+    /// DGM elevation points `[x, y, z]` (scene meters) to build the TIN from.
+    pub tin_points: Vec<[f64; 3]>,
+    /// Optional breakline polylines forced as constrained edges.
+    #[serde(default)]
+    pub tin_breaklines: Vec<Vec<[f64; 2]>>,
+    /// Source planar point `[x, y]`.
+    pub s_xy: [f64; 2],
+    /// Receiver planar point `[x, y]`.
+    pub r_xy: [f64; 2],
+    /// Sampling step along the S→R line, meters (the DEM cell size).
+    pub step_m: f64,
+}
+
+/// `cut_profile` result: the strictly-ascending `(x, z)` ground points.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct CutProfileResult {
+    /// The `(x, z)` cut-profile points (x = horizontal distance from the source).
+    pub points: Vec<[f64; 2]>,
+}
+
+/// `segment_ground` request: the cut plane + drawn/imported zones + default class.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct SegmentGroundReq {
+    /// The `(x, z)` cut-profile points (from [`CutProfileResult`]).
+    pub points: Vec<[f64; 2]>,
+    /// The planar `(x, y)` preimage of each point on the S→R line.
+    pub planar_xy: Vec<[f64; 2]>,
+    /// User-drawn zones (highest priority).
+    #[serde(default)]
+    pub drawn_zones: Vec<DrawnZoneDto>,
+    /// Imported land-cover zones (middle priority).
+    #[serde(default)]
+    pub imported_zones: Vec<ImportedZoneDto>,
+    /// The fallback impedance class letter (`A..=H`); a single character.
+    pub default_class: String,
+}
+
+/// `inject_screens` request: a base segmentation + the screening objects + TIN.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct InjectScreensReq {
+    /// The boundary-spliced base segmentation (from `segment_ground`).
+    pub base: GroundSegmentationDto,
+    /// The height-bearing screening objects (buildings + walls + barriers).
+    #[serde(default)]
+    pub screens: Vec<ScreenObjectDto>,
+    /// DGM elevation points `[x, y, z]` to build the TIN the tops ride on.
+    pub tin_points: Vec<[f64; 3]>,
+    /// Optional breakline polylines forced as constrained edges.
+    #[serde(default)]
+    pub tin_breaklines: Vec<Vec<[f64; 2]>>,
+}
+
+/// `receiver_grid` request: the calc-area ring + footprint holes + spacing + TIN.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct ReceiverGridReq {
+    /// The `calc_area` exterior ring in planar scene coordinates `(x, y)`.
+    pub calc_area: Vec<[f64; 2]>,
+    /// Building footprint exterior rings (grid holes, D-07).
+    #[serde(default)]
+    pub footprints: Vec<Vec<[f64; 2]>>,
+    /// Lattice spacing, meters (default applied by the caller; min-guarded).
+    pub spacing_m: f64,
+    /// Extra discrete receiver points `[x, y]` appended verbatim.
+    #[serde(default)]
+    pub discrete_points: Vec<[f64; 2]>,
+    /// DGM elevation points `[x, y, z]` the receiver z is sampled from.
+    pub tin_points: Vec<[f64; 3]>,
+    /// Optional breakline polylines forced as constrained edges.
+    #[serde(default)]
+    pub tin_breaklines: Vec<Vec<[f64; 2]>>,
+}
+
+/// `receiver_grid` result: the receiver positions `[x, y, z]` (ground z only).
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct ReceiverGridResult {
+    /// Receiver positions `[x, y, z]`; z is GROUND elevation (acoustic height is
+    /// added at `SolveJob` assembly — the hSv/hRv trap).
+    pub receivers: Vec<[f64; 3]>,
+}
+
+/// `derive_weather` request: an Open-Meteo multi-level JSON body + the reference
+/// downwind bearing + roughness + the path azimuths to project A onto.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct WeatherDeriveReq {
+    /// The Open-Meteo Archive/Forecast pressure-level JSON response body.
+    pub openmeteo_json: String,
+    /// The hour index into the Open-Meteo time series to derive.
+    pub hour_index: u32,
+    /// Reference downwind bearing φ_wind, degrees clockwise from north.
+    pub phi_wind_deg: f64,
+    /// Roughness length z₀, meters (clamped ≥ 0.001 m).
+    pub z0: f64,
+    /// Path azimuths (degrees clockwise from north) to emit a profile for.
+    pub path_azimuths_deg: Vec<f64>,
+}
+
+/// `derive_weather` result: the bearing-independent components + one profile per
+/// requested path azimuth.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct WeatherDeriveResult {
+    /// The bearing-independent decomposition (temperature + wind parts).
+    pub components: WeatherComponentsDto,
+    /// One `SoundSpeedProfile` per `path_azimuths_deg` entry (same order).
+    pub profiles: Vec<SoundSpeedProfileDto>,
+}
+
+/// `derive_era5` request: a batch of ERA5 single-level hours.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct Era5DeriveReq {
+    /// The ERA5 single-level hours to derive occurrence statistics from.
+    pub hours: Vec<Era5HourDto>,
+}
+
+/// `derive_era5` result: the occurrence table + the per-hour inverse Obukhov
+/// length (D-05 — occurrence statistics only, no class → A/B/C, no L_den).
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct Era5DeriveResult {
+    /// The wind-speed × stability occurrence table.
+    pub occurrence: ClassOccurrenceDto,
+    /// The per-hour inverse Obukhov length `1/L` (m⁻¹), same order as the request.
+    pub inv_l: Vec<f64>,
+}

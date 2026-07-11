@@ -134,6 +134,25 @@ features: unknown,
 skipped: Array<SkipReportDto>, };
 
 /**
+ * The wind-speed × stability occurrence table (wire mirror of
+ * `envi_gis::era5::ClassOccurrence`, D-05: counts only). `counts[wind_bin]
+ * [stability]`. Result-facing.
+ */
+export type ClassOccurrenceDto = { 
+/**
+ * `counts[wind_bin][stability]` — hours falling in each class.
+ */
+counts: Array<Array<number>>, 
+/**
+ * Total hours counted.
+ */
+total: number, 
+/**
+ * Hours flagged reliable (`sdfor < threshold`).
+ */
+reliable: number, };
+
+/**
  * Per-source conditioning: a **READOUT** parameter (gain/delay/filter/mute)
  * applied at level readout via `envi_engine::tensor::compose_gain`.
  *
@@ -203,6 +222,40 @@ south: boolean,
  * Human-readable label, e.g. `"utm-31n"`.
  */
 label: string, };
+
+/**
+ * `cut_profile` request: the DGM elevation points + the S→R endpoints + step.
+ */
+export type CutProfileReq = { 
+/**
+ * DGM elevation points `[x, y, z]` (scene meters) to build the TIN from.
+ */
+tin_points: Array<[number, number, number]>, 
+/**
+ * Optional breakline polylines forced as constrained edges.
+ */
+tin_breaklines: Array<Array<[number, number]>>, 
+/**
+ * Source planar point `[x, y]`.
+ */
+s_xy: [number, number], 
+/**
+ * Receiver planar point `[x, y]`.
+ */
+r_xy: [number, number], 
+/**
+ * Sampling step along the S→R line, meters (the DEM cell size).
+ */
+step_m: number, };
+
+/**
+ * `cut_profile` result: the strictly-ascending `(x, z)` ground points.
+ */
+export type CutProfileResult = { 
+/**
+ * The `(x, z)` cut-profile points (x = horizontal distance from the source).
+ */
+points: Array<[number, number]>, };
 
 /**
  * `decode_window` request (tile bytes are a separate `&[u8]` parameter).
@@ -276,6 +329,90 @@ vertices: Array<[number, number, number]>,
  * Inner triangles as vertex-index triples into `vertices`.
  */
 triangles: Array<[number, number, number]>, };
+
+/**
+ * A user-drawn ground-impedance zone (wire mirror of
+ * `envi_gis::impedance::DrawnZone`): a planar exterior ring + explicit class
+ * letter + roughness. Request-facing.
+ */
+export type DrawnZoneDto = { 
+/**
+ * The zone footprint exterior ring in planar scene coordinates `(x, y)`.
+ */
+polygon: Array<[number, number]>, 
+/**
+ * The Nord2000 impedance class letter (`A..=H`); a single character.
+ */
+class: string, 
+/**
+ * Terrain roughness in meters (class N = `0.0`).
+ */
+roughness_m: number, };
+
+/**
+ * `derive_era5` request: a batch of ERA5 single-level hours.
+ */
+export type Era5DeriveReq = { 
+/**
+ * The ERA5 single-level hours to derive occurrence statistics from.
+ */
+hours: Array<Era5HourDto>, };
+
+/**
+ * `derive_era5` result: the occurrence table + the per-hour inverse Obukhov
+ * length (D-05 — occurrence statistics only, no class → A/B/C, no L_den).
+ */
+export type Era5DeriveResult = { 
+/**
+ * The wind-speed × stability occurrence table.
+ */
+occurrence: ClassOccurrenceDto, 
+/**
+ * The per-hour inverse Obukhov length `1/L` (m⁻¹), same order as the request.
+ */
+inv_l: Array<number>, };
+
+/**
+ * One hour of ERA5 single-level fields (wire mirror of
+ * `envi_gis::era5::Era5Hour`, ECMWF short names, SI units). Request-facing.
+ */
+export type Era5HourDto = { 
+/**
+ * Eastward turbulent surface stress `iews`, N/m².
+ */
+iews: number, 
+/**
+ * Northward turbulent surface stress `inss`, N/m².
+ */
+inss: number, 
+/**
+ * Instantaneous surface sensible heat flux `ishf`, W/m² (downward-positive).
+ */
+ishf: number, 
+/**
+ * 2 m air temperature `2t`, K.
+ */
+t2m_k: number, 
+/**
+ * 2 m dewpoint temperature `2d`, K.
+ */
+d2m_k: number, 
+/**
+ * Surface pressure `sp`, Pa.
+ */
+sp_pa: number, 
+/**
+ * Std-dev of sub-grid orography `sdfor`, m (reliability gate).
+ */
+sdfor_m: number, 
+/**
+ * Eastward 10 m wind component `u10`, m/s.
+ */
+u10_ms: number, 
+/**
+ * Northward 10 m wind component `v10`, m/s.
+ */
+v10_ms: number, };
 
 /**
  * Serde twin of the **authored subset** of `envi_engine::forest::ForestCrossing`
@@ -367,6 +504,26 @@ flow_resistivity: number,
 roughness: number, };
 
 /**
+ * The `(x, z)` + planar cut-plane and its per-interval segments — the wire mirror
+ * of `envi_gis::impedance::GroundSegmentation`. It is BOTH a result (of
+ * cut/segment) and a request input (the `base` screening consumes), so it derives
+ * both serde sides. `segments.len() == points.len() − 1`.
+ */
+export type GroundSegmentationDto = { 
+/**
+ * The `(x, z)` profile points, strictly ascending in x.
+ */
+points: Array<[number, number]>, 
+/**
+ * The planar `(x, y)` preimage of each point on the S→R line.
+ */
+planar_xy: Array<[number, number]>, 
+/**
+ * One segment per interval (`len() == points.len() − 1`).
+ */
+segments: Array<ProfileSegmentDto>, };
+
+/**
  * `plan_import` request: pick each layer's source for a viewport.
  */
 export type ImportPlanReq = { 
@@ -391,6 +548,42 @@ landcover: SourceDescriptorDto,
  * Buildings source (OSM Overpass).
  */
 buildings: SourceDescriptorDto, };
+
+/**
+ * An imported land-cover ground zone (wire mirror of
+ * `envi_gis::impedance::ImportedZone`): a planar exterior ring + WorldCover code.
+ * Request-facing.
+ */
+export type ImportedZoneDto = { 
+/**
+ * The zone footprint exterior ring in planar scene coordinates `(x, y)`.
+ */
+polygon: Array<[number, number]>, 
+/**
+ * ESA WorldCover v200 class code (resolved to a letter through the engine).
+ */
+worldcover_code: number, };
+
+/**
+ * `inject_screens` request: a base segmentation + the screening objects + TIN.
+ */
+export type InjectScreensReq = { 
+/**
+ * The boundary-spliced base segmentation (from `segment_ground`).
+ */
+base: GroundSegmentationDto, 
+/**
+ * The height-bearing screening objects (buildings + walls + barriers).
+ */
+screens: Array<ScreenObjectDto>, 
+/**
+ * DGM elevation points `[x, y, z]` to build the TIN the tops ride on.
+ */
+tin_points: Array<[number, number, number]>, 
+/**
+ * Optional breakline polylines forced as constrained edges.
+ */
+tin_breaklines: Array<Array<[number, number]>>, };
 
 /**
  * Request body for `POST /meta/interpolate-spectrum`: an authored coarse
@@ -618,6 +811,22 @@ terrain: Array<TileRefDto>,
 landcover: Array<TileRefDto>, };
 
 /**
+ * One ground segment `(σ, roughness)` on a derived cut-plane — the geometry
+ * pipeline's mirror of `envi_engine::scene::GroundSegment` (a distinct wire type
+ * from the HTTP scene's `GroundSegmentDto`, so the two boundaries stay
+ * independent single-sources). Both request- and result-facing.
+ */
+export type ProfileSegmentDto = { 
+/**
+ * Ground flow resistivity σ, kNs·m⁻⁴ (resolved through the engine only).
+ */
+flow_resistivity: number, 
+/**
+ * Terrain roughness, meters (class N = 0).
+ */
+roughness: number, };
+
+/**
  * Project metadata persisted to `project.json`.
  *
  * Timestamps are unix epoch **seconds** (`u64`) — dependency-free, monotone,
@@ -689,6 +898,45 @@ id: string,
  * `[x, y, z]` in SceneXY meters (Z-up).
  */
 position: [number, number, number], };
+
+/**
+ * `receiver_grid` request: the calc-area ring + footprint holes + spacing + TIN.
+ */
+export type ReceiverGridReq = { 
+/**
+ * The `calc_area` exterior ring in planar scene coordinates `(x, y)`.
+ */
+calc_area: Array<[number, number]>, 
+/**
+ * Building footprint exterior rings (grid holes, D-07).
+ */
+footprints: Array<Array<[number, number]>>, 
+/**
+ * Lattice spacing, meters (default applied by the caller; min-guarded).
+ */
+spacing_m: number, 
+/**
+ * Extra discrete receiver points `[x, y]` appended verbatim.
+ */
+discrete_points: Array<[number, number]>, 
+/**
+ * DGM elevation points `[x, y, z]` the receiver z is sampled from.
+ */
+tin_points: Array<[number, number, number]>, 
+/**
+ * Optional breakline polylines forced as constrained edges.
+ */
+tin_breaklines: Array<Array<[number, number]>>, };
+
+/**
+ * `receiver_grid` result: the receiver positions `[x, y, z]` (ground z only).
+ */
+export type ReceiverGridResult = { 
+/**
+ * Receiver positions `[x, y, z]`; z is GROUND elevation (acoustic height is
+ * added at `SolveJob` assembly — the hSv/hRv trap).
+ */
+receivers: Array<[number, number, number]>, };
 
 /**
  * The reason a `recompute` was requested. Minimal + extensible: new reasons can
@@ -787,6 +1035,53 @@ ring: Array<[number, number]>, };
 export type Resolution = "octave" | "third" | "twelfth";
 
 /**
+ * A height-bearing scene object that screens along a path (wire mirror of
+ * `envi_gis::screening::ScreenObject`, D-08). Externally tagged. Request-facing.
+ */
+export type ScreenObjectDto = { "building": { 
+/**
+ * Footprint exterior ring in planar scene coordinates `(x, y)`.
+ */
+footprint: Array<[number, number]>, 
+/**
+ * Eaves height above local ground, meters.
+ */
+eaves_height_m: number, } } | { "barrier": { 
+/**
+ * Barrier/wall top polyline in planar scene coordinates `(x, y)`.
+ */
+line: Array<[number, number]>, 
+/**
+ * Screen top height above local ground, meters.
+ */
+height_m: number, } };
+
+/**
+ * `segment_ground` request: the cut plane + drawn/imported zones + default class.
+ */
+export type SegmentGroundReq = { 
+/**
+ * The `(x, z)` cut-profile points (from [`CutProfileResult`]).
+ */
+points: Array<[number, number]>, 
+/**
+ * The planar `(x, y)` preimage of each point on the S→R line.
+ */
+planar_xy: Array<[number, number]>, 
+/**
+ * User-drawn zones (highest priority).
+ */
+drawn_zones: Array<DrawnZoneDto>, 
+/**
+ * Imported land-cover zones (middle priority).
+ */
+imported_zones: Array<ImportedZoneDto>, 
+/**
+ * The fallback impedance class letter (`A..=H`); a single character.
+ */
+default_class: string, };
+
+/**
  * Project-level settings. Extensible via `#[serde(default)]`.
  */
 export type SettingsDto = { 
@@ -811,6 +1106,36 @@ source_ref: string,
  * Why it was skipped.
  */
 reason: string, };
+
+/**
+ * A concrete per-azimuth sound-speed profile (wire mirror of the engine
+ * `SoundSpeedProfile` `(A, B, C, sA, sB, z₀)`). Result-facing.
+ */
+export type SoundSpeedProfileDto = { 
+/**
+ * Logarithmic coefficient `A`, m/s (wind-projected onto the path azimuth).
+ */
+a: number, 
+/**
+ * Linear coefficient `B`, s⁻¹.
+ */
+b: number, 
+/**
+ * Ground sound speed `C`, m/s.
+ */
+c: number, 
+/**
+ * Std-dev of `A`, m/s (0 for a single-hour profile).
+ */
+s_a: number, 
+/**
+ * Std-dev of `B`, s⁻¹ (0 for a single-hour profile).
+ */
+s_b: number, 
+/**
+ * Roughness length `z₀`, m (clamped ≥ 0.001 m).
+ */
+z0: number, };
 
 /**
  * One selected source descriptor (mirrors `envi_gis::registry::SourceDescriptor`
@@ -1028,6 +1353,80 @@ settings: SettingsDto | null, };
  * provenance stays owned by fixed strings (no leaked runtime `&'static str`).
  */
 export type VerticalDatumDto = "nap" | "egm2008";
+
+/**
+ * The bearing-independent weather decomposition (wire mirror of
+ * `envi_gis::weather::WeatherComponents`). Result-facing.
+ */
+export type WeatherComponentsDto = { 
+/**
+ * Isotropic temperature part of `A` (computed once), m/s.
+ */
+a_temp: number, 
+/**
+ * Wind magnitude of `A` (projected per bearing), m/s.
+ */
+a_wind: number, 
+/**
+ * Linear coefficient `B`, s⁻¹ (bearing-independent).
+ */
+b: number, 
+/**
+ * Ground sound speed `C`, m/s.
+ */
+c: number, 
+/**
+ * Std-dev of `A`, m/s.
+ */
+s_a: number, 
+/**
+ * Std-dev of `B`, s⁻¹.
+ */
+s_b: number, 
+/**
+ * Roughness length `z₀`, m.
+ */
+z0: number, };
+
+/**
+ * `derive_weather` request: an Open-Meteo multi-level JSON body + the reference
+ * downwind bearing + roughness + the path azimuths to project A onto.
+ */
+export type WeatherDeriveReq = { 
+/**
+ * The Open-Meteo Archive/Forecast pressure-level JSON response body.
+ */
+openmeteo_json: string, 
+/**
+ * The hour index into the Open-Meteo time series to derive.
+ */
+hour_index: number, 
+/**
+ * Reference downwind bearing φ_wind, degrees clockwise from north.
+ */
+phi_wind_deg: number, 
+/**
+ * Roughness length z₀, meters (clamped ≥ 0.001 m).
+ */
+z0: number, 
+/**
+ * Path azimuths (degrees clockwise from north) to emit a profile for.
+ */
+path_azimuths_deg: Array<number>, };
+
+/**
+ * `derive_weather` result: the bearing-independent components + one profile per
+ * requested path azimuth.
+ */
+export type WeatherDeriveResult = { 
+/**
+ * The bearing-independent decomposition (temperature + wind parts).
+ */
+components: WeatherComponentsDto, 
+/**
+ * One `SoundSpeedProfile` per `path_azimuths_deg` entry (same order).
+ */
+profiles: Array<SoundSpeedProfileDto>, };
 
 /**
  * `window_for_bbox` request (tile bytes are a separate `&[u8]` parameter): the

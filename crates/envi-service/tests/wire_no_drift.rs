@@ -64,12 +64,16 @@ use envi_store::interpolate::Resolution;
 // The envi-gis-wasm WASM ingestion-boundary DTOs (DATA-01..03) — generated into
 // the SAME committed wire.ts as the HTTP wire (D-10).
 use envi_gis_wasm::dto::{
-    BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, CorsDto, DecodeWindowReq,
-    DecodeWindowResult, GeoTransformDto, ImportPlanReq, ImportPlanResult, LandcoverResult,
+    BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, ClassOccurrenceDto, CorsDto,
+    CutProfileReq, CutProfileResult, DecodeWindowReq, DecodeWindowResult, DrawnZoneDto,
+    Era5DeriveReq, Era5DeriveResult, Era5HourDto, GeoTransformDto, GroundSegmentationDto,
+    ImportPlanReq, ImportPlanResult, ImportedZoneDto, InjectScreensReq, LandcoverResult,
     MapLandcoverReq, MergeReq, MergeResult, ParseBuildingsReq, PixelWindowDto, PlanTilesReq,
-    PlanTilesResult, ProvenanceReqDto, ReprojectRingReq, ReprojectRingResult, SkipReportDto,
-    SourceDescriptorDto, SourceKindDto, TerrainFeaturesReq, TerrainFeaturesResult,
-    TerrainSourceCrsDto, TileRefDto, VerticalDatumDto, WindowForBboxReq, WindowForBboxResult,
+    PlanTilesResult, ProfileSegmentDto, ProvenanceReqDto, ReceiverGridReq, ReceiverGridResult,
+    ReprojectRingReq, ReprojectRingResult, ScreenObjectDto, SegmentGroundReq, SkipReportDto,
+    SoundSpeedProfileDto, SourceDescriptorDto, SourceKindDto, TerrainFeaturesReq,
+    TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto, WeatherComponentsDto,
+    WeatherDeriveReq, WeatherDeriveResult, WindowForBboxReq, WindowForBboxResult,
 };
 
 /// Provenance banner prepended to the committed `wire.ts` (mirrors the oracle
@@ -161,6 +165,30 @@ fn export_all_wire_types(cfg: &Config) {
     PlanTilesResult::export_all(cfg).unwrap();
     WindowForBboxResult::export_all(cfg).unwrap();
     ReprojectRingResult::export_all(cfg).unwrap();
+
+    // envi-gis-wasm Phase-9 geometry + weather boundary DTOs (GEOX/GRID/METX).
+    // Shared value objects.
+    ProfileSegmentDto::export_all(cfg).unwrap();
+    GroundSegmentationDto::export_all(cfg).unwrap();
+    DrawnZoneDto::export_all(cfg).unwrap();
+    ImportedZoneDto::export_all(cfg).unwrap();
+    ScreenObjectDto::export_all(cfg).unwrap();
+    WeatherComponentsDto::export_all(cfg).unwrap();
+    SoundSpeedProfileDto::export_all(cfg).unwrap();
+    Era5HourDto::export_all(cfg).unwrap();
+    ClassOccurrenceDto::export_all(cfg).unwrap();
+    // Request DTOs.
+    CutProfileReq::export_all(cfg).unwrap();
+    SegmentGroundReq::export_all(cfg).unwrap();
+    InjectScreensReq::export_all(cfg).unwrap();
+    ReceiverGridReq::export_all(cfg).unwrap();
+    WeatherDeriveReq::export_all(cfg).unwrap();
+    Era5DeriveReq::export_all(cfg).unwrap();
+    // Result DTOs.
+    CutProfileResult::export_all(cfg).unwrap();
+    ReceiverGridResult::export_all(cfg).unwrap();
+    WeatherDeriveResult::export_all(cfg).unwrap();
+    Era5DeriveResult::export_all(cfg).unwrap();
 }
 
 /// Deterministically regenerate the full `wire.ts` contents (banner + ts-rs

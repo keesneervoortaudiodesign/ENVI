@@ -34,23 +34,38 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use wasm_bindgen::prelude::*;
 
+use geo::{Coord, LineString, Polygon};
+
+use envi_dgm::tin::{Tin, build_tin};
 use envi_gis::GisError;
 use envi_gis::buildings::buildings_from_overpass;
 use envi_gis::cog::{MAX_DECODED_PX, PixelWindow, Raster, decode_window_u8};
+use envi_gis::era5::{Era5Hour, N_STABILITY, obukhov, occurrence_stats};
+use envi_gis::grid;
+use envi_gis::impedance::{DrawnZone, GroundSegmentation, ImportedZone, segment_ground};
 use envi_gis::landcover::{DEFAULT_MIN_AREA_PX, DEFAULT_SIMPLIFY_TOL_PX, vectorize_landcover};
 use envi_gis::merge::merge;
+use envi_gis::profile::cut_profile;
 use envi_gis::provenance::Provenance;
 use envi_gis::registry::{self, Bbox, Cors, SourceDescriptor, SourceKind};
+use envi_gis::screening::{ScreenObject, inject_screens};
 use envi_gis::terrain::{TerrainSourceCrs, base_elevation_on_raster};
 use envi_gis::tiles::{self, TileRef};
+use envi_gis::weather::{
+    components_from_levels, levels_from_openmeteo, sound_speed_profile_for_azimuth,
+};
 
 use dto::{
-    BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, CorsDto, DecodeWindowReq,
-    DecodeWindowResult, GeoTransformDto, ImportPlanReq, ImportPlanResult, LandcoverResult,
+    BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, ClassOccurrenceDto, CorsDto,
+    CutProfileReq, CutProfileResult, DecodeWindowReq, DecodeWindowResult, DrawnZoneDto,
+    Era5DeriveReq, Era5DeriveResult, Era5HourDto, GeoTransformDto, GroundSegmentationDto,
+    ImportPlanReq, ImportPlanResult, ImportedZoneDto, InjectScreensReq, LandcoverResult,
     MapLandcoverReq, MergeReq, MergeResult, ParseBuildingsReq, PixelWindowDto, PlanTilesReq,
-    PlanTilesResult, ProvenanceReqDto, ReprojectRingReq, ReprojectRingResult, SkipReportDto,
-    SourceDescriptorDto, SourceKindDto, TerrainFeaturesReq, TerrainFeaturesResult,
-    TerrainSourceCrsDto, TileRefDto, VerticalDatumDto, WindowForBboxReq, WindowForBboxResult,
+    PlanTilesResult, ProfileSegmentDto, ProvenanceReqDto, ReceiverGridReq, ReceiverGridResult,
+    ReprojectRingReq, ReprojectRingResult, ScreenObjectDto, SegmentGroundReq, SkipReportDto,
+    SoundSpeedProfileDto, SourceDescriptorDto, SourceKindDto, TerrainFeaturesReq,
+    TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto, WeatherComponentsDto,
+    WeatherDeriveReq, WeatherDeriveResult, WindowForBboxReq, WindowForBboxResult,
 };
 
 // --- Marshalling helpers (the ONLY glue; no domain logic) -----------------
@@ -186,6 +201,107 @@ fn descriptor_dto(d: &SourceDescriptor) -> SourceDescriptorDto {
         },
         license: d.license.to_string(),
         attribution: d.attribution.to_string(),
+    }
+}
+
+/// Build the sans-I/O DGM [`Tin`] from the boundary's elevation points +
+/// breaklines (input marshalling — the geometry math is `envi_dgm`'s, not the
+/// shim's). A degenerate/oversized/self-crossing point set is a typed error.
+fn build_gis_tin(points: &[[f64; 3]], breaklines: &[Vec<[f64; 2]>]) -> Result<Tin, JsValue> {
+    build_tin(points, breaklines).map_err(|e| js_err(&e.to_string()))
+}
+
+/// A geo [`Polygon`] from a planar exterior ring (no holes — footprints are their
+/// own rings). Pure marshalling of the coordinate list.
+fn polygon_from_ring(ring: &[[f64; 2]]) -> Polygon<f64> {
+    let coords: Vec<Coord<f64>> = ring.iter().map(|p| Coord { x: p[0], y: p[1] }).collect();
+    Polygon::new(LineString::from(coords), Vec::new())
+}
+
+/// A geo [`LineString`] from a planar polyline. Pure marshalling.
+fn line_from_pts(pts: &[[f64; 2]]) -> LineString<f64> {
+    LineString::from(
+        pts.iter()
+            .map(|p| Coord { x: p[0], y: p[1] })
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Parse a single class letter out of a DTO string (never a fabricated σ — the
+/// engine resolves the letter). A non-single-char string is a boundary error.
+fn class_char(s: &str) -> Result<char, JsValue> {
+    let mut chars = s.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => Ok(c),
+        _ => Err(js_err(&format!(
+            "impedance class must be a single letter, got {s:?}"
+        ))),
+    }
+}
+
+/// A core [`DrawnZone`] from its DTO.
+fn drawn_zone(z: &DrawnZoneDto) -> Result<DrawnZone, JsValue> {
+    Ok(DrawnZone {
+        polygon: polygon_from_ring(&z.polygon),
+        class: class_char(&z.class)?,
+        roughness_m: z.roughness_m,
+    })
+}
+
+/// A core [`ImportedZone`] from its DTO.
+fn imported_zone(z: &ImportedZoneDto) -> ImportedZone {
+    ImportedZone {
+        polygon: polygon_from_ring(&z.polygon),
+        worldcover_code: z.worldcover_code,
+    }
+}
+
+/// A core [`ScreenObject`] from its DTO.
+fn screen_object(s: &ScreenObjectDto) -> ScreenObject {
+    match s {
+        ScreenObjectDto::Building {
+            footprint,
+            eaves_height_m,
+        } => ScreenObject::Building {
+            footprint: polygon_from_ring(footprint),
+            eaves_height_m: *eaves_height_m,
+        },
+        ScreenObjectDto::Barrier { line, height_m } => ScreenObject::Barrier {
+            line: line_from_pts(line),
+            height_m: *height_m,
+        },
+    }
+}
+
+/// Wire DTO from a core [`GroundSegmentation`].
+fn segmentation_dto(seg: &GroundSegmentation) -> GroundSegmentationDto {
+    GroundSegmentationDto {
+        points: seg.points.clone(),
+        planar_xy: seg.planar_xy.clone(),
+        segments: seg
+            .segments
+            .iter()
+            .map(|s| ProfileSegmentDto {
+                flow_resistivity: s.flow_resistivity,
+                roughness: s.roughness,
+            })
+            .collect(),
+    }
+}
+
+/// Core [`GroundSegmentation`] from its wire DTO (the screening `base` input).
+fn segmentation_from_dto(dto: &GroundSegmentationDto) -> GroundSegmentation {
+    GroundSegmentation {
+        points: dto.points.clone(),
+        planar_xy: dto.planar_xy.clone(),
+        segments: dto
+            .segments
+            .iter()
+            .map(|s| envi_engine::scene::GroundSegment {
+                flow_resistivity: s.flow_resistivity,
+                roughness: s.roughness,
+            })
+            .collect(),
     }
 }
 
@@ -437,4 +553,186 @@ pub fn merge_features(req: JsValue) -> Result<JsValue, JsValue> {
     to_js(&MergeResult {
         features: features_to_value(merged)?,
     })
+}
+
+// --- Phase-9 geometry + weather boundary shims (GEOX/GRID/METX) ------------
+//
+// Each shim marshals its inputs (rebuilding the sans-I/O TIN / geo polygons from
+// coordinate data) and delegates the actual geometry / acoustic math to exactly
+// one `envi_gis::` core function — no cut-profile, impedance, screening, grid, or
+// A/B/C math lives here.
+
+/// Extract the source→receiver DEM cut-profile (GEOX-01, delegates to
+/// `envi_gis::profile::cut_profile`). The TIN is rebuilt from `tin_points`.
+///
+/// # Errors
+/// A shape error, a TIN-build error, or any [`GisError`] from the extractor.
+#[wasm_bindgen]
+pub fn extract_cut_profile(req: JsValue) -> Result<JsValue, JsValue> {
+    let req: CutProfileReq = from_js(req)?;
+    let tin = build_gis_tin(&req.tin_points, &req.tin_breaklines)?;
+    let points = cut_profile(&tin, req.s_xy, req.r_xy, req.step_m).map_err(gis_err)?;
+    to_js(&CutProfileResult { points })
+}
+
+/// Segment the cut-profile into per-interval ground segments (GEOX-02, delegates
+/// to `envi_gis::impedance::segment_ground`).
+///
+/// # Errors
+/// A shape error, a non-single-char class, or any [`GisError`] from segmentation.
+#[wasm_bindgen]
+pub fn segment_cut_profile(req: JsValue) -> Result<JsValue, JsValue> {
+    let req: SegmentGroundReq = from_js(req)?;
+    let drawn: Vec<DrawnZone> = req
+        .drawn_zones
+        .iter()
+        .map(drawn_zone)
+        .collect::<Result<_, _>>()?;
+    let imported: Vec<ImportedZone> = req.imported_zones.iter().map(imported_zone).collect();
+    let default_class = class_char(&req.default_class)?;
+    let seg = segment_ground(
+        &req.points,
+        &req.planar_xy,
+        &drawn,
+        &imported,
+        default_class,
+    )
+    .map_err(gis_err)?;
+    to_js(&segmentation_dto(&seg))
+}
+
+/// Inject screening edges into a base segmentation as `(x, z)` vertices (GEOX-03,
+/// delegates to `envi_gis::screening::inject_screens`). The TIN is rebuilt from
+/// `tin_points` so each screen top rides on terrain.
+///
+/// # Errors
+/// A shape error, a TIN-build error, or any [`GisError`] from screening.
+#[wasm_bindgen]
+pub fn inject_screen_edges(req: JsValue) -> Result<JsValue, JsValue> {
+    let req: InjectScreensReq = from_js(req)?;
+    let base = segmentation_from_dto(&req.base);
+    let screens: Vec<ScreenObject> = req.screens.iter().map(screen_object).collect();
+    let tin = build_gis_tin(&req.tin_points, &req.tin_breaklines)?;
+    let seg = inject_screens(&base, &screens, &tin).map_err(gis_err)?;
+    to_js(&segmentation_dto(&seg))
+}
+
+/// Build the building-aware receiver grid (GRID-01, delegates to
+/// `envi_gis::grid::receiver_grid`). The TIN is rebuilt from `tin_points` so each
+/// receiver z is sampled from the DGM surface.
+///
+/// # Errors
+/// A shape error, a TIN-build error, or any [`GisError`] from the grid.
+#[wasm_bindgen]
+pub fn build_receiver_grid(req: JsValue) -> Result<JsValue, JsValue> {
+    let req: ReceiverGridReq = from_js(req)?;
+    let calc_area = polygon_from_ring(&req.calc_area);
+    let footprints: Vec<Polygon<f64>> = req
+        .footprints
+        .iter()
+        .map(|r| polygon_from_ring(r))
+        .collect();
+    let tin = build_gis_tin(&req.tin_points, &req.tin_breaklines)?;
+    let receivers = grid::receiver_grid(
+        &calc_area,
+        &footprints,
+        req.spacing_m,
+        &req.discrete_points,
+        &tin,
+    )
+    .map_err(gis_err)?;
+    to_js(&ReceiverGridResult { receivers })
+}
+
+/// Derive the per-azimuth sound-speed profiles from an Open-Meteo multi-level
+/// profile (METX-01). Marshals the Open-Meteo JSON → levels → bearing-independent
+/// components → one profile per path azimuth; ALL of the A/B/C math stays in
+/// `envi_gis::weather` (the shim only projects each requested azimuth through the
+/// core `sound_speed_profile_for_azimuth`).
+///
+/// # Errors
+/// A shape error, or any [`GisError`] from the parse / fit.
+#[wasm_bindgen]
+pub fn derive_weather(req: JsValue) -> Result<JsValue, JsValue> {
+    let req: WeatherDeriveReq = from_js(req)?;
+    let levels = levels_from_openmeteo(req.openmeteo_json.as_bytes(), req.hour_index as usize)
+        .map_err(gis_err)?;
+    let comp = components_from_levels(&levels, req.phi_wind_deg, req.z0).map_err(gis_err)?;
+    let profiles: Vec<SoundSpeedProfileDto> = req
+        .path_azimuths_deg
+        .iter()
+        .map(|&az| {
+            let p = sound_speed_profile_for_azimuth(&comp, az, req.phi_wind_deg);
+            SoundSpeedProfileDto {
+                a: p.a,
+                b: p.b,
+                c: p.c,
+                s_a: p.s_a,
+                s_b: p.s_b,
+                z0: p.z0,
+            }
+        })
+        .collect();
+    to_js(&WeatherDeriveResult {
+        components: WeatherComponentsDto {
+            a_temp: comp.a_temp,
+            a_wind: comp.a_wind,
+            b: comp.b,
+            c: comp.c,
+            s_a: comp.s_a,
+            s_b: comp.s_b,
+            z0: comp.z0,
+        },
+        profiles,
+    })
+}
+
+/// Derive the ERA5 wind×stability occurrence table + per-hour `1/L` (METX-02, D-05
+/// — occurrence statistics only). Delegates the binning to
+/// `envi_gis::era5::occurrence_stats` and the per-hour inverse Obukhov length to
+/// `envi_gis::era5::obukhov`.
+///
+/// # Errors
+/// A shape error, or any [`GisError`] from the derivation.
+#[wasm_bindgen]
+pub fn derive_era5(req: JsValue) -> Result<JsValue, JsValue> {
+    let req: Era5DeriveReq = from_js(req)?;
+    let hours: Vec<Era5Hour> = req.hours.iter().map(era5_hour).collect();
+    let occ = occurrence_stats(&hours).map_err(gis_err)?;
+    let inv_l: Vec<f64> = hours
+        .iter()
+        .map(obukhov)
+        .collect::<Result<_, _>>()
+        .map_err(gis_err)?;
+    let counts: Vec<Vec<u32>> = occ
+        .counts
+        .iter()
+        .map(|row| {
+            debug_assert_eq!(row.len(), N_STABILITY);
+            row.to_vec()
+        })
+        .collect();
+    to_js(&Era5DeriveResult {
+        occurrence: ClassOccurrenceDto {
+            counts,
+            total: occ.total,
+            reliable: occ.reliable,
+        },
+        inv_l,
+    })
+}
+
+/// A core [`Era5Hour`] from its wire DTO (pure field marshalling).
+fn era5_hour(h: &Era5HourDto) -> Era5Hour {
+    Era5Hour {
+        iews: h.iews,
+        inss: h.inss,
+        ishf: h.ishf,
+        t2m_k: h.t2m_k,
+        d2m_k: h.d2m_k,
+        sp_pa: h.sp_pa,
+        sdfor_m: h.sdfor_m,
+        u10_ms: h.u10_ms,
+        v10_ms: h.v10_ms,
+    }
 }
