@@ -44,8 +44,11 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
+use axum::http::HeaderValue;
+use axum::http::header::HeaderName;
 use axum::routing::{get, post};
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -110,11 +113,35 @@ pub fn api_router() -> Router<Arc<AppState>> {
 /// fallback service (SPA deep-link support), with the shared state attached.
 ///
 /// `web_dist` is the directory holding `index.html` (default `web/dist`).
+///
+/// # Cross-origin isolation (SVC-02, D-04)
+///
+/// The bundle response carries `Cross-Origin-Opener-Policy: same-origin` +
+/// `Cross-Origin-Embedder-Policy: credentialless` so the served top-level
+/// document is cross-origin isolated (`self.crossOriginIsolated === true`),
+/// which is the platform prerequisite for `SharedArrayBuffer` and the
+/// wasm-bindgen-rayon thread pool the client-side solve spawns. The COEP value
+/// is deliberately **`credentialless`, not `require-corp`**: credentialless
+/// strips credentials on no-cors sub-resource loads, so the Phase-8 direct
+/// third-party fetches (basemap/AHN/Overpass) keep working without every source
+/// having to emit a CORP header — `require-corp` would break them. The layers
+/// wrap the whole router: harmless on `/api/v1` responses, load-bearing on the
+/// fallback bundle response.
 pub fn app(state: Arc<AppState>, web_dist: &Path) -> Router {
     let serve_dir = ServeDir::new(web_dist).fallback(ServeFile::new(web_dist.join("index.html")));
+    let coop = SetResponseHeaderLayer::overriding(
+        HeaderName::from_static("cross-origin-opener-policy"),
+        HeaderValue::from_static("same-origin"),
+    );
+    let coep = SetResponseHeaderLayer::overriding(
+        HeaderName::from_static("cross-origin-embedder-policy"),
+        HeaderValue::from_static("credentialless"),
+    );
     Router::new()
         .nest("/api/v1", api_router())
         .fallback_service(serve_dir)
+        .layer(coop)
+        .layer(coep)
         .with_state(state)
 }
 

@@ -28,7 +28,10 @@ tokio = { version = "1", features = [
 ] }
 tokio-util = "0.7"
 tokio-stream = { version = "0.1", features = ["sync"] }
-tower-http = { version = "0.7", features = ["fs"] }
+# set-header (D-04, plan 10-02): the cross-origin-isolation COOP/COEP response-header
+# layers on the app bundle use `tower_http::set_header::SetResponseHeaderLayer`. `fs`
+# is the existing ServeDir/ServeFile static-bundle serving.
+tower-http = { version = "0.7", features = ["fs", "set-header"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # geojson: the scene GET/PUT handlers round-trip a WGS84 FeatureCollection on the
