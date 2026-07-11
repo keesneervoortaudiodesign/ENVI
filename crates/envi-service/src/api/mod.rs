@@ -25,6 +25,7 @@ pub mod dgm;
 pub mod jobs;
 pub mod meta;
 pub mod projects;
+pub mod proxy;
 pub mod scene;
 
 use std::path::Path;
@@ -71,6 +72,9 @@ pub fn api_router() -> Router<Arc<AppState>> {
         .route("/calculations/{cid}/recompute", post(calc::recompute))
         .route("/jobs/{id}", get(jobs::get_job).delete(jobs::cancel_job))
         .route("/jobs/{id}/events", get(jobs::job_events))
+        // D-02 allowlisted byte relay: GET-only (any other method -> 405), axum 0.8
+        // brace + `{*path}` wildcard captures the full upstream key segment.
+        .route("/proxy/{source}/{*path}", get(proxy::relay))
         .fallback(api_fallback)
 }
 

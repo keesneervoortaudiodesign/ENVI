@@ -103,6 +103,24 @@ impl From<StoreError> for ApiError {
     }
 }
 
+impl From<reqwest::Error> for ApiError {
+    /// Map an allowlisted-byte-relay upstream/transport failure to a GENERIC `500`
+    /// (D-02, MED-1 / T-08-03-03).
+    ///
+    /// A `reqwest::Error`'s `Display` can embed the upstream URL (host + path), so
+    /// it is logged in full server-side via `tracing::error!` but NEVER surfaced —
+    /// the client body is the generic `Internal { detail: "internal error" }`, so
+    /// the relay leaks nothing about the upstream beyond the allowlisted source
+    /// name the caller already supplied. The allowlist/prefix guards run before any
+    /// request, so a `reqwest::Error` here is always a genuine server-side fault.
+    fn from(e: reqwest::Error) -> Self {
+        tracing::error!(error = %e, "proxy upstream transport error");
+        ApiError::Internal {
+            detail: "internal error".to_string(),
+        }
+    }
+}
+
 impl From<DgmError> for ApiError {
     /// Map a digital-ground-model failure to HTTP status (D-08, Pitfall 3).
     ///

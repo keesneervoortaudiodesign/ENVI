@@ -59,16 +59,38 @@ pub struct AppState {
     /// It carries no cached identity — the `recondition` 409 gate always re-mints
     /// the tensor hash from the current scene per request (`load_and_mint`).
     pub calcs: Arc<RwLock<HashMap<Uuid, CalcRecord>>>,
+    /// The shared HTTP client backing the allowlisted byte relay ([`crate::api::proxy`],
+    /// D-02 / Pattern 5). Built ONCE at startup so connection pools are reused, and
+    /// configured with **no redirect following** (`redirect::Policy::none()`) and a
+    /// connect timeout — the SSRF/DoS guards that ride on the relay. `reqwest::Client`
+    /// is itself an `Arc`, so cloning `AppState` stays cheap.
+    pub http: reqwest::Client,
 }
 
 impl AppState {
-    /// Build the state from an open [`ProjectStore`] with empty registries.
+    /// Build the state from an open [`ProjectStore`] with empty registries and the
+    /// shared relay HTTP client.
+    ///
+    /// The client follows NO redirects (`redirect::Policy::none()`) so the byte
+    /// relay can never be bounced to a non-allowlisted host (SSRF, T-08-03-01), and
+    /// carries a connect timeout (DoS bound, T-08-03-02). rustls-backed (pure-Rust
+    /// TLS); no native-tls/openssl in the graph.
+    ///
+    /// # Panics
+    /// Panics only if the rustls-backed client cannot be constructed at startup
+    /// (e.g. no TLS backend) — a fail-fast boot condition, never a per-request path.
     #[must_use]
     pub fn new(store: ProjectStore) -> Self {
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .build()
+            .expect("build relay HTTP client (rustls)");
         Self {
             store,
             jobs: Arc::new(RwLock::new(HashMap::new())),
             calcs: Arc::new(RwLock::new(HashMap::new())),
+            http,
         }
     }
 }

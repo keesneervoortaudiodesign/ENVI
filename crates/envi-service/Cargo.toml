@@ -41,6 +41,16 @@ tracing = "0.1"
 # env-filter: main initializes tracing with an EnvFilter (RUST_LOG-aware, default
 # `info`) per the D-08 startup-logging requirement.
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# reqwest (D-02, Pattern 5): the server-side HTTP client for the allowlisted byte
+# relay (`api/proxy.rs`). `rustls-tls` keeps TLS pure-Rust (workspace no-C rule);
+# `default-features = false` is what keeps the C-linked TLS backends out of the
+# dependency graph. `stream` gives `bytes_stream()` so the relay streams the
+# upstream body under a size cap instead of buffering it. Server-side only; never
+# on the wasm path.
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "stream",
+] }
 thiserror = "2"
 # ts-rs (D-10): derive the TS wire mirror on the service request/response DTOs +
 # JobStatus. uuid-impl maps `Uuid -> string`; no-serde-warnings silences the
