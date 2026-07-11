@@ -544,7 +544,11 @@ pub fn levels_from_openmeteo(json: &[u8], hour_index: usize) -> Result<Vec<Level
     let resp: OpenMeteoResponse = serde_json::from_slice(json).map_err(|e| GisError::Json {
         message: e.to_string(),
     })?;
-    let elevation = resp.elevation;
+    // A missing `elevation` is a typed error, NOT a fabricated `0.0` baseline (D-07):
+    // without it the AMSL→AGL subtraction would silently collapse to `agl = gph`.
+    let elevation = resp.elevation.ok_or_else(|| GisError::Json {
+        message: "open-meteo response is missing the `elevation` field".to_string(),
+    })?;
     if !elevation.is_finite() {
         return Err(GisError::NonFinite {
             what: "open-meteo response elevation".to_string(),
@@ -618,10 +622,15 @@ pub fn levels_from_openmeteo(json: &[u8], hour_index: usize) -> Result<Vec<Level
 
 /// The Open-Meteo response fields this crate reads: the site `elevation` (AMSL,
 /// m) and the `hourly` object of parallel arrays keyed by variable name.
+///
+/// `elevation` is `Option<f64>` (no `#[serde(default)]`): a response that omits
+/// the key is a **typed error**, never a fabricated `0.0`. `elevation` is the AGL
+/// baseline for every pressure level (`agl = gph − elevation`); a silent `0.0`
+/// would collapse AGL onto the full AMSL geopotential height and corrupt the fit
+/// (D-07, "GIS holes must be typed `None`/errors, never fabricated `0.0`").
 #[derive(serde::Deserialize)]
 struct OpenMeteoResponse {
-    #[serde(default)]
-    elevation: f64,
+    elevation: Option<f64>,
     hourly: serde_json::Map<String, serde_json::Value>,
 }
 

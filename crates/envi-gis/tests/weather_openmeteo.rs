@@ -157,6 +157,47 @@ fn malformed_openmeteo_json_is_typed_error() {
     ));
 }
 
+/// Build a minimal, real-shaped Open-Meteo pressure-level JSON body. `elevation`
+/// is `None` to omit the key entirely; `gph` gives the per-level geopotential
+/// height (AMSL) for the six [`PRESSURE_LEVELS_HPA`] entries.
+fn openmeteo_body(elevation: Option<f64>, gph: [f64; 6]) -> Vec<u8> {
+    let mut hourly = String::from(
+        r#""time":["2023-01-18T03:00"],"temperature_2m":[7.0],"wind_speed_10m":[3.0],"wind_direction_10m":[270.0]"#,
+    );
+    for (i, hpa) in PRESSURE_LEVELS_HPA.iter().enumerate() {
+        hourly.push_str(&format!(
+            r#","temperature_{hpa}hPa":[{t}],"wind_speed_{hpa}hPa":[{ws}],"wind_direction_{hpa}hPa":[270.0],"geopotential_height_{hpa}hPa":[{g}]"#,
+            t = 8.0 + i as f64,
+            ws = 4.0 + i as f64,
+            g = gph[i],
+        ));
+    }
+    let elev = match elevation {
+        Some(e) => format!(r#""elevation":{e},"#),
+        None => String::new(),
+    };
+    format!(r#"{{{elev}"hourly":{{{hourly}}}}}"#).into_bytes()
+}
+
+/// CR-01 (D-07): a response that OMITS the `elevation` key is a typed `Json`
+/// error — never a fabricated `0.0` baseline that would collapse AGL onto the
+/// full AMSL geopotential height. The AGL baseline must be present, not invented.
+#[test]
+fn missing_elevation_is_rejected_not_defaulted_to_zero() {
+    let no_elev = openmeteo_body(None, [100.0, 300.0, 550.0, 800.0, 1100.0, 1500.0]);
+    assert!(
+        matches!(
+            levels_from_openmeteo(&no_elev, 0),
+            Err(GisError::Json { .. })
+        ),
+        "a response missing `elevation` must be a typed Json error, not silent 0.0"
+    );
+    // Sanity: the SAME body WITH an elevation parses fine, proving the rejection is
+    // due to the missing field and not some other malformation.
+    let with_elev = openmeteo_body(Some(10.0), [100.0, 300.0, 550.0, 800.0, 1100.0, 1500.0]);
+    assert!(levels_from_openmeteo(&with_elev, 0).is_ok());
+}
+
 /// `components_from_levels` rejects a non-finite level field with a typed error
 /// (defence in depth beyond the parser, for callers building `Level`s directly).
 #[test]
