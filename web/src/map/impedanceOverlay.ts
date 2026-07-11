@@ -19,15 +19,17 @@ import type { Map as MapLibreMap, GeoJSONSource } from "maplibre-gl";
 
 import { useSceneStore } from "../store/sceneStore";
 import { useImportStore } from "../store/import";
+import { KIND_DEFAULTS } from "../store/inheritance";
 
 const WASH_SOURCE = "envi-impedance-wash";
 const WASH_LAYER = "envi-impedance-wash-fill";
 const ZONE_SOURCE = "envi-impedance-zones";
 const ZONE_LAYER = "envi-impedance-zone-fill";
 
-// The project default ground class letter (SettingsDto default is `'D'`) — the "no data" wash tint. The
-// scene store does not carry project settings this phase, so the documented default is used.
-const DEFAULT_GROUND_CLASS = "D";
+// The project default ground class letter (the "no data" wash tint), sourced from the single
+// `KIND_DEFAULTS.ground_zone` default rather than a second local literal. The scene store does not carry
+// project settings this phase, so the documented per-kind default is used.
+const DEFAULT_GROUND_CLASS = KIND_DEFAULTS.ground_zone.impedance_class as string;
 
 // A per-class debug palette A (soft) → H (hard). Fixed debug colours (not the design-system chart palette);
 // distinct enough to read the effective ground class at a glance.
@@ -114,6 +116,16 @@ export function ImpedanceOverlay(): ReactElement | null {
     }
 
     const ensureAndSet = (): void => {
+      // When the overlay is OFF and nothing has been rendered yet, skip the
+      // zoneGeoJson() rebuild + setData entirely: a scene edit must not recompute
+      // the full zone GeoJSON while the overlay is hidden. Toggling the overlay ON
+      // re-runs this effect (debugOverlay changed), which renders from scratch.
+      const alreadyRendered =
+        instance.getSource(ZONE_SOURCE) !== undefined ||
+        instance.getSource(WASH_SOURCE) !== undefined;
+      if (!debugOverlay && !alreadyRendered) {
+        return;
+      }
       const visibility = debugOverlay ? "visible" : "none";
       // Wash (beneath the zones).
       const washSrc = instance.getSource(WASH_SOURCE) as GeoJSONSource | undefined;
