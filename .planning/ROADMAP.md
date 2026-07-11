@@ -157,7 +157,7 @@ Architecture per `.planning/research/ARCHITECTURE.md`: three new crates (`envi-g
 - [x] **Phase 5: Engine Extensions — Forest & Semi-Transparent Partitions** - Nord2000 forest attenuation A = d·a(f) and finite-transmission partitions via per-band isolation spectra R(f), phase-preserving, with the opaque limit regression-pinned to the standard screen (completed 2026-07-09)
 - [x] **Phase 6: Service Foundation & Persistence** - `envi-geo` + `envi-store` + `envi-service` skeleton: project-folder CRUD, single pure-Rust CRS boundary, band-index wire contract, recondition/recompute API split, job state machine, pure-Rust CRS startup self-check (GDAL/PROJ provisioning deferred to Phase 8 per D-01/D-02) (completed 2026-07-09)
 - [x] **Phase 7: Frontend Shell & Scene Editing** - MapLibre/Terra Draw scene editor for all object kinds — including semi-transparent screens/buildings with the isolation-spectrum editor, forests, and elevation editing — with draw-time validation (completed 2026-07-10)
-- [ ] **Phase 8: GIS Ingestion & DGM** - Viewport import of GLO-30/LiDAR terrain, WorldCover ground cover, and Overture/OSM buildings onto a triangulated DGM; local-cache compute path; check-and-complete editability
+- [x] **Phase 8: GIS Ingestion & DGM** - Viewport import of GLO-30/LiDAR terrain, WorldCover ground cover, and Overture/OSM buildings onto a triangulated DGM; local-cache compute path; check-and-complete editability (completed 2026-07-11)
 - [ ] **Phase 9: Path Extraction & Weather** - DEM cut-profile extractor (GRASS oracle), impedance segmentation, screening edges, CDT receiver grids; Open-Meteo import → per-azimuth A/B/C; ERA5 groundwork
 - [ ] **Phase 10: Calculation Service** - Chunked tensor store + job runner wiring the promoted engine solver: submit/progress/abort with pre-run cost estimate, hash-keyed manifests, memory-bounded large grids
 - [ ] **Phase 11: Results & Fast Recalc** - Receiver spectra, isophone noise maps with editable color scale, interactive source conditioning via the tensor MAC, named weather scenarios + difference maps, exports
@@ -278,7 +278,7 @@ Plans:
   4. Buildings missing height data get heights via the documented fallback chain (measured → height tag → levels×3+1.5 → user default) with per-feature provenance (source + license + retrieval date), and base elevations are sampled from footprint-boundary ground, never DSM-under-building
   5. The map shows attribution for OSM/Overture/ESA WorldCover/Copernicus data
 
-**Plans**: 7/8 plans executed
+**Plans**: 8/8 plans complete
 
 Plans:
 
@@ -289,7 +289,7 @@ Plans:
 - [x] 08-05-PLAN.md — envi-gis WorldCover→ground_zone vectorization (contour dep DECLINED — hand-rolled marching squares) (DATA-02) (completed 2026-07-11)
 - [x] 08-06-PLAN.md — envi-gis-wasm cdylib bindings + Vite/wasm build + version-locked CLI + generated boundary DTOs (DATA-01/02/03)
 - [x] 08-07-PLAN.md — web import path: OPFS cache + direct/proxy fetchers + per-layer state machine + ImportPanel + impedance overlay + attribution (DATA-01/02/03/04)
-- [ ] 08-08-PLAN.md — Playwright offline import journey + DATA-04 network-off replay (DATA-01/02/03/04)
+- [x] 08-08-PLAN.md — Playwright offline import journey + DATA-04 network-off replay (DATA-01/02/03/04)
 
 **Wave 1** *(parallel — no shared files)*
 

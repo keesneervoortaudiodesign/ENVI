@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 08
 current_phase_name: gis-ingestion-dgm
-status: executing
+status: verifying
 stopped_at: Completed 08-07-PLAN.md
-last_updated: "2026-07-11T03:44:23.019Z"
+last_updated: "2026-07-11T04:38:55.486Z"
 last_activity: 2026-07-11
-last_activity_desc: "Completed 08-07 (web import path: OPFS per-project cache + direct/proxy fetchers + per-layer import state machines + ImportPanel + impedance overlay + GLO-30 badge + SC5 attribution; extended the WASM boundary with plan_tiles/window_for_bbox/reproject_ring so all tile/window geometry stays in WASM; DATA-01..04)"
+last_activity_desc: "Completed 08-06 (envi-gis-wasm: repo's first WASM crate — thin wasm-bindgen cdylib exposing the pure envi-gis core to the browser; version-locked wasm-bindgen 0.2.126; u8 landcover decode seam closed; all boundary DTOs generated via ts-rs into the single committed wire.ts, no-drift green)"
 progress:
   total_phases: 11
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 41
-  completed_plans: 40
-  percent: 64
+  completed_plans: 41
+  percent: 73
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 08 (gis-ingestion-dgm) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-11 — Completed 08-06 (envi-gis-wasm: repo's first WASM crate — thin wasm-bindgen cdylib exposing the pure envi-gis core to the browser; version-locked wasm-bindgen 0.2.126; u8 landcover decode seam closed; all boundary DTOs generated via ts-rs into the single committed wire.ts, no-drift green)
 
 Progress: [██████████] Phase 7 — 10/10 plans complete (envi-store DTOs · envi-dgm TIN · endpoints · web scaffold+theme · Terra Draw lifecycle · generated wire types · 9-kind palette+DGM producer · spectrum editor+ring-diff · validation+autosave · SC1–SC4 E2E)
@@ -88,6 +88,7 @@ Progress: [██████████] Phase 7 — 10/10 plans complete (env
 | Phase 08 P04 | 28min | 3 tasks | 8 files |
 | Phase 08 P06 | 70min | 2 tasks | 13 files |
 | Phase 08 P07 | 165min | 3 tasks | 18 files |
+| Phase 08 P08 | 150 | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -181,6 +182,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T03:44:22.997Z
+Last session: 2026-07-11T04:38:39.949Z
 Stopped at: Completed 08-07-PLAN.md
 Resume file: None
