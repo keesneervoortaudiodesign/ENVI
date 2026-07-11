@@ -84,7 +84,7 @@
 
 - [x] **GEOX-01**: Extract the terrain elevation profile (DEM cut-profile) along a source→receiver line from a DEM raster (oracle: GRASS `r.profile`)
 - [x] **GEOX-02**: Segment ground into impedance classes along the profile from land cover + drawn/imported overrides (priority: drawn > imported > default)
-- [ ] **GEOX-03**: Derive screening edges from building/barrier/wall geometry along the path
+- [x] **GEOX-03**: Derive screening edges from building/barrier/wall geometry along the path
 - [x] **GEOX-04**: Reproject inputs to an auto-selected local metric CRS (UTM), pinned per project, at a single reprojection boundary
 
 ### Meteorology import & what-if (METX)
@@ -96,7 +96,7 @@
 
 ### Receiver grid & output (GRID)
 
-- [ ] **GRID-01**: Generate a building-aware receiver grid via constrained Delaunay (spade); plus discrete receiver points
+- [x] **GRID-01**: Generate a building-aware receiver grid via constrained Delaunay (spade); plus discrete receiver points
 - [ ] **GRID-02**: Batch-compute the transfer tensor over the grid, parallelized (rayon), receiver-axis chunked
 - [ ] **GRID-04**: Contour results into isophone fill polygons (pure-Rust `contour`; `gdal-sys` escape hatch)
 - [ ] **GRID-05**: Export results (GeoTIFF / GeoJSON) and spectra (CSV)
@@ -206,13 +206,13 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | DATA-04 | Phase 8 | Complete |
 | GEOX-01 | Phase 9 | Complete |
 | GEOX-02 | Phase 9 | Complete |
-| GEOX-03 | Phase 9 | Pending |
+| GEOX-03 | Phase 9 | Complete |
 | GEOX-04 | Phase 6 | Complete |
 | METX-01 | Phase 9 | Pending |
 | METX-02 | Phase 9 | Pending |
 | METX-03 | Phase 11 | Pending |
 | METX-04 | Phase 11 | Pending |
-| GRID-01 | Phase 9 | Pending |
+| GRID-01 | Phase 9 | Complete |
 | GRID-02 | Phase 10 | Pending |
 | GRID-04 | Phase 11 | Pending |
 | GRID-05 | Phase 11 | Pending |

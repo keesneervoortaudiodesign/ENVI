@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 09
 current_phase_name: path-extraction-weather
 status: executing
-stopped_at: Phase 9 context gathered
-last_updated: "2026-07-11T13:06:16.870Z"
+stopped_at: Completed 09-02-PLAN.md (GEOX-03 + GRID-01)
+last_updated: "2026-07-11T13:31:02.421Z"
 last_activity: 2026-07-11
 last_activity_desc: Phase 09 execution started
 progress:
   total_phases: 11
   completed_phases: 8
   total_plans: 47
-  completed_plans: 42
+  completed_plans: 43
   percent: 73
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 09 (path-extraction-weather) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Executing — 09-01 complete (GEOX-01 cut-profile + GEOX-02 impedance segmentation)
 Last activity: 2026-07-11 — Phase 09 execution started
 
@@ -90,6 +90,7 @@ Progress: [██████████] Phase 8 — 8/8 plans complete (envi-
 | Phase 08 P07 | 165min | 3 tasks | 18 files |
 | Phase 08 P08 | 150 | 2 tasks | 13 files |
 | Phase 09 P01 | 45min | 2 tasks | 10 files |
+| Phase 09 P02 | 40min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,8 @@ Recent decisions affecting current work:
 - [Phase 08]: [Phase 08, 08-06] envi-gis-wasm = the repo's first WASM crate: a thin wasm-bindgen cdylib exposing the pure envi-gis core (plan_import/decode_window/terrain_features/sample_base_elevation/map_landcover/parse_buildings/merge_features) to the browser — marshalling only, all GIS math delegated to envi_gis::. wasm-bindgen pinned '=0.2.126' with wasm-bindgen-cli 0.2.126 lockstep (Pitfall 8); no getrandom/uuid (Pitfall 9). Tile bytes cross as a direct &[u8] param (not a serde field); provenance built by resolving the registry source id -> 'static source+license. Closed the 08-05 u8-seam (cog::decode_window_u8) + added terrain::base_elevation_on_raster so the boundary stays logic-free. All 24 boundary DTOs generated via ts-rs into the SINGLE committed web/src/generated/wire.ts (envi-service dev-deps envi-gis-wasm; no-drift test green) — one source of truth for the HTTP wire AND the WASM boundary, no hand-written TS. DATA-01/02/03.
 - [Phase 09]: GEOX-01 samples the DGM TIN (barycentric), not the raw raster; the r.profile oracle pins a documented TIN-vs-bilinear tolerance, not bit-equality
 - [Phase 09]: GEOX-02 segment_ground returns GroundSegmentation { points, planar_xy, segments } so boundary-spliced points stay in sync with segments for a valid TerrainProfile
+- [Phase ?]: GEOX-03 injects screen tops as (x,z) vertices into the TerrainProfile (no separate screens field); through-building = two tops + hard-sigma span, engine caps diffraction at <=2 screens
+- [Phase ?]: GRID-01 emits a regular lattice clipped to calc_area minus footprints (build_tin used only as the intersecting-ring validity guard); receiver z from the DGM TIN, acoustic height added at SolveJob assembly
 
 ### Pending Todos
 
@@ -185,6 +188,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T13:03:37.996Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-path-extraction-weather/09-CONTEXT.md
+Last session: 2026-07-11T13:31:02.410Z
+Stopped at: Completed 09-02-PLAN.md (GEOX-03 + GRID-01)
+Resume file: None
