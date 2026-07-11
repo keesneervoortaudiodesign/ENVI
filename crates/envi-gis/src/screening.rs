@@ -162,8 +162,9 @@ fn fresnel_half_width(d: f64, f_ref: f64) -> f64 {
 /// # Errors
 /// - [`GisError::DegenerateProfile`] — `base` has mismatched points/planar lengths,
 ///   fewer than two points, or a zero-length S→R line.
-/// - [`GisError::CorridorCandidatesExceeded`] — the corridor query returned more
-///   than [`MAX_CORRIDOR_CANDIDATES`] candidates.
+/// - [`GisError::CorridorCandidatesExceeded`] — the wire-supplied `screens` set,
+///   or the corridor query result, exceeded [`MAX_CORRIDOR_CANDIDATES`] (the input
+///   bound is checked *before* the R*-tree is allocated).
 /// - [`GisError::OutsideHull`] — a screen crossing's ground point left the TIN hull.
 /// - [`GisError::UnresolvableClass`] — the hard-ground class H failed to resolve
 ///   (unreachable in practice; guards against an engine table change).
@@ -204,6 +205,17 @@ pub fn inject_screens(
     let sr_line = Line::new(Coord { x: s[0], y: s[1] }, Coord { x: r[0], y: r[1] });
 
     // --- Corridor candidate query (bounded, threat T-09-02-01). ---
+    // Bound the WIRE-SUPPLIED input set BEFORE allocating the entry vector or
+    // building the R*-tree (WR-02): `screens` comes straight off `InjectScreensReq`
+    // (unbounded), so checking only the post-query candidate count would still let a
+    // pathological set drive `bulk_load` over every object first. Mirror
+    // `grid::receiver_grid`'s check-before-allocate posture.
+    if screens.len() > MAX_CORRIDOR_CANDIDATES {
+        return Err(GisError::CorridorCandidatesExceeded {
+            got: screens.len(),
+            limit: MAX_CORRIDOR_CANDIDATES,
+        });
+    }
     let entries: Vec<AabbEntry> = screens
         .iter()
         .enumerate()
@@ -615,6 +627,20 @@ mod tests {
         let screens = vec![building(8.0, 12.0, 6.0)];
         let err = inject_screens(&base, &screens, &small).unwrap_err();
         assert_eq!(err, GisError::OutsideHull, "hull miss is OutsideHull");
+    }
+
+    // WR-02: an over-large wire-supplied `screens` set is rejected BEFORE the
+    // R*-tree is allocated (input bound, not just the post-query candidate count).
+    #[test]
+    fn oversized_screen_input_is_rejected_before_allocation() {
+        let tin = flat_tin();
+        let base = base_along_x();
+        let screens = vec![building(8.0, 12.0, 6.0); MAX_CORRIDOR_CANDIDATES + 1];
+        assert!(matches!(
+            inject_screens(&base, &screens, &tin),
+            Err(GisError::CorridorCandidatesExceeded { got, limit })
+                if got == MAX_CORRIDOR_CANDIDATES + 1 && limit == MAX_CORRIDOR_CANDIDATES
+        ));
     }
 
     #[test]
