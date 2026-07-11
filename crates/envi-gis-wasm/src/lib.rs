@@ -40,7 +40,7 @@ use envi_dgm::tin::{Tin, build_tin};
 use envi_gis::GisError;
 use envi_gis::buildings::buildings_from_overpass;
 use envi_gis::cog::{MAX_DECODED_PX, PixelWindow, Raster, decode_window_u8};
-use envi_gis::era5::{Era5Hour, N_STABILITY, obukhov, occurrence_stats};
+use envi_gis::era5::{Era5Hour, N_STABILITY, occurrence_stats_with_inv_l};
 use envi_gis::grid;
 use envi_gis::impedance::{DrawnZone, GroundSegmentation, ImportedZone, segment_ground};
 use envi_gis::landcover::{DEFAULT_MIN_AREA_PX, DEFAULT_SIMPLIFY_TOL_PX, vectorize_landcover};
@@ -688,9 +688,10 @@ pub fn derive_weather(req: JsValue) -> Result<JsValue, JsValue> {
 }
 
 /// Derive the ERA5 wind×stability occurrence table + per-hour `1/L` (METX-02, D-05
-/// — occurrence statistics only). Delegates the binning to
-/// `envi_gis::era5::occurrence_stats` and the per-hour inverse Obukhov length to
-/// `envi_gis::era5::obukhov`.
+/// — occurrence statistics only). Delegates to
+/// `envi_gis::era5::occurrence_stats_with_inv_l`, which bins the classes and
+/// returns each hour's inverse Obukhov length from a single pass (no double
+/// `obukhov` recompute).
 ///
 /// # Errors
 /// A shape error, or any [`GisError`] from the derivation.
@@ -698,12 +699,9 @@ pub fn derive_weather(req: JsValue) -> Result<JsValue, JsValue> {
 pub fn derive_era5(req: JsValue) -> Result<JsValue, JsValue> {
     let req: Era5DeriveReq = from_js(req)?;
     let hours: Vec<Era5Hour> = req.hours.iter().map(era5_hour).collect();
-    let occ = occurrence_stats(&hours).map_err(gis_err)?;
-    let inv_l: Vec<f64> = hours
-        .iter()
-        .map(obukhov)
-        .collect::<Result<_, _>>()
-        .map_err(gis_err)?;
+    // Single pass: the occurrence binning already computes each hour's `1/L`, so
+    // collect it here instead of a second `obukhov` sweep over the same hours (IN-03a).
+    let (occ, inv_l) = occurrence_stats_with_inv_l(&hours).map_err(gis_err)?;
     let counts: Vec<Vec<u32>> = occ
         .counts
         .iter()

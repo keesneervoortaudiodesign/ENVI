@@ -265,11 +265,33 @@ impl ClassOccurrence {
 /// Propagates [`obukhov`]'s typed error for a non-finite / degenerate hour, or
 /// [`GisError::NonFinite`] if a 10 m wind component is non-finite — never a panic.
 pub fn occurrence_stats(hours: &[Era5Hour]) -> Result<ClassOccurrence, GisError> {
+    // Delegate to the single-pass variant and drop the per-hour `1/L` (callers that
+    // want both the table AND the per-hour inverse Obukhov length use
+    // [`occurrence_stats_with_inv_l`], avoiding a second `obukhov` sweep).
+    Ok(occurrence_stats_with_inv_l(hours)?.0)
+}
+
+/// Bin every hour into the class-occurrence table **and** return the per-hour
+/// inverse Obukhov length `1/L` from the SAME pass (METX-02, D-05).
+///
+/// [`occurrence_stats`] already computes each hour's `1/L` to classify stability;
+/// a caller that also needs the per-hour `1/L` (e.g. the WASM `derive_era5`
+/// result) must use this rather than mapping [`obukhov`] a second time over the
+/// same hours (IN-03a — the full virtual-temperature/Obukhov chain is not cheap).
+///
+/// # Errors
+///
+/// Propagates [`obukhov`]'s typed error for a non-finite / degenerate hour, or
+/// [`GisError::NonFinite`] if a 10 m wind component is non-finite — never a panic.
+pub fn occurrence_stats_with_inv_l(
+    hours: &[Era5Hour],
+) -> Result<(ClassOccurrence, Vec<f64>), GisError> {
     let mut occ = ClassOccurrence {
         counts: [[0; N_STABILITY]; N_WIND_BINS],
         total: 0,
         reliable: 0,
     };
+    let mut inv_l = Vec::with_capacity(hours.len());
     for hour in hours {
         for (v, what) in [(hour.u10_ms, "u10"), (hour.v10_ms, "v10")] {
             if !v.is_finite() {
@@ -278,17 +300,18 @@ pub fn occurrence_stats(hours: &[Era5Hour]) -> Result<ClassOccurrence, GisError>
                 });
             }
         }
-        let inv_l = obukhov(hour)?;
+        let l_inv = obukhov(hour)?;
         let speed = hour.u10_ms.hypot(hour.v10_ms);
         let bin = wind_bin(speed);
-        let stab = Stability::classify(inv_l);
+        let stab = Stability::classify(l_inv);
         occ.counts[bin][stab as usize] += 1;
         occ.total += 1;
         if hour.sdfor_m.is_finite() && hour.sdfor_m < SDFOR_RELIABLE_MAX_M {
             occ.reliable += 1;
         }
+        inv_l.push(l_inv);
     }
-    Ok(occ)
+    Ok((occ, inv_l))
 }
 
 #[cfg(test)]

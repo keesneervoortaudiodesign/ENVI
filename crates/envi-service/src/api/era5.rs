@@ -182,16 +182,18 @@ async fn retrieve_era5_hours(
         detail: "ERA5 live retrieval is disabled".to_string(),
     })?;
 
-    // SSRF chokepoint: hardcoded host, validated path, BEFORE any request.
-    let url = resolve_cds_upstream(&req.dataset_path)?;
+    // SSRF chokepoint: hardcoded host, validated path, BEFORE any request. Still
+    // validated even though no request is issued yet, so a bad `dataset_path` is a
+    // loud `400` rather than a silent no-op.
+    let _url = resolve_cds_upstream(&req.dataset_path)?;
 
-    // Issue the authenticated request through the shared (redirect-none, timeout)
-    // client. `bearer_auth` sends the key to CDS over TLS only — it is never
-    // logged or surfaced. `From<reqwest::Error>` maps any fault to a generic 500.
-    let _resp = app.http.get(&url).bearer_auth(&key).send().await?;
-
-    // The queued-job NetCDF retrieval + decode is future work (D-04); do not
-    // fabricate partial data. Report a generic internal error.
+    // The queued-job NetCDF retrieval + decode is future work (D-04). Return the
+    // unimplemented error BEFORE issuing the authenticated CDS request (IN-03b):
+    // the outbound `send()` was previously made only to have its response
+    // discarded, so a successful round-trip was pure waste. The auth path, SSRF
+    // chokepoint, and secret hygiene above stay exercised; only the pointless
+    // network call is removed until the decode lands.
+    let _ = (app, key);
     Err(ApiError::Internal {
         detail: "internal error".to_string(),
     })
