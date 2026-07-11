@@ -4,21 +4,31 @@
 //! - **Inputs:** the `existing` scene features and a fresh `incoming` import set.
 //! - **Output:** the merged feature list.
 //! - **Invariant (load-bearing, D-09):** merge matches on the
-//!   `(source, source_ref)` identity ([`crate::provenance::merge_key`]):
-//!   * an existing feature flagged `user_modified` is **kept as-is** (user edits
-//!     always survive re-import);
-//!   * an existing untouched import is **refreshed** from the matching incoming
-//!     feature (geometry/props updated);
-//!   * an existing import absent from this re-import is **retained** (a smaller
-//!     re-import bbox never deletes prior features);
-//!   * a genuinely-new incoming feature is **added**;
+//!   `(source, source_ref)` identity ([`crate::provenance::merge_key`]). Crucially
+//!   this identity is **many-to-one** for raster layers: terrain / land-cover
+//!   stamp ONE tile-level `source_ref` onto *every* feature of a tile, so a key
+//!   names a **GROUP** of features, not a single one. The merge therefore works
+//!   per key-GROUP (never assuming a 1:1 mapping — that assumption panicked the
+//!   WASM on re-import, CR-01):
+//!   * if **any** existing member of a key's group is flagged `user_modified`, the
+//!     whole existing group is **kept as-is** and the incoming group for that key
+//!     is **suppressed** — user edits always survive re-import, and the untouched
+//!     siblings are never dropped (no data loss) nor duplicated;
+//!   * otherwise, an untouched existing group whose key is present in the incoming
+//!     import is **replaced** wholesale by the incoming group (raster samples have
+//!     no stable per-point identity across imports, so the group is the unit);
+//!   * an existing import group absent from this re-import is **retained** (a
+//!     smaller re-import bbox never deletes prior features);
+//!   * a genuinely-new incoming key is **added**;
 //!   * a user-created feature without provenance has no import identity and is
 //!     always kept.
 //!
 //! There is no parallel "import ledger" — identity and the edit flag live in the
-//! feature properties (Pattern 4), so the merge cannot drift from the scene.
+//! feature properties (Pattern 4), so the merge cannot drift from the scene. The
+//! whole operation is total: no `.expect`/`unwrap` on the data path, so a shared
+//! key can never trap the WASM.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use geojson::Feature;
 
@@ -27,52 +37,46 @@ use crate::provenance::{is_user_modified, merge_key};
 /// Merge a fresh `incoming` import into the `existing` scene features (D-09).
 ///
 /// Order is deterministic: existing features keep their relative order; genuinely
-/// new incoming features are appended in their original order.
+/// new (or refreshed) incoming features are appended in their original order.
 #[must_use]
 pub fn merge(existing: Vec<Feature>, incoming: Vec<Feature>) -> Vec<Feature> {
-    // Index incoming keyed features by identity → position.
-    let mut key_to_idx: HashMap<(String, String), usize> = HashMap::new();
-    for (i, f) in incoming.iter().enumerate() {
-        if let Some(k) = merge_key(f) {
-            key_to_idx.insert(k, i);
-        }
-    }
+    // Keys "locked" by a user edit: any existing feature of the key's group is
+    // user-modified. The whole existing group survives and the incoming group for
+    // that key is suppressed (edits win; untouched siblings are neither dropped
+    // nor duplicated by an incoming twin).
+    let locked_keys: HashSet<(String, String)> = existing
+        .iter()
+        .filter(|f| is_user_modified(f))
+        .filter_map(merge_key)
+        .collect();
 
-    let mut incoming_slots: Vec<Option<Feature>> = incoming.into_iter().map(Some).collect();
-    let mut consumed = vec![false; incoming_slots.len()];
+    // Which keys the incoming import carries at all (group membership, not a
+    // single index) — an existing untouched group whose key appears here is
+    // replaced wholesale by the incoming group.
+    let incoming_keys: HashSet<(String, String)> = incoming.iter().filter_map(merge_key).collect();
 
     let mut out = Vec::new();
     for e in existing {
         match merge_key(&e) {
-            Some(k) => {
-                let matched = key_to_idx.get(&k).copied();
-                if is_user_modified(&e) {
-                    // User edits win; consume any matching incoming so it is not
-                    // re-added as "new".
-                    if let Some(i) = matched {
-                        consumed[i] = true;
-                    }
-                    out.push(e);
-                } else if let Some(i) = matched {
-                    // Untouched import → refresh from incoming.
-                    consumed[i] = true;
-                    out.push(incoming_slots[i].take().expect("matched incoming present"));
-                } else {
-                    // Existing import not in this re-import → retain.
-                    out.push(e);
-                }
-            }
-            // User-created (no import identity) → always keep.
-            None => out.push(e),
+            // Locked group (a member was user-edited) → keep the entire existing
+            // group verbatim.
+            Some(k) if locked_keys.contains(&k) => out.push(e),
+            // Untouched existing group whose key is refreshed this round → drop
+            // here; the incoming group is appended below.
+            Some(k) if incoming_keys.contains(&k) => { /* replaced by incoming */ }
+            // Existing import absent from this re-import, or a user-created feature
+            // with no import identity → retain.
+            _ => out.push(e),
         }
     }
 
-    // Append genuinely-new incoming features in original order.
-    for (i, slot) in incoming_slots.into_iter().enumerate() {
-        if !consumed[i]
-            && let Some(f) = slot
-        {
-            out.push(f);
+    // Append incoming features that refresh or newly add a key, in original order.
+    // Incoming whose key is locked by a user edit is suppressed so a user-modified
+    // feature is never clobbered or duplicated by its incoming twin.
+    for f in incoming {
+        match merge_key(&f) {
+            Some(k) if locked_keys.contains(&k) => { /* user edit wins; suppress */ }
+            _ => out.push(f),
         }
     }
     out
@@ -200,5 +204,84 @@ mod tests {
         assert_eq!(marker_of(w9), "user");
         assert!(is_user_modified(w9));
         assert!(find(&merged, "way/1").is_some(), "new feature added");
+    }
+
+    // --- CR-01 regression: the terrain / land-cover many-features-per-key shape ---
+    //
+    // Terrain and land-cover stamp ONE tile-level `source_ref` onto EVERY feature
+    // of a tile, so all ~4000 elevation points of a tile share a single merge key.
+    // The old 1:1 merge `.expect()`ed a per-feature-unique key and trapped the WASM
+    // (`unreachable`) on re-import of a populated scene. These tests lock in the
+    // group-replace semantics that fix it. All features here share the ONE key
+    // `("osm-overpass", "M_19FN2")`.
+
+    #[test]
+    fn many_features_sharing_one_key_do_not_panic_and_preserve_user_edits() {
+        let existing = vec![
+            feature("M_19FN2", false, "old-a"),
+            feature("M_19FN2", true, "user"), // one user-edited point in the group
+            feature("M_19FN2", false, "old-b"),
+        ];
+        let incoming = vec![
+            feature("M_19FN2", false, "fresh-a"),
+            feature("M_19FN2", false, "fresh-b"),
+        ];
+
+        // The 1:1 merge panicked here; the group merge must not.
+        let merged = merge(existing, incoming);
+
+        // The user edit survives exactly once (never clobbered, never duplicated).
+        let users: Vec<_> = merged.iter().filter(|f| marker_of(f) == "user").collect();
+        assert_eq!(users.len(), 1, "user edit preserved exactly once");
+        assert!(is_user_modified(users[0]), "user_modified flag preserved");
+        // The untouched siblings of a locked group are NOT dropped (no data loss),
+        // and the incoming twins are suppressed rather than duplicated.
+        assert!(
+            merged.iter().any(|f| marker_of(f) == "old-a"),
+            "untouched sibling of a locked group retained"
+        );
+        assert!(
+            merged.iter().all(|f| !marker_of(f).starts_with("fresh")),
+            "incoming group suppressed while the key is user-locked"
+        );
+
+        // Re-import is idempotent: merging the same incoming again neither grows the
+        // set unboundedly nor loses the user edit.
+        let again = merge(
+            merged.clone(),
+            vec![
+                feature("M_19FN2", false, "fresh-a"),
+                feature("M_19FN2", false, "fresh-b"),
+            ],
+        );
+        assert_eq!(again.len(), merged.len(), "re-import is idempotent");
+        assert_eq!(
+            again.iter().filter(|f| marker_of(f) == "user").count(),
+            1,
+            "user edit still preserved on second re-import"
+        );
+    }
+
+    #[test]
+    fn shared_key_group_without_user_edits_is_fully_refreshed() {
+        let existing = vec![
+            feature("M_19FN2", false, "old-a"),
+            feature("M_19FN2", false, "old-b"),
+        ];
+        let incoming = vec![
+            feature("M_19FN2", false, "fresh-a"),
+            feature("M_19FN2", false, "fresh-b"),
+            feature("M_19FN2", false, "fresh-c"),
+        ];
+
+        let merged = merge(existing, incoming);
+
+        // Stale group dropped, refreshed group appended wholesale — no panic, no
+        // stale survivors, correct new cardinality.
+        assert!(
+            merged.iter().all(|f| marker_of(f).starts_with("fresh")),
+            "stale group replaced by the incoming group"
+        );
+        assert_eq!(merged.len(), 3, "refreshed group cardinality");
     }
 }
