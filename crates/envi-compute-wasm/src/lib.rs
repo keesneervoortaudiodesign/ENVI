@@ -41,6 +41,11 @@
 
 pub mod dto;
 pub mod opfs_sink;
+// The caller-side rayon sharding driver (GRID-02). Compiled for every NATIVE build
+// (so `cargo test pool` exercises it) and for the THREADED wasm build; excluded
+// only from the stable, single-threaded wasm build where rayon is absent.
+#[cfg(any(not(target_arch = "wasm32"), feature = "threads"))]
+pub mod pool;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -110,13 +115,23 @@ fn js_err(msg: &str) -> JsValue {
 }
 
 /// A typed boundary error (mirrors `envi-gis-wasm`'s `gis_err` discipline — the
-/// boundary never panics on data). More variants (`Cancelled`, sink-mapping) land
-/// with the rayon pool driver in plan 10-04.
+/// boundary never panics on data). The rayon pool driver ([`pool`]) surfaces
+/// `Cancelled`, `Sink`, and `Solve` through this type.
 #[derive(Debug, Error)]
 pub enum ComputeError {
-    /// A boundary path not yet wired in this plan (the rayon pool lands in 10-04).
+    /// A boundary path not yet wired (e.g. the per-range scene marshalling).
     #[error("not yet wired: {0}")]
     Pending(&'static str),
+    /// Cooperative cancellation was observed at a chunk boundary (D-11) — the tier
+    /// stopped with already-emitted tiers intact; not an error condition per se.
+    #[error("cancelled at a chunk boundary")]
+    Cancelled,
+    /// An OPFS chunk-file I/O failure surfaced by a range sink's `finish`.
+    #[error("chunk sink I/O: {0}")]
+    Sink(#[from] opfs_sink::OpfsError),
+    /// A wrapped engine `PropagationError` from `envi_engine::solver::solve`.
+    #[error("engine solve failed: {0}")]
+    Solve(String),
 }
 
 /// Map a [`ComputeError`] to a `JsValue` error (mirrors `gis_err`).
@@ -195,18 +210,30 @@ pub fn plan_tiers(req: JsValue) -> Result<JsValue, JsValue> {
     to_js(&TierPlanResult { tiers })
 }
 
-/// Solve one disjoint receiver-chunk range on the pool (D-08). **Signature seam
-/// only** in this plan: the request shape is validated here so the wire contract
-/// is fixed; the `wasm-bindgen-rayon` pool driver + OPFS sink wiring land in plan
-/// 10-04.
+/// Solve one disjoint receiver-chunk range on the rayon pool (D-08/GRID-02).
+///
+/// The parallel sharding driver itself now lives in [`pool::solve_tier`] — it runs
+/// the UNCHANGED `envi_engine::solver::solve` per disjoint range into that range's
+/// own OPFS chunk file, checks the cooperative cancel flag ([`request_cancel`]) at
+/// each chunk boundary (D-11), and holds only `workers × chunk` resident (SC3), all
+/// proven natively by `cargo test -p envi-compute-wasm pool`.
+///
+/// The remaining seam is per-range JOB ASSEMBLY from a marshalled scene: the
+/// current [`SolveChunkRangeReq`] carries only the tensor-identity + range span,
+/// not the terrain/atmosphere/source geometry `pool::solve_tier`'s `assemble`
+/// closure needs. That scene-context DTO (and the `open_sink` OPFS wiring via
+/// [`opfs_sink::OpfsChunkSink::open_opfs`]) is the next integration step; until it
+/// lands this boundary validates the range and returns a typed [`ComputeError`].
 ///
 /// # Errors
-/// A shape error in the request DTO, or [`ComputeError::Pending`] until 10-04.
+/// A shape error in the request DTO, or [`ComputeError::Pending`] until the
+/// scene-context marshalling lands.
 #[wasm_bindgen]
 pub fn solve_chunk_range(req: JsValue) -> Result<JsValue, JsValue> {
     let _req: SolveChunkRangeReq = from_js(req)?;
     Err(compute_err(&ComputeError::Pending(
-        "solve_chunk_range: the rayon pool driver lands in plan 10-04",
+        "solve_chunk_range: the pool driver + OPFS sink are wired (pool::solve_tier); \
+         per-range scene-context marshalling (SolveCtx DTO) is the next step",
     )))
 }
 
