@@ -18,6 +18,11 @@ rust-version.workspace = true
 [dependencies]
 envi-engine = { path = "../envi-engine" }
 envi-geo = { path = "../envi-geo" }
+# GEOX-01: the cut-profile samples the imported DGM TIN via `envi_dgm::Tin`.
+# envi-dgm is pure-Rust (`spade` + `thiserror` only) — WASM-safe, zero
+# async/network/browser edges — so this dependency keeps the `cargo tree -p
+# envi-gis` quarantine intact (it never reaches envi-engine's 3-dep quarantine).
+envi-dgm = { path = "../envi-dgm" }
 tiff = "0.11.3"
 geo = "0.30"
 geojson = "1"
@@ -32,3 +37,7 @@ thiserror = "2"
 approx = "0.5"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+# The r.profile oracle test builds a TIN from the committed DEM extract and runs
+# `cut_profile` over it; naming `envi-dgm` here lets the integration test
+# construct the `Tin` it passes in.
+envi-dgm = { path = "../envi-dgm" }

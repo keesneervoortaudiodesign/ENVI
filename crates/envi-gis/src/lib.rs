@@ -46,6 +46,7 @@ mod geojson_util;
 pub mod impedance_table;
 pub mod landcover;
 pub mod merge;
+pub mod profile;
 pub mod provenance;
 pub mod registry;
 pub mod terrain;
@@ -140,6 +141,30 @@ pub enum GisError {
     Json {
         /// Human-readable parse error text.
         message: String,
+    },
+    /// A cut-profile sample's planar point fell outside the DGM TIN convex hull
+    /// (`Tin::interpolate_z` returned `None`). Surfaced rather than defaulting a
+    /// fabricated `0.0` elevation (GEOX-01, D-07, threat T-09-01-02).
+    #[error("cut-profile sample fell outside the TIN hull (no fabricated 0.0)")]
+    OutsideHull,
+    /// The requested cut-profile would exceed the [`profile::MAX_PROFILE_POINTS`]
+    /// sample cap — a pathological tiny-step / huge-distance request, rejected
+    /// before allocation (GEOX-01, threat T-09-01-01, mirrors
+    /// `terrain::MAX_TERRAIN_POINTS`).
+    #[error("cut-profile too long: {got} sample points exceeds the cap of {limit}")]
+    ProfileTooLong {
+        /// Sample-point count the request would produce.
+        got: usize,
+        /// The documented maximum ([`profile::MAX_PROFILE_POINTS`]).
+        limit: usize,
+    },
+    /// A cut-profile could not be built into a valid multi-point section: a
+    /// non-positive sampling step, a zero-length (coincident source/receiver)
+    /// path, or fewer than two strictly-ascending points (GEOX-01).
+    #[error("degenerate cut-profile: {what}")]
+    DegenerateProfile {
+        /// What made the profile degenerate.
+        what: String,
     },
 }
 

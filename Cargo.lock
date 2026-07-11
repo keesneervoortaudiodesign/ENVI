@@ -491,6 +491,7 @@ name = "envi-gis"
 version = "0.1.0"
 dependencies = [
  "approx",
+ "envi-dgm",
  "envi-engine",
  "envi-geo",
  "geo",
