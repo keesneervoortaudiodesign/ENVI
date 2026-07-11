@@ -18,6 +18,7 @@
 
 import { ApiError } from "../api/client";
 import type { WeatherDeriveReq, WeatherDeriveResult } from "../generated/wire";
+import { PROXY_BASE, detailOf } from "./fetchers";
 import { getWeather, putWeather } from "./opfs";
 import { deriveWeather } from "./wasm";
 
@@ -27,10 +28,10 @@ import { deriveWeather } from "./wasm";
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive";
 
-// The same-origin byte-proxy mount (mirrors `envi-service`'s allowlisted `GET /api/v1/proxy/{source}/{*path}`
-// relay — the Phase-8 fallback for CORS-restricted deployments). The two Open-Meteo hosts map to two fixed
-// proxy source ids; the server re-validates its own allowlist, so this only moves the fetch same-origin.
-const PROXY_BASE = "/api/v1/proxy";
+// The two Open-Meteo hosts map to two fixed proxy source ids; the same-origin byte-proxy mount itself is the
+// shared `PROXY_BASE` (mirrors `envi-service`'s allowlisted `GET /api/v1/proxy/{source}/{*path}` relay — the
+// Phase-8 CORS-restricted fallback). The server re-validates its own allowlist, so this only moves the fetch
+// same-origin.
 const PROXY_SOURCE: Readonly<Record<string, string>> = {
   [FORECAST_URL]: "openmeteo-forecast",
   [ARCHIVE_URL]: "openmeteo-archive",
@@ -133,7 +134,7 @@ async function fetchBody(base: string, directUrl: string, signal?: AbortSignal):
   try {
     const res = await fetch(directUrl, { method: "GET", signal });
     if (!res.ok) {
-      throw new ApiError(res.status, (await res.text()).slice(0, 200) || res.statusText);
+      throw new ApiError(res.status, await detailOf(res));
     }
     return await res.text();
   } catch (err) {
@@ -150,7 +151,7 @@ async function fetchBody(base: string, directUrl: string, signal?: AbortSignal):
     // A network/CORS failure (TypeError) → try the same-origin allowlisted proxy once.
     const res = await fetch(proxyUrlFor(base, directUrl), { method: "GET", signal });
     if (!res.ok) {
-      throw new ApiError(res.status, (await res.text()).slice(0, 200) || res.statusText);
+      throw new ApiError(res.status, await detailOf(res));
     }
     return await res.text();
   }

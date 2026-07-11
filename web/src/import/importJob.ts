@@ -16,7 +16,7 @@
 //   DATA-04). Terrain retains its decoded tiles in memory so the buildings layer can sample footprint base
 //   elevation (typed `null`/absent, never `0.0`, when terrain is missing — D-07).
 
-import { ApiError, errorText, type SceneCollection } from "../api/client";
+import { ApiError, errorText, toStatusError, type SceneCollection } from "../api/client";
 import { useSceneStore } from "../store/sceneStore";
 import {
   useImportStore,
@@ -161,10 +161,7 @@ function verticalDatumOf(sourceId: string): VerticalDatumDto | null {
 }
 
 function toLayerError(err: unknown): LayerError {
-  if (err instanceof ApiError) {
-    return { status: err.status, detail: err.detail };
-  }
-  return { status: 0, detail: errorText(err, "Import failed.") };
+  return toStatusError(err, "Import failed.");
 }
 
 // Assign a fresh UUID to every feature (WASM mints none — Pitfall 9). Sets both the top-level `id` and

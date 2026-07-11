@@ -57,6 +57,21 @@ export function errorText(err: unknown, fallback = "Request failed."): string {
   return err instanceof Error ? err.message : fallback;
 }
 
+// A structured `{ status, detail }` view of a thrown value — an `ApiError`'s
+// (status, detail), else `{ status: 0, detail }` with `detail` from `errorText`.
+// The single shared shape the layer/weather import stores record as a failure (both
+// carry the same HTTP-ish status + text pair). `client.ts` owns `ApiError`, so it
+// owns this normalizer too.
+export function toStatusError(
+  err: unknown,
+  fallback = "Request failed.",
+): { status: number; detail: string } {
+  if (err instanceof ApiError) {
+    return { status: err.status, detail: err.detail };
+  }
+  return { status: 0, detail: errorText(err, fallback) };
+}
+
 // Extract a safe `detail` string from a (possibly non-JSON) error body without throwing.
 async function readDetail(res: Response): Promise<string> {
   try {

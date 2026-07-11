@@ -17,7 +17,7 @@
 import { create } from "zustand";
 
 import type { SoundSpeedProfileDto, WeatherComponentsDto } from "../generated/wire";
-import { ApiError } from "../api/client";
+import { errorText, toStatusError } from "../api/client";
 import { deriveAbc, fetchWeather } from "../import/weather";
 import { computeDebugGeometry, type DebugGeometry } from "../import/sceneDebug";
 
@@ -82,10 +82,7 @@ export interface WeatherState {
 }
 
 function toError(err: unknown): WeatherError {
-  if (err instanceof ApiError) {
-    return { status: err.status, detail: err.detail };
-  }
-  return { status: 0, detail: err instanceof Error ? err.message : "Weather import failed." };
+  return toStatusError(err, "Weather import failed.");
 }
 
 export const useWeatherStore = create<WeatherState>((set, get) => ({
@@ -147,7 +144,7 @@ export const useWeatherStore = create<WeatherState>((set, get) => ({
       });
     } catch (err) {
       set({
-        debugStatus: err instanceof Error ? err.message : "Debug geometry failed.",
+        debugStatus: errorText(err, "Debug geometry failed."),
         debugBusy: false,
       });
     }

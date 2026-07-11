@@ -19,7 +19,8 @@ import { ApiError } from "../api/client";
 import type { CorsDto, TileRefDto } from "../generated/wire";
 
 // The same-origin proxy mount (mirrors `envi-service`'s `GET /api/v1/proxy/{source}/{*path}` route).
-const PROXY_BASE = "/api/v1/proxy";
+// Exported as the ONE proxy-mount constant every fetcher (tiles + weather) builds its relay path on.
+export const PROXY_BASE = "/api/v1/proxy";
 
 // Overpass 429 backoff: a handful of retries with growing delay, matching the single-user tool's modest
 // slot budget (08-RESEARCH §Buildings). Kept small — the proxy fallback is the escalation if limits bite.
@@ -35,7 +36,8 @@ function proxyUrl(tile: TileRefDto): string {
 }
 
 // Extract a short error detail from a (possibly binary/empty) non-2xx response without throwing.
-async function detailOf(res: Response): Promise<string> {
+// Shared by every raw-`Response` fetcher (tiles, Overpass, weather) so the truncation rule lives once.
+export async function detailOf(res: Response): Promise<string> {
   try {
     const text = await res.text();
     return text.slice(0, 200) || res.statusText || `status ${res.status}`;

@@ -16,8 +16,10 @@
 
 import type { GeoJSONStoreFeatures } from "terra-draw";
 
+import { errorText } from "../api/client";
 import { useSceneStore } from "../store/sceneStore";
 import { useDgmStore } from "../store/dgm";
+import { KIND_DEFAULTS } from "../store/inheritance";
 import {
   buildReceiverGrid,
   extractCutProfile,
@@ -30,7 +32,9 @@ import type { DrawnZoneDto, GroundSegmentationDto, ScreenObjectDto } from "../ge
 // solve spacing is a Phase-10 user setting; these are sensible visualization defaults.
 const DEBUG_SPACING_M = 10;
 const DEBUG_PROFILE_STEP_M = 5;
-const DEFAULT_GROUND_CLASS = "D";
+// The project default ground class — the single `KIND_DEFAULTS.ground_zone` source of
+// truth (WEB-04), not a second local literal.
+const DEFAULT_GROUND_CLASS = KIND_DEFAULTS.ground_zone.impedance_class as string;
 
 // One impedance-segmented interval of the debug path: its WGS84 polyline + the σ (flow resistivity) the
 // engine resolved for it (drives the soft→hard colour ramp).
@@ -212,7 +216,7 @@ export async function computeDebugGeometry(): Promise<DebugResult> {
       });
       receivers = res.receivers.map((r) => frame.toLngLat([r[0], r[1]]));
     } catch (err) {
-      notes.push(`Receiver grid skipped: ${errText(err)}`);
+      notes.push(`Receiver grid skipped: ${errorText(err, "unknown error")}`);
     }
   } else if (!calcRing) {
     notes.push("No calc area — draw one to see the receiver grid.");
@@ -274,7 +278,7 @@ export async function computeDebugGeometry(): Promise<DebugResult> {
         notes.push("No height-bearing screens (buildings/walls) on the path — screen overlay empty.");
       }
     } catch (err) {
-      notes.push(`Impedance/screen overlay skipped: ${errText(err)}`);
+      notes.push(`Impedance/screen overlay skipped: ${errorText(err, "unknown error")}`);
     }
   } else if (!source || !receiver) {
     notes.push("Place a source and a receiver to see the impedance segmentation + screen vertices.");
@@ -330,9 +334,4 @@ function collectScreens(
     }
   }
   return screens;
-}
-
-// A short message from an unknown thrown value (a WASM `GisError` surfaces as a plain `Error`).
-function errText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
