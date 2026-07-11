@@ -41,9 +41,28 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+// Resolve a path relative to this config WITHOUT a `node:*` import (the config
+// stays node-types-free — see the header note). `URL.pathname` is "/D:/…/x" on
+// Windows; strip the leading slash before a drive letter so the alias replacement
+// is a real filesystem path the resolver accepts.
+function localPath(rel: string): string {
+  const p = new URL(rel, import.meta.url).pathname;
+  return /^\/[A-Za-z]:\//.test(p) ? p.slice(1) : p;
+}
+
 export default defineConfig({
   base: "./",
   plugins: [react()],
+  resolve: {
+    alias: {
+      // The Rust OPFS sink binds a bare `envi-compute-opfs` extern specifier
+      // (`#[wasm_bindgen(module = "envi-compute-opfs")]`, opfs_sink.rs); map it to
+      // the worker-side JS glue so the threaded wasm module resolves it at bundle
+      // time (the wasm crate compiles before this TS exists). Only pulled in once
+      // the sink is wired into `solve_chunk_range`; an inert, harmless alias until.
+      "envi-compute-opfs": localPath("./src/compute/opfs.ts"),
+    },
+  },
   server: {
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin",
