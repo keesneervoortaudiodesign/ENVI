@@ -43,6 +43,7 @@
 pub mod buildings;
 pub mod cog;
 mod geojson_util;
+pub mod impedance;
 pub mod impedance_table;
 pub mod landcover;
 pub mod merge;
@@ -165,6 +166,17 @@ pub enum GisError {
     DegenerateProfile {
         /// What made the profile degenerate.
         what: String,
+    },
+    /// A ground-impedance class letter did not resolve to a flow resistivity σ
+    /// through `envi_engine::scene::impedance_class` (expected `A..=H`). Surfaced
+    /// rather than defaulting a fabricated σ (GEOX-02, threat T-09-01-03) — σ is
+    /// resolved ONLY through the engine, never restated as a literal here.
+    #[error(
+        "ground impedance class {class:?} does not resolve through the engine (expected A..=H)"
+    )]
+    UnresolvableClass {
+        /// The offending class letter.
+        class: char,
     },
 }
 
