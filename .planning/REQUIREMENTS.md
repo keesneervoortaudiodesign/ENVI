@@ -89,7 +89,7 @@
 
 ### Meteorology import & what-if (METX)
 
-- [ ] **METX-01**: Import runtime meteorology from Open-Meteo (multi-level winds/temps, cloud, BLH), cached per (site, window); what-if edits never call the API
+- [x] **METX-01**: Import runtime meteorology from Open-Meteo (multi-level winds/temps, cloud, BLH), cached per (site, window); what-if edits never call the API
 - [x] **METX-02**: Import ERA5/CDS reanalysis to derive wind×stability weather-class occurrence statistics (Obukhov length) — groundwork; full L_den statistics deferred (see GRID-03)
 - [ ] **METX-03**: **Manually override** meteorology for a scenario — T/RH/p, Beaufort wind class + direction, downwind worst-case toggle, temperature gradient, per-azimuth A/B/C — for what-if analysis
 - [ ] **METX-04**: **Named weather scenarios** with per-scenario cached tensors, instant switching, and difference maps between scenarios
@@ -208,7 +208,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | GEOX-02 | Phase 9 | Complete |
 | GEOX-03 | Phase 9 | Complete |
 | GEOX-04 | Phase 6 | Complete |
-| METX-01 | Phase 9 | Pending |
+| METX-01 | Phase 9 | Complete |
 | METX-02 | Phase 9 | Complete |
 | METX-03 | Phase 11 | Pending |
 | METX-04 | Phase 11 | Pending |

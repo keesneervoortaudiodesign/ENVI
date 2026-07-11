@@ -332,7 +332,7 @@ Plans:
   4. Weather import fetches Open-Meteo once per (site, time window), caches it with the project, and derives per-azimuth A/B/C from the multi-level profile; subsequent what-if edits issue zero API calls (verified by network log), and the weighted call cost is logged per fetch
   5. ERA5/CDS groundwork retrieves reanalysis as an async job and derives wind×stability weather-class occurrence statistics (Obukhov length) — full L_den combination stays deferred with GRID-03
 
-**Plans**: 4/6 plans executed
+**Plans**: 5/6 plans executed
 
 Plans:
 
@@ -340,7 +340,7 @@ Plans:
 - [x] 09-02-PLAN.md — screening edges → TerrainProfile vertices (rstar corridor) + building-aware CDT receiver grid (GEOX-03/GRID-01)
 - [x] 09-03-PLAN.md — Open-Meteo multi-level → per-azimuth A/B/C (lift Phase-3 fit) + ERA5 Obukhov/occurrence-stats derivation (METX-01/02)
 - [x] 09-04-PLAN.md — WASM boundary DTOs/shims + flagged-off ERA5/CDS service endpoint + wire no-drift (METX-02)
-- [ ] 09-05-PLAN.md — web weather-import panel: date-switched fetch + OPFS cache + per-azimuth A/B/C + debug overlays (METX-01)
+- [x] 09-05-PLAN.md — web weather-import panel: date-switched fetch + OPFS cache + per-azimuth A/B/C + debug overlays (METX-01)
 - [ ] 09-06-PLAN.md — offline Playwright weather-import journey + SC4 zero-egress what-if proof (METX-01)
 
 **Wave 1**

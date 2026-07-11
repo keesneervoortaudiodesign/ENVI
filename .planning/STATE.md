@@ -6,14 +6,14 @@ current_phase: 09
 current_phase_name: path-extraction-weather
 status: executing
 stopped_at: Completed 09-04-PLAN.md (WASM boundary + flagged ERA5 endpoint + PropagationPathInputs/PathCacheKey)
-last_updated: "2026-07-11T14:44:42.257Z"
+last_updated: "2026-07-11T15:06:38.770Z"
 last_activity: 2026-07-11
-last_activity_desc: Completed 09-04-PLAN.md (METX-02 transport groundwork)
+last_activity_desc: Completed 09-04-PLAN.md
 progress:
   total_phases: 11
   completed_phases: 8
   total_plans: 47
-  completed_plans: 45
+  completed_plans: 46
   percent: 73
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 09 (path-extraction-weather) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Executing — 09-04 complete (WASM boundary DTOs+shims for the Phase-9 core via ts-rs no-drift wire.ts; flagged-off feature=era5 SSRF-allowlisted ERA5/CDS async endpoint on the Phase-6 job machine; envi_gis::path PropagationPathInputs bundle + weather-invariant FNV-1a PathCacheKey — METX-02 groundwork complete)
 Last activity: 2026-07-11 — Completed 09-04-PLAN.md
 
@@ -93,6 +93,7 @@ Progress: [██████░░░░] Phase 9 — 4/6 plans complete (GEOX-
 | Phase 09 P02 | 40min | 2 tasks | 5 files |
 | Phase 09 P03 | 40min | 2 tasks | 12 files |
 | Phase 09 P04 | 55min | 3 tasks | 12 files |
+| Phase 09 P05 | 50min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
