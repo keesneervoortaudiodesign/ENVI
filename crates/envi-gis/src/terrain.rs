@@ -259,12 +259,15 @@ fn sample_raster_nearest(terrain: &Raster<f32>, x: f64, y: f64) -> Option<f64> {
     terrain.get(col as usize, row as usize).map(f64::from)
 }
 
-/// Median of a set of finite values, or `None` if empty.
+/// Median of a set of values, or `None` if empty. Robust regardless of caller:
+/// sorts with `f64::total_cmp` (a total order over all `f64`, `NaN` included) so a
+/// stray non-finite sample can never panic the sort — a no-panic-on-data guarantee
+/// that does not depend on every call site filtering first (WR-04).
 fn median(mut v: Vec<f64>) -> Option<f64> {
     if v.is_empty() {
         return None;
     }
-    v.sort_by(|a, b| a.partial_cmp(b).expect("values are finite"));
+    v.sort_by(f64::total_cmp);
     let n = v.len();
     Some(if n % 2 == 1 {
         v[n / 2]
