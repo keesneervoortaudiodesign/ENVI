@@ -41,6 +41,7 @@
 #![deny(unsafe_code)]
 
 pub mod cog;
+pub mod registry;
 
 use thiserror::Error;
 
