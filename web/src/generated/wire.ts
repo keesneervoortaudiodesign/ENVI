@@ -755,6 +755,29 @@ tensor_hash: string,
 stub: boolean, };
 
 /**
+ * `reproject_ring` request: a WGS84 `[lon, lat]` footprint ring to reproject into
+ * a terrain tile's source CRS (so it can feed `sample_base_elevation`).
+ */
+export type ReprojectRingReq = { 
+/**
+ * Footprint exterior ring `[lon, lat]` in WGS84 degrees.
+ */
+ring: Array<[number, number]>, 
+/**
+ * The terrain raster's source CRS (RD New reprojects through `envi_geo`).
+ */
+source_crs: TerrainSourceCrsDto, };
+
+/**
+ * `reproject_ring` result: the ring in the terrain tile's source CRS.
+ */
+export type ReprojectRingResult = { 
+/**
+ * Footprint exterior ring `[x, y]` in the source CRS (RD meters / WGS84).
+ */
+ring: Array<[number, number]>, };
+
+/**
  * Authoring resolution of a coarse spectrum: how many anchors the `values`
  * slice carries, and where they land on the dense 1/12-octave band index.
  *

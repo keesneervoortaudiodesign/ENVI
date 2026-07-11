@@ -67,9 +67,9 @@ use envi_gis_wasm::dto::{
     BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, CorsDto, DecodeWindowReq,
     DecodeWindowResult, GeoTransformDto, ImportPlanReq, ImportPlanResult, LandcoverResult,
     MapLandcoverReq, MergeReq, MergeResult, ParseBuildingsReq, PixelWindowDto, PlanTilesReq,
-    PlanTilesResult, ProvenanceReqDto, SkipReportDto, SourceDescriptorDto, SourceKindDto,
-    TerrainFeaturesReq, TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto,
-    WindowForBboxReq, WindowForBboxResult,
+    PlanTilesResult, ProvenanceReqDto, ReprojectRingReq, ReprojectRingResult, SkipReportDto,
+    SourceDescriptorDto, SourceKindDto, TerrainFeaturesReq, TerrainFeaturesResult,
+    TerrainSourceCrsDto, TileRefDto, VerticalDatumDto, WindowForBboxReq, WindowForBboxResult,
 };
 
 /// Provenance banner prepended to the committed `wire.ts` (mirrors the oracle
@@ -137,6 +137,7 @@ fn export_all_wire_types(cfg: &Config) {
     ImportPlanReq::export_all(cfg).unwrap();
     PlanTilesReq::export_all(cfg).unwrap();
     WindowForBboxReq::export_all(cfg).unwrap();
+    ReprojectRingReq::export_all(cfg).unwrap();
     DecodeWindowReq::export_all(cfg).unwrap();
     TerrainFeaturesReq::export_all(cfg).unwrap();
     BaseElevationReq::export_all(cfg).unwrap();
@@ -159,6 +160,7 @@ fn export_all_wire_types(cfg: &Config) {
     TileRefDto::export_all(cfg).unwrap();
     PlanTilesResult::export_all(cfg).unwrap();
     WindowForBboxResult::export_all(cfg).unwrap();
+    ReprojectRingResult::export_all(cfg).unwrap();
 }
 
 /// Deterministically regenerate the full `wire.ts` contents (banner + ts-rs

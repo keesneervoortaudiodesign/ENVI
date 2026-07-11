@@ -134,6 +134,18 @@ pub struct WindowForBboxReq {
     pub max_decoded_px: Option<u32>,
 }
 
+/// `reproject_ring` request: a WGS84 `[lon, lat]` footprint ring to reproject into
+/// a terrain tile's source CRS (so it can feed `sample_base_elevation`).
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct ReprojectRingReq {
+    /// Footprint exterior ring `[lon, lat]` in WGS84 degrees.
+    pub ring: Vec<[f64; 2]>,
+    /// The terrain raster's source CRS (RD New reprojects through `envi_geo`).
+    pub source_crs: TerrainSourceCrsDto,
+}
+
 /// `decode_window` request (tile bytes are a separate `&[u8]` parameter).
 #[derive(Debug, Clone, Copy, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
@@ -409,4 +421,12 @@ pub struct PlanTilesResult {
 pub struct WindowForBboxResult {
     /// The pixel window to decode, or `null` for no overlap.
     pub window: Option<PixelWindowDto>,
+}
+
+/// `reproject_ring` result: the ring in the terrain tile's source CRS.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct ReprojectRingResult {
+    /// Footprint exterior ring `[x, y]` in the source CRS (RD meters / WGS84).
+    pub ring: Vec<[f64; 2]>,
 }

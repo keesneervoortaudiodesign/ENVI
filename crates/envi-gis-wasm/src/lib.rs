@@ -48,9 +48,9 @@ use dto::{
     BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, CorsDto, DecodeWindowReq,
     DecodeWindowResult, GeoTransformDto, ImportPlanReq, ImportPlanResult, LandcoverResult,
     MapLandcoverReq, MergeReq, MergeResult, ParseBuildingsReq, PixelWindowDto, PlanTilesReq,
-    PlanTilesResult, ProvenanceReqDto, SkipReportDto, SourceDescriptorDto, SourceKindDto,
-    TerrainFeaturesReq, TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto,
-    WindowForBboxReq, WindowForBboxResult,
+    PlanTilesResult, ProvenanceReqDto, ReprojectRingReq, ReprojectRingResult, SkipReportDto,
+    SourceDescriptorDto, SourceKindDto, TerrainFeaturesReq, TerrainFeaturesResult,
+    TerrainSourceCrsDto, TileRefDto, VerticalDatumDto, WindowForBboxReq, WindowForBboxResult,
 };
 
 // --- Marshalling helpers (the ONLY glue; no domain logic) -----------------
@@ -284,6 +284,20 @@ pub fn window_for_bbox(tile_bytes: &[u8], req: JsValue) -> Result<JsValue, JsVal
     to_js(&WindowForBboxResult {
         window: window.map(pixel_window_dto),
     })
+}
+
+/// Reproject a WGS84 `[lon, lat]` footprint ring into a terrain tile's source CRS
+/// (delegates to `envi_gis::tiles::reproject_ring_to_source`) so it can feed
+/// `sample_base_elevation` — the buildings layer's base-elevation seam (SC4).
+///
+/// # Errors
+/// A shape error, or [`GisError::Reproject`] on a failed RD-New reprojection.
+#[wasm_bindgen]
+pub fn reproject_ring(req: JsValue) -> Result<JsValue, JsValue> {
+    let req: ReprojectRingReq = from_js(req)?;
+    let ring = tiles::reproject_ring_to_source(&req.ring, terrain_source_crs(req.source_crs))
+        .map_err(gis_err)?;
+    to_js(&ReprojectRingResult { ring })
 }
 
 /// Decode an `f32` terrain window from cached COG bytes (delegates to

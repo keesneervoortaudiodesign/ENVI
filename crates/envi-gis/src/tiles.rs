@@ -139,6 +139,42 @@ pub fn default_budget() -> usize {
     MAX_DECODED_PX
 }
 
+/// Reproject a WGS84 `[lon, lat]` ring into a terrain tile's `source_crs` so it
+/// can feed [`crate::terrain::sample_base_elevation`] (which takes a source-CRS
+/// ring). WGS84 terrain (GLO-30) is the identity; RD-New terrain (AHN) goes
+/// through [`envi_geo`] (GEOX-04) — the reprojection TS must NOT do itself. Used
+/// by the buildings layer to sample footprint-boundary base elevation off the
+/// retained terrain tile (SC4).
+///
+/// # Errors
+/// [`GisError::Reproject`] if the RD-New reprojection of any vertex fails.
+pub fn reproject_ring_to_source(
+    ring_wgs84: &[[f64; 2]],
+    source_crs: TerrainSourceCrs,
+) -> Result<Vec<[f64; 2]>, GisError> {
+    match source_crs {
+        TerrainSourceCrs::Wgs84 => Ok(ring_wgs84.to_vec()),
+        TerrainSourceCrs::RdNew => {
+            let crs = RdNewCrs::new().map_err(|e| GisError::Reproject {
+                message: e.to_string(),
+            })?;
+            ring_wgs84
+                .iter()
+                .map(|&[lon, lat]| {
+                    crs.to_rd(LonLat {
+                        lon_deg: lon,
+                        lat_deg: lat,
+                    })
+                    .map(|p| [p.x_m, p.y_m])
+                    .map_err(|e| GisError::Reproject {
+                        message: e.to_string(),
+                    })
+                })
+                .collect()
+        }
+    }
+}
+
 // --- AHN kaartblad enumeration (committed index, no runtime toml dep) --------
 
 /// A parsed AHN kaartblad row: tile name + its RD New (EPSG:28992) bbox.
@@ -448,6 +484,21 @@ mod tests {
         assert_eq!(lats, vec![52, 53]);
         let lons = grid_cells(-0.5, 1.5, 1);
         assert_eq!(lons, vec![-1, 0, 1]);
+    }
+
+    #[test]
+    fn reproject_ring_identity_for_wgs84_and_rd_for_ahn() {
+        let ring = [[4.9, 52.37], [4.91, 52.37], [4.91, 52.38], [4.9, 52.37]];
+        // WGS84 terrain → identity.
+        let same = reproject_ring_to_source(&ring, TerrainSourceCrs::Wgs84).unwrap();
+        assert_eq!(same, ring.to_vec());
+        // RD-New terrain → Amsterdam RD is ~ (120000, 487000) m, orders above degrees.
+        let rd = reproject_ring_to_source(&ring, TerrainSourceCrs::RdNew).unwrap();
+        assert_eq!(rd.len(), ring.len());
+        assert!(
+            rd.iter().all(|[x, y]| *x > 100_000.0 && *y > 400_000.0),
+            "{rd:?}"
+        );
     }
 
     #[test]
