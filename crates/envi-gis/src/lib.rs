@@ -50,6 +50,7 @@ pub mod merge;
 pub mod profile;
 pub mod provenance;
 pub mod registry;
+pub mod screening;
 pub mod terrain;
 pub mod tiles;
 
@@ -177,6 +178,17 @@ pub enum GisError {
     UnresolvableClass {
         /// The offending class letter.
         class: char,
+    },
+    /// The screening corridor query returned more candidate objects than the
+    /// [`screening::MAX_CORRIDOR_CANDIDATES`] cap. Rejected **before** any
+    /// per-candidate cut-plane ∩ prism work so a pathological geometry set cannot
+    /// exhaust CPU/memory (GEOX-03, threat T-09-02-01).
+    #[error("screening corridor selected {got} candidates, exceeding the cap of {limit}")]
+    CorridorCandidatesExceeded {
+        /// Candidate count the corridor query returned.
+        got: usize,
+        /// The documented maximum ([`screening::MAX_CORRIDOR_CANDIDATES`]).
+        limit: usize,
     },
 }
 

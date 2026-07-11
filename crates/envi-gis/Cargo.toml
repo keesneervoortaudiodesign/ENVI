@@ -25,6 +25,12 @@ envi-geo = { path = "../envi-geo" }
 envi-dgm = { path = "../envi-dgm" }
 tiff = "0.11.3"
 geo = "0.30"
+# GEOX-03: the screening corridor query indexes building/wall/barrier AABBs in an
+# R*-tree and locates only the candidates whose envelope intersects the S→R
+# corridor. rstar is pure-Rust (georust family, same as `geo`) — WASM-safe, zero
+# async/network/browser edges — so it keeps the `cargo tree -p envi-gis`
+# quarantine intact. It is the ONLY new runtime dependency this phase adds.
+rstar = "0.13"
 geojson = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
