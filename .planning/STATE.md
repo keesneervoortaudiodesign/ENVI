@@ -6,15 +6,15 @@ current_phase: 10
 current_phase_name: calculation-service
 status: in-progress
 stopped_at: Phase 10 plan 10-01 complete (envi-compute core)
-last_updated: "2026-07-11T18:15:00.000Z"
+last_updated: "2026-07-11T18:52:48.687Z"
 last_activity: 2026-07-11
-last_activity_desc: "Phase 10 plan 10-01 executed: envi-compute pure-Rust core (identity + cost + tiers + SolveJob assembly/SRC-03), all gates green"
+last_activity_desc: 10-01 executed (envi-compute core, 3 tasks, all quality gates green)
 progress:
   total_phases: 11
   completed_phases: 9
   total_plans: 52
-  completed_plans: 48
-  percent: 83
+  completed_plans: 49
+  percent: 82
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 10 (calculation-service) — IN PROGRESS
-Plan: 1 of 5 complete (10-01 ✓; 10-02..10-05 pending)
+Plan: 2 of 5 complete (10-01 ✓; 10-02..10-05 pending)
 Status: Phase 10 STARTED. 10-01 executed — the pure-Rust `envi-compute` core landed: the WASM-safe tensor-identity closure factored byte-for-byte out of envi-store (tensor_hash digest-pinned + CalcManifest + chunk_receivers + MetDto/ReceiverDto + geometry_positions, re-exported for source compatibility), the SC1 cost model + Ok/Warn/Block guardrail, the hierarchical points⊂coarse⊂fine tier partition (D-05), and the SolveJob assembly that FIRST populates SolveJob::directivity_phase_rad (SRC-03 seam, has_phase()-gated) with ENG-09/10 forest/isolation threaded. Engine byte-identical; envi-compute compiles for wasm32; all gates green. Next: 10-02 (COOP/COEP headers), then 10-03 (envi-compute-wasm cdylib + OPFS sink), 10-04 (rayon pool + worker), 10-05 (CalcPanel UI).
 Last activity: 2026-07-11 — 10-01 executed (envi-compute core, 3 tasks, all quality gates green)
 
@@ -97,6 +97,7 @@ Progress: [█████████░] Phase 10 — 1/5 plans complete (10-0
 | Phase 09 P05 | 50min | 2 tasks | 10 files |
 | Phase 09 P06 | 12min | 1 task | 4 files |
 | Phase 10 P01 | ~45min | 3 tasks | 12 files |
+| Phase 10 P02 | ~20min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -170,6 +171,7 @@ Recent decisions affecting current work:
 - [Phase 09, 09-03] METX-01: the Phase-3 weather LSQ (3×3 Cramer fit_profile) + WeatherComponents/WeatherProfile/profile_for_bearing/ReflectionProfiles LIFTED verbatim into WASM-safe envi_gis::weather (single source of truth); envi-harness now depends on envi-gis, re-exports the types (weather/mod.rs) and DELEGATES fit_profile (route3.rs maps GisError→CaseLoadError) so every Phase-3 call site + test is unchanged — no duplicate LSQ, engine still exactly 3 deps, no async/network edge in envi-gis
 - [Phase 09, 09-03] METX-01 components_from_levels uses the validated Route-2 [ASSUMED] SEPARABLE model (a_temp=0, linear temperature gradient→B/C, neutral-log-law→a_wind), NOT a naive 3-param fit of both terms: real Open-Meteo pressure levels are sparse/≥90 m AGL so the [ln(z),z,1] basis is ill-conditioned (singular) — the separable model is well-conditioned and physically matches route2. AMSL geopotential→AGL via elevation subtract; near-surface 2m/10m anchor conditions/enriches the fit. Structural/direction/round-trip tests ONLY on committed openmeteo_{archive,forecast}.json — [ASSUMED] quarantine intact, NO false FORCE pass
 - [Phase 09, 09-03] METX-02: envi_gis::era5 obukhov (1/L from iews/inss/ishf/2t/2d/sp; downward-positive ⇒ daytime unstable/night stable) + occurrence_stats (wind×stability class-occurrence table + sdfor reliability). Occurrence statistics ONLY (D-05) — NO class→A/B/C, NO L_den (deferred GRID-03). Committed era5_synthetic.toml with an INDEPENDENT-recipe 1/L oracle + exact class counts; named [ASSUMED] bin edges; new GisError::{WeatherFit, Era5Field}
+- [Phase ?]: 10-02: COOP same-origin + COEP credentialless (NOT require-corp) on the envi-service bundle + Vite dev server — cross-origin isolation for SharedArrayBuffer while preserving Phase-8 direct GIS/basemap fetches
 
 ### Pending Todos
 
@@ -198,6 +200,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T17:31:02.670Z
+Last session: 2026-07-11T18:52:20.818Z
 Stopped at: Phase 10 context gathered
 Resume file: .planning/phases/10-calculation-service/10-CONTEXT.md
