@@ -51,12 +51,32 @@ reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
     "stream",
 ] }
+# envi-gis (D-04, OPTIONAL, era5-only): the flagged ERA5/CDS retrieval endpoint
+# (`api/era5.rs`) runs the pure-Rust `envi_gis::era5` occurrence-statistics
+# derivation on completion. It is pulled in ONLY under `--features era5`, so the
+# default build's dependency graph and bin are byte-unchanged (the endpoint is
+# absent by default; a contract test asserts the route is not registered). NOTE:
+# `reqwest` is NOT gated behind this feature — the Phase-8 byte relay
+# (`api/proxy.rs`) already requires it unconditionally, so gating it would break
+# the default build. The era5 endpoint REUSES that same shared client; the feature
+# gates the new module + route + the envi-gis derivation dep instead.
+envi-gis = { path = "../envi-gis", optional = true }
 thiserror = "2"
 # ts-rs (D-10): derive the TS wire mirror on the service request/response DTOs +
 # JobStatus. uuid-impl maps `Uuid -> string`; no-serde-warnings silences the
 # benign "cannot parse `transparent`" note on JobId (ts-rs inlines the newtype to
 # `type JobId = string` regardless — the no-drift test verifies the output).
 ts-rs = { version = "12", features = ["uuid-impl", "no-serde-warnings"] }
+
+# Feature flags (D-04). `era5` is DEFAULT-OFF: it gates the flagged ERA5/CDS
+# retrieval endpoint (`api/era5.rs` + its route) and the pure-Rust `envi-gis`
+# occurrence-statistics derivation it delegates to. With the feature off the
+# endpoint does not compile in and the route is absent (contract-tested). Live
+# CDS retrieval additionally requires a server-env `CDS_API_KEY`; absent it, the
+# endpoint reports "disabled" — the endpoint ships the security posture
+# (SSRF-allowlisted host, no key/host/path leak) while the live fetch stays off.
+[features]
+era5 = ["dep:envi-gis"]
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

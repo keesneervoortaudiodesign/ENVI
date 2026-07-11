@@ -29,6 +29,10 @@
 
 pub mod calc;
 pub mod dgm;
+// D-04: the flagged ERA5/CDS retrieval endpoint compiles ONLY under `--features
+// era5`. The default build has no `era5` module and no route (contract-tested).
+#[cfg(feature = "era5")]
+pub mod era5;
 pub mod jobs;
 pub mod meta;
 pub mod projects;
@@ -60,7 +64,7 @@ const SCENE_BODY_LIMIT: usize = 32 * 1024 * 1024;
 /// for clarity). The router carries its own 404 fallback so unmatched
 /// `/api/v1/*` paths return JSON, not the SPA HTML.
 pub fn api_router() -> Router<Arc<AppState>> {
-    Router::new()
+    let router = Router::new()
         .route("/meta/freq-axis", get(meta::freq_axis))
         .route(
             "/meta/interpolate-spectrum",
@@ -91,8 +95,15 @@ pub fn api_router() -> Router<Arc<AppState>> {
         .route("/jobs/{id}/events", get(jobs::job_events))
         // D-02 allowlisted byte relay: GET-only (any other method -> 405), axum 0.8
         // brace + `{*path}` wildcard captures the full upstream key segment.
-        .route("/proxy/{source}/{*path}", get(proxy::relay))
-        .fallback(api_fallback)
+        .route("/proxy/{source}/{*path}", get(proxy::relay));
+
+    // D-04: the flagged ERA5/CDS retrieval endpoint is registered ONLY under
+    // `--features era5`. With the feature off the route is absent — an unknown
+    // `/era5/import` falls through to `api_fallback` (404), contract-tested.
+    #[cfg(feature = "era5")]
+    let router = router.route("/era5/import", post(era5::import_era5));
+
+    router.fallback(api_fallback)
 }
 
 /// Assemble the full application: `/api/v1` nested under a static-bundle

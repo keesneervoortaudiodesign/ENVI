@@ -545,6 +545,7 @@ dependencies = [
  "envi-dgm",
  "envi-engine",
  "envi-geo",
+ "envi-gis",
  "envi-gis-wasm",
  "envi-store",
  "geojson",
