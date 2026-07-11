@@ -96,6 +96,29 @@ export async function removeTile(projectId: string, source: string, tile: string
   }
 }
 
+// The fixed cache sub-directory for OPFS-cached Open-Meteo weather responses (METX-01, D-03). Kept a
+// FIXED literal segment — never a user string — so the `projects/<uuid>/cache/weather/<key>` layout is as
+// path-traversal-safe as the tile cache (threat T-09-05-02).
+const WEATHER_SOURCE = "weather";
+
+// Persist a fetched Open-Meteo response body (UTF-8 JSON text) under
+// `projects/<projectId>/cache/weather/<key>` (METX-01, D-01/D-03). `key` is the caller's `(lat,lon,ts)`
+// cache key; it is `safeSeg`-sanitised (in `putTile`/`cacheDir`) so no `/`, `\`, `..`, or NUL escapes the
+// fixed layout — a path-traversal cache key can never reach `getDirectoryHandle` (threat T-09-05-02).
+// Overwrites an existing entry (a re-fetch of the same key is idempotent).
+export async function putWeather(projectId: string, key: string, json: string): Promise<void> {
+  const bytes = new TextEncoder().encode(json);
+  await putTile(projectId, WEATHER_SOURCE, key, bytes.buffer as ArrayBuffer);
+}
+
+// Read a cached Open-Meteo response body (UTF-8 JSON text), or `null` on a miss (the fetch-then-`putWeather`
+// path). A miss is the ordinary cold-cache state, never an error — the SC4 "what-if reads OPFS only" guard
+// depends on a HIT returning here so no network call is issued.
+export async function getWeather(projectId: string, key: string): Promise<string | null> {
+  const bytes = await getTile(projectId, WEATHER_SOURCE, key);
+  return bytes === null ? null : new TextDecoder().decode(bytes);
+}
+
 // An honest storage-quota snapshot (threat T-08-07-01): callers block/warn before a write that would
 // exhaust the origin's quota, rather than letting a `write` fail opaquely. Both fields may be undefined.
 export async function estimateQuota(): Promise<QuotaEstimate> {

@@ -23,13 +23,22 @@ import init, {
   map_landcover as wasmMapLandcover,
   parse_buildings as wasmParseBuildings,
   merge_features as wasmMergeFeatures,
+  extract_cut_profile as wasmExtractCutProfile,
+  segment_cut_profile as wasmSegmentCutProfile,
+  inject_screen_edges as wasmInjectScreenEdges,
+  build_receiver_grid as wasmBuildReceiverGrid,
+  derive_weather as wasmDeriveWeather,
 } from "../generated/wasm/envi_gis_wasm";
 import type {
   BaseElevationReq,
   BaseElevationResult,
   BuildingsResult,
+  CutProfileReq,
+  CutProfileResult,
+  GroundSegmentationDto,
   ImportPlanReq,
   ImportPlanResult,
+  InjectScreensReq,
   LandcoverResult,
   MapLandcoverReq,
   MergeReq,
@@ -37,10 +46,15 @@ import type {
   ParseBuildingsReq,
   PlanTilesReq,
   PlanTilesResult,
+  ReceiverGridReq,
+  ReceiverGridResult,
   ReprojectRingReq,
   ReprojectRingResult,
+  SegmentGroundReq,
   TerrainFeaturesReq,
   TerrainFeaturesResult,
+  WeatherDeriveReq,
+  WeatherDeriveResult,
   WindowForBboxReq,
   WindowForBboxResult,
 } from "../generated/wire";
@@ -167,4 +181,48 @@ export function parseBuildings(req: ParseBuildingsReq): Promise<BuildingsResult>
 /** Merge a fresh import into the existing scene by feature identity (D-09). */
 export function mergeFeatures(req: MergeReq): Promise<MergeResult> {
   return call<MergeReq, MergeResult>(wasmMergeFeatures as (r: MergeReq) => unknown, req);
+}
+
+/** Extract the source→receiver DEM cut-profile (GEOX-01): strictly-ascending `(x, z)` ground points. */
+export function extractCutProfile(req: CutProfileReq): Promise<CutProfileResult> {
+  return call<CutProfileReq, CutProfileResult>(
+    wasmExtractCutProfile as (r: CutProfileReq) => unknown,
+    req,
+  );
+}
+
+/** Segment the cut-profile into per-interval ground impedance segments (GEOX-02, drawn > imported > default). */
+export function segmentCutProfile(req: SegmentGroundReq): Promise<GroundSegmentationDto> {
+  return call<SegmentGroundReq, GroundSegmentationDto>(
+    wasmSegmentCutProfile as (r: SegmentGroundReq) => unknown,
+    req,
+  );
+}
+
+/** Inject screening edges (building/wall/barrier tops) into a base segmentation as `(x, z)` vertices (GEOX-03). */
+export function injectScreenEdges(req: InjectScreensReq): Promise<GroundSegmentationDto> {
+  return call<InjectScreensReq, GroundSegmentationDto>(
+    wasmInjectScreenEdges as (r: InjectScreensReq) => unknown,
+    req,
+  );
+}
+
+/** Build the building-aware constrained-Delaunay receiver grid (GRID-01): receiver positions `[x, y, z]`. */
+export function buildReceiverGrid(req: ReceiverGridReq): Promise<ReceiverGridResult> {
+  return call<ReceiverGridReq, ReceiverGridResult>(
+    wasmBuildReceiverGrid as (r: ReceiverGridReq) => unknown,
+    req,
+  );
+}
+
+/**
+ * Derive the per-azimuth sound-speed profiles from an Open-Meteo multi-level profile (METX-01). ALL of the
+ * A/B/C acoustic math runs here in WASM (`envi_gis::weather`) — TypeScript never does acoustic arithmetic
+ * (the wire contract, threat T-09-05-04). Callers pass the OPFS-cached Open-Meteo JSON verbatim.
+ */
+export function deriveWeather(req: WeatherDeriveReq): Promise<WeatherDeriveResult> {
+  return call<WeatherDeriveReq, WeatherDeriveResult>(
+    wasmDeriveWeather as (r: WeatherDeriveReq) => unknown,
+    req,
+  );
 }
