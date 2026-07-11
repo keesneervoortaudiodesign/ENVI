@@ -53,11 +53,31 @@ function ensureWasm(): Promise<void> {
   return ready;
 }
 
+// A wasm TRAP (a Rust panic aborts to `unreachable`) leaves the linear-memory module in an unrecoverable
+// state — every subsequent call into the same instance is undefined. wasm-bindgen surfaces a trap as a
+// `WebAssembly.RuntimeError` (a normal `Result::Err`/`GisError` is a plain thrown `Error`, NOT a
+// RuntimeError — so this discriminates a poison-trap from a recoverable domain error). On a trap we drop the
+// cached instance so the NEXT call re-inits a FRESH module, letting a per-layer Retry re-enter a clean
+// instance instead of the poisoned one (WR-03).
+function isWasmTrap(err: unknown): boolean {
+  return typeof WebAssembly !== "undefined" && err instanceof WebAssembly.RuntimeError;
+}
+function onWasmError(err: unknown): void {
+  if (isWasmTrap(err)) {
+    ready = null; // poison recovery: force a fresh init on the next call
+  }
+}
+
 // The generated exports type `req`/return as `any`; the wire DTOs are the real shapes. These wrappers are
-// the single, audited cast site (kept local so no caller casts).
+// the single, audited cast site (kept local so no caller casts) and the single wasm-trap recovery point.
 async function call<Req, Res>(fn: (req: Req) => unknown, req: Req): Promise<Res> {
   await ensureWasm();
-  return fn(req) as Res;
+  try {
+    return fn(req) as Res;
+  } catch (err) {
+    onWasmError(err);
+    throw err;
+  }
 }
 async function callBytes<Req, Res>(
   fn: (bytes: Uint8Array, req: Req) => unknown,
@@ -65,7 +85,12 @@ async function callBytes<Req, Res>(
   req: Req,
 ): Promise<Res> {
   await ensureWasm();
-  return fn(bytes, req) as Res;
+  try {
+    return fn(bytes, req) as Res;
+  } catch (err) {
+    onWasmError(err);
+    throw err;
+  }
 }
 
 /** Pick each layer's source for a WGS84 viewport (registry coverage lookup, D-04). */
