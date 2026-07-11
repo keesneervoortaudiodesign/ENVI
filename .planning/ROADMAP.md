@@ -332,7 +332,42 @@ Plans:
   4. Weather import fetches Open-Meteo once per (site, time window), caches it with the project, and derives per-azimuth A/B/C from the multi-level profile; subsequent what-if edits issue zero API calls (verified by network log), and the weighted call cost is logged per fetch
   5. ERA5/CDS groundwork retrieves reanalysis as an async job and derives wind×stability weather-class occurrence statistics (Obukhov length) — full L_den combination stays deferred with GRID-03
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+
+- [ ] 09-01-PLAN.md — DEM cut-profile extractor (GRASS-faithful oracle) + impedance segmentation drawn&gt;imported&gt;default (GEOX-01/02)
+- [ ] 09-02-PLAN.md — screening edges → TerrainProfile vertices (rstar corridor) + building-aware CDT receiver grid (GEOX-03/GRID-01)
+- [ ] 09-03-PLAN.md — Open-Meteo multi-level → per-azimuth A/B/C (lift Phase-3 fit) + ERA5 Obukhov/occurrence-stats derivation (METX-01/02)
+- [ ] 09-04-PLAN.md — WASM boundary DTOs/shims + flagged-off ERA5/CDS service endpoint + wire no-drift (METX-02)
+- [ ] 09-05-PLAN.md — web weather-import panel: date-switched fetch + OPFS cache + per-azimuth A/B/C + debug overlays (METX-01)
+- [ ] 09-06-PLAN.md — offline Playwright weather-import journey + SC4 zero-egress what-if proof (METX-01)
+
+**Wave 1**
+
+- [ ] 09-01: cut-profile + impedance segmentation
+
+**Wave 2** *(blocked on 09-01)*
+
+- [ ] 09-02: screening edges + receiver grid
+
+**Wave 3** *(blocked on 09-02)*
+
+- [ ] 09-03: Open-Meteo A/B/C + ERA5 derivation
+
+**Wave 4** *(blocked on 09-01/02/03)*
+
+- [ ] 09-04: WASM boundary + flagged ERA5 endpoint
+
+**Wave 5** *(blocked on 09-04)*
+
+- [ ] 09-05: web weather-import panel + overlays
+
+**Wave 6** *(blocked on 09-05)*
+
+- [ ] 09-06: offline Playwright SC4 zero-egress proof
+
+**UI hint**: yes
 
 ### Phase 10: Calculation Service
 
@@ -402,7 +437,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 6. Service Foundation & Persistence | 4/4 | Complete (all 5 completion gates closed) | 2026-07-09 |
 | 7. Frontend Shell & Scene Editing | 10/10 | Complete (all 5 completion gates closed) | 2026-07-10 |
 | 8. GIS Ingestion & DGM | 8/8 | Complete (all 5 completion gates closed) | 2026-07-11 |
-| 9. Path Extraction & Weather | 0/? | Not started | - |
+| 9. Path Extraction & Weather | 0/6 | Not started | - |
 | 10. Calculation Service | 0/? | Not started | - |
 | 11. Results & Fast Recalc | 0/? | Not started | - |
 
