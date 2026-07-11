@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 08
 current_phase_name: gis-ingestion-dgm
 status: executing
-stopped_at: Completed 08-05 (envi-gis WorldCover→ground_zone vectorization — hand-rolled marching squares; contour declined)
-last_updated: "2026-07-11T02:06:27Z"
+stopped_at: Completed 08-06 (envi-gis-wasm WASM boundary cdylib + version-locked wasm-bindgen 0.2.126 + generated no-drift boundary DTOs)
+last_updated: "2026-07-11T02:52:01.117Z"
 last_activity: 2026-07-11
-last_activity_desc: Completed 08-05 (envi-gis WorldCover class raster → editable non-crossing WGS84 ground_zone polygons via hand-rolled marching squares; SUS contour dependency declined, zero new deps; impedance letter via worldcover_to_class, D-11 provenance)
+last_activity_desc: "Completed 08-05 (envi-gis WorldCover→ground_zone vectorization: hand-rolled marching squares, contour dependency declined; non-crossing partition polygons carrying the Nord2000 impedance letter + provenance)"
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 41
-  completed_plans: 38
+  completed_plans: 39
   percent: 64
 ---
 
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 08 (gis-ingestion-dgm) — EXECUTING
-Plan: 6 of 8
+Plan: 7 of 8
 Status: Ready to execute
-Last activity: 2026-07-11 — Completed 08-05 (envi-gis WorldCover→ground_zone vectorization: hand-rolled marching squares, contour dependency declined; non-crossing partition polygons carrying the Nord2000 impedance letter + provenance)
+Last activity: 2026-07-11 — Completed 08-06 (envi-gis-wasm: repo's first WASM crate — thin wasm-bindgen cdylib exposing the pure envi-gis core to the browser; version-locked wasm-bindgen 0.2.126; u8 landcover decode seam closed; all boundary DTOs generated via ts-rs into the single committed wire.ts, no-drift green)
 
 Progress: [██████████] Phase 7 — 10/10 plans complete (envi-store DTOs · envi-dgm TIN · endpoints · web scaffold+theme · Terra Draw lifecycle · generated wire types · 9-kind palette+DGM producer · spectrum editor+ring-diff · validation+autosave · SC1–SC4 E2E)
 
@@ -86,6 +86,7 @@ Progress: [██████████] Phase 7 — 10/10 plans complete (env
 | Phase 08 P02 | ~55 min | 3 tasks | 22 files |
 | Phase 08 P03 | ~18 min | 2 tasks | 7 files |
 | Phase 08 P04 | 28min | 3 tasks | 8 files |
+| Phase 08 P06 | 70min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -151,6 +152,7 @@ Recent decisions affecting current work:
 - [Phase 08]: envi-gis is the sans-I/O, WASM-safe GIS-ingestion boundary: decodes cached COG/BigTIFF over &[u8] (tiff crate), NO network/OPFS/browser deps (cargo tree gate); guard-first decode_window enforces a pre-decode max_decoded_px DoS budget from IFD dims (T-08-02-01), geotransform from ModelPixelScale/Tiepoint not nominal (T-08-02-04), nodata + non-finite dropped to Option holes never silent 0.0 (T-08-02-03). Fixtures are real GDAL 3.12.1 COGs (dev-time rasterio), Python not a test dep; envi-engine byte-identical. — Load-bearing security-critical foundation of the client-side import pipeline; sans-I/O keeps the whole core natively cargo test-able and WASM-ready.
 - [Phase 08, 08-04]: envi-gis feature layer is deterministic pure data + transforms. registry = SourceDescriptor table-as-data (D-04): AHN4 DTM inside a coarse WGS84 NL coverage hull, GLO-30 DSM globally, WorldCover + Overpass; verified D-02 CORS mode per source; committed registry/ahn_index.toml kaartblad↔RD index (DO-NOT-EDIT + sha256 banner, include_str!, parsed only in tests). terrain: decimate_window grid-strides to ≤target and ≤MAX_TERRAIN_POINTS=50k (T-08-04-01), dropping nodata holes; terrain_features reprojects RD/WGS84→WGS84 through envi_geo ONLY (grep proj=0, GEOX-04) and emits editable elevation_point features WGS84-on-the-wire with NO Rust id (TS assigns crypto.randomUUID); sample_base_elevation = footprint-boundary MEDIAN, never DSM-under-roof (T-08-04-04), typed None when terrain absent (never silent 0.0, D-07). impedance_table = 11-row reviewed WorldCover→Nord2000 class table; per-row test resolves σ via envi_engine::scene::impedance_class — σ NEVER restated in envi-gis (only in a //! doc comment); roughness defaults to class N. buildings: Overpass ways+multipolygon relations → building features with the LOCKED D-10 height chain (measured reserved → height/building:height tag tolerant-parse rejecting non-finite/negative → building:levels×3+1.5 → user default), emitting eaves_height_m (the exact key building_from_feature reads, NOT a parallel height_m) + height_provenance + D-11 provenance; ring validation + skip-and-report (T-08-04-02, never fails the layer). merge = D-09 re-import keyed on (source, source_ref) with the user_modified guard (user edits survive, untouched refresh, new added, absent retained, user-created kept), deterministic order. provenance = plain GeoJSON properties (Pattern 4, zero store schema change). GisError gained Reproject + Json variants (additive; nothing outside envi-gis matches GisError). No new deps (T-08-04-SC). 28 unit + 8 integ tests green; clippy/fmt clean.
 - [Phase 08, 08-05]: envi-gis/landcover.rs vectorizes a WorldCover Raster<u8> window into editable WGS84 ground_zone polygons — one per contiguous same-class region. SUS `contour` crate DECLINED at the pre-resolved human-verify checkpoint (T-08-05-SC): hand-rolled marching squares instead, ZERO new deps (only the already-present `geo`); cargo tree confirms no contour/reqwest/tokio/web-sys. Tracer = directed interior-on-right unit half-edges stitched into closed rings with sharpest-right-turn saddle resolution → a per-class partition yielding adjacency/containment ONLY, never partial crossings (T-08-05-01, Phase-7 draw rule; asserted via geo::Relate is_overlaps()). Exteriors (signed area>0) + holes (area<0) → nested Polygons; min-area drop + geo Douglas–Peucker BOTH in pixel space (CRS-independent tol); bounded-work caps MAX_GROUND_ZONES/MAX_TOTAL_VERTICES. Impedance letter via worldcover_to_class (σ stays in engine — one source of truth); roughness defaults N; D-11 provenance; no Rust id. Water (WC 80→H) emitted as zones (Open-Q5); unknown codes + nodata skipped, never a silent zone (D-07). WorldCover is EPSG:4326 → geotransform yields WGS84 directly (identity via envi_geo::LonLat, grep proj=0). 9 unit tests; full workspace green, engine byte-identical. — NOTE: consumes a Raster<u8>; the WorldCover u8-COG decode path (class-raster producer) is the remaining upstream seam (cog::decode_window currently handles f32 terrain only).
+- [Phase 08]: [Phase 08, 08-06] envi-gis-wasm = the repo's first WASM crate: a thin wasm-bindgen cdylib exposing the pure envi-gis core (plan_import/decode_window/terrain_features/sample_base_elevation/map_landcover/parse_buildings/merge_features) to the browser — marshalling only, all GIS math delegated to envi_gis::. wasm-bindgen pinned '=0.2.126' with wasm-bindgen-cli 0.2.126 lockstep (Pitfall 8); no getrandom/uuid (Pitfall 9). Tile bytes cross as a direct &[u8] param (not a serde field); provenance built by resolving the registry source id -> 'static source+license. Closed the 08-05 u8-seam (cog::decode_window_u8) + added terrain::base_elevation_on_raster so the boundary stays logic-free. All 24 boundary DTOs generated via ts-rs into the SINGLE committed web/src/generated/wire.ts (envi-service dev-deps envi-gis-wasm; no-drift test green) — one source of truth for the HTTP wire AND the WASM boundary, no hand-written TS. DATA-01/02/03.
 
 ### Pending Todos
 
@@ -178,6 +180,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T02:06:27Z
-Stopped at: Completed 08-05-PLAN.md (envi-gis WorldCover→ground_zone vectorization — hand-rolled marching squares; contour declined)
+Last session: 2026-07-11T02:52:00.634Z
+Stopped at: Completed 08-06 (envi-gis-wasm WASM boundary cdylib + version-locked wasm-bindgen 0.2.126 + generated no-drift boundary DTOs)
 Resume file: None
