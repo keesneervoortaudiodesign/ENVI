@@ -14,27 +14,27 @@
 //
 // # WASM ingestion boundary (DATA-01..03, plan 08-06)
 // `npm run build:wasm` compiles the `envi-gis-wasm` cdylib for `wasm32-unknown-unknown` and runs
-// the version-locked `wasm-bindgen` (target `web`) to emit ESM glue + `.wasm` into
-// `src/generated/wasm/` (git-ignored — a build artifact regenerated from the Rust crate; see
-// web/README.md for the mandatory CLI↔crate version lockstep). The `@wasm` alias below is the
-// stable import point the future ingestion UI uses (`import init, { plan_import, ... } from
-// "@wasm/envi_gis_wasm"`); wasm-bindgen's `--target web` output is a standard ESM that fetches its
-// `.wasm` via `new URL(..., import.meta.url)`, which Vite bundles/serves natively. The generated
-// TS *types* for the boundary DTOs are the committed, no-drift-tested `src/generated/wire.ts`.
+// the version-locked `wasm-bindgen` (target `web`) to emit ESM glue + `.wasm` into the
+// `assetsInclude`d `src/generated/wasm/` directory below (git-ignored — a build artifact
+// regenerated from the Rust crate; see web/README.md for the mandatory CLI↔crate version
+// lockstep). The future ingestion UI imports the glue directly from that path
+// (`import init, { plan_import, ... } from "./generated/wasm/envi_gis_wasm"`); wasm-bindgen's
+// `--target web` output is a standard ESM that fetches its `.wasm` via
+// `new URL(..., import.meta.url)`, which Vite bundles/serves natively. The generated TS *types*
+// for the boundary DTOs are the committed, no-drift-tested `src/generated/wire.ts`.
+//
+// The config avoids `node:*` imports on purpose (tsconfig `types: []`, no `@types/node`), so the
+// wasm reference here is `assetsInclude` (a plain glob) rather than a path-alias built from
+// `fileURLToPath`.
 
-import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   base: "./",
   plugins: [react()],
-  resolve: {
-    alias: {
-      // Stable import point for the wasm-bindgen ingestion glue (build:wasm output).
-      "@wasm": fileURLToPath(new URL("./src/generated/wasm", import.meta.url)),
-    },
-  },
+  // The wasm-bindgen `.wasm` in src/generated/wasm/ is an explicit asset the Vite build consumes.
+  assetsInclude: ["**/src/generated/wasm/*.wasm"],
   build: {
     target: "es2022",
     outDir: "dist",

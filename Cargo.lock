@@ -539,6 +539,7 @@ dependencies = [
  "envi-dgm",
  "envi-engine",
  "envi-geo",
+ "envi-gis-wasm",
  "envi-store",
  "geojson",
  "http-body-util",

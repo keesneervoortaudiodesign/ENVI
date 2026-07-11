@@ -62,3 +62,10 @@ ts-rs = { version = "12", features = ["uuid-impl", "no-serde-warnings"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tempfile = "3"
+# envi-gis-wasm (dev-only, D-10): the WASM boundary DTOs are routed through the
+# SAME ts-rs generate-and-commit no-drift mechanism as the HTTP wire. The
+# `wire_no_drift` test registers them in `export_all_wire_types` so the single
+# committed `web/src/generated/wire.ts` is the one source of truth for BOTH the
+# HTTP wire and the WASM boundary. The `rlib` output of the cdylib compiles
+# natively for the test; nothing from this crate reaches the running service.
+envi-gis-wasm = { path = "../envi-gis-wasm" }

@@ -55,6 +55,59 @@ top_edge: Array<[number, number, number]>,
 thickness_m: number | null, };
 
 /**
+ * `sample_base_elevation` request (tile bytes are a separate `&[u8]` parameter).
+ */
+export type BaseElevationReq = { 
+/**
+ * The terrain pixel window to decode.
+ */
+window: PixelWindowDto, 
+/**
+ * Footprint exterior ring `[x, y]` in the terrain raster's source CRS.
+ */
+ring: Array<[number, number]>, 
+/**
+ * Maximum boundary-sample spacing (source-CRS units).
+ */
+max_spacing_m: number, 
+/**
+ * Optional decoded-pixel budget override.
+ */
+max_decoded_px: number | null, };
+
+/**
+ * `sample_base_elevation` result: the footprint-boundary median ground height,
+ * or `null` when terrain is absent (never a fabricated `0.0`, D-07).
+ */
+export type BaseElevationResult = { 
+/**
+ * Boundary-median base elevation (meters), or `null`.
+ */
+base_elevation_m: number | null, };
+
+/**
+ * A WGS84 lon/lat bounding box in degrees (mirrors `envi_gis::registry::Bbox`).
+ * Request-facing.
+ */
+export type BboxDto = { 
+/**
+ * Western edge, degrees east.
+ */
+min_lon: number, 
+/**
+ * Southern edge, degrees north.
+ */
+min_lat: number, 
+/**
+ * Eastern edge, degrees east.
+ */
+max_lon: number, 
+/**
+ * Northern edge, degrees north.
+ */
+max_lat: number, };
+
+/**
  * Serde twin of `envi_engine::scene::Building`.
  */
 export type BuildingDto = { 
@@ -66,6 +119,19 @@ footprint: Array<[number, number]>,
  * Eaves height above local ground, meters.
  */
 eaves_height_m: number, };
+
+/**
+ * `parse_buildings` result: `building` features plus per-element skip reports.
+ */
+export type BuildingsResult = { 
+/**
+ * GeoJSON `FeatureCollection` of `building` features.
+ */
+features: unknown, 
+/**
+ * Elements skipped (invalid geometry), never failing the whole layer.
+ */
+skipped: Array<SkipReportDto>, };
 
 /**
  * Per-source conditioning: a **READOUT** parameter (gain/delay/filter/mute)
@@ -94,6 +160,11 @@ filter_band_db: Array<number> | null,
  * Mute flag (default false).
  */
 muted: boolean, };
+
+/**
+ * The browser-side reach of a source (mirrors `envi_gis::registry::Cors`).
+ */
+export type CorsDto = "direct" | "proxy";
 
 /**
  * `POST /projects` body. Strict (`deny_unknown_fields`) so client drift is loud.
@@ -132,6 +203,41 @@ south: boolean,
  * Human-readable label, e.g. `"utm-31n"`.
  */
 label: string, };
+
+/**
+ * `decode_window` request (tile bytes are a separate `&[u8]` parameter).
+ */
+export type DecodeWindowReq = { 
+/**
+ * The pixel window to decode.
+ */
+window: PixelWindowDto, 
+/**
+ * Optional decoded-pixel budget override (defaults to `MAX_DECODED_PX`).
+ */
+max_decoded_px: number | null, };
+
+/**
+ * `decode_window` result: a windowed `f32` raster with its geotransform. Holes
+ * (nodata / non-finite) are `null` samples — never a silent `0.0`.
+ */
+export type DecodeWindowResult = { 
+/**
+ * Window width in pixels.
+ */
+width: number, 
+/**
+ * Window height in pixels.
+ */
+height: number, 
+/**
+ * Geotransform of this window (origin at its top-left pixel).
+ */
+geo: GeoTransformDto, 
+/**
+ * Row-major samples; `null` = hole (dropped nodata / non-finite).
+ */
+samples: Array<number | null>, };
 
 /**
  * Request body for `POST /dgm/triangulate`: scattered elevation points plus
@@ -227,6 +333,27 @@ third_octave_indices: Array<number>,
 nominal_third_octave_hz: Array<number>, };
 
 /**
+ * A north-up geotransform (mirrors `envi_gis::cog::geo_tags::GeoTransform`).
+ */
+export type GeoTransformDto = { 
+/**
+ * Map x of the top-left corner of pixel `(0, 0)`.
+ */
+origin_x: number, 
+/**
+ * Map y of the top-left corner of pixel `(0, 0)`.
+ */
+origin_y: number, 
+/**
+ * Signed pixel size in x (`> 0` north-up).
+ */
+pixel_size_x: number, 
+/**
+ * Signed pixel size in y (`< 0` north-up).
+ */
+pixel_size_y: number, };
+
+/**
  * Serde twin of `envi_engine::scene::GroundSegment`.
  */
 export type GroundSegmentDto = { 
@@ -238,6 +365,32 @@ flow_resistivity: number,
  * Terrain roughness, meters.
  */
 roughness: number, };
+
+/**
+ * `plan_import` request: pick each layer's source for a viewport.
+ */
+export type ImportPlanReq = { 
+/**
+ * The WGS84 import viewport.
+ */
+bbox: BboxDto, };
+
+/**
+ * `plan_import` result: the per-layer source selection for a viewport.
+ */
+export type ImportPlanResult = { 
+/**
+ * Terrain source (AHN4 in NL, GLO-30 fallback).
+ */
+terrain: SourceDescriptorDto, 
+/**
+ * Land-cover source (WorldCover).
+ */
+landcover: SourceDescriptorDto, 
+/**
+ * Buildings source (OSM Overpass).
+ */
+buildings: SourceDescriptorDto, };
 
 /**
  * Request body for `POST /meta/interpolate-spectrum`: an authored coarse
@@ -317,6 +470,63 @@ message: string, } | { "state": "done" } | { "state": "failed",
 reason: string, } | { "state": "cancelled" };
 
 /**
+ * `map_landcover` result: a GeoJSON `FeatureCollection` of `ground_zone`
+ * features (typed `unknown`; validated by the store on PUT).
+ */
+export type LandcoverResult = { 
+/**
+ * GeoJSON `FeatureCollection` of `ground_zone` features.
+ */
+features: unknown, };
+
+/**
+ * `map_landcover` request (WorldCover tile bytes are a separate `&[u8]` param).
+ */
+export type MapLandcoverReq = { 
+/**
+ * The land-cover pixel window to decode (`u8` class raster).
+ */
+window: PixelWindowDto, 
+/**
+ * Optional minimum polygon area in pixels² (defaults to the module const).
+ */
+min_area_px: number | null, 
+/**
+ * Optional Douglas–Peucker tolerance in pixels (defaults to the module const).
+ */
+simplify_tol_px: number | null, 
+/**
+ * Provenance to stamp on each emitted `ground_zone`.
+ */
+provenance: ProvenanceReqDto, 
+/**
+ * Optional decoded-pixel budget override.
+ */
+max_decoded_px: number | null, };
+
+/**
+ * `merge_features` request: re-import merge of two GeoJSON `FeatureCollection`s.
+ */
+export type MergeReq = { 
+/**
+ * The existing scene features as a GeoJSON `FeatureCollection`.
+ */
+existing: unknown, 
+/**
+ * The fresh import as a GeoJSON `FeatureCollection`.
+ */
+incoming: unknown, };
+
+/**
+ * `merge_features` result: the merged GeoJSON `FeatureCollection`.
+ */
+export type MergeResult = { 
+/**
+ * GeoJSON `FeatureCollection` after the D-09 re-import merge.
+ */
+features: unknown, };
+
+/**
  * Meteorological readout parameters. Extensible via `#[serde(default)]`:
  * deserializing `{}` yields the Nord2000 reference atmosphere (15 °C / 70 %).
  */
@@ -342,6 +552,45 @@ lon_deg: number,
  * Latitude, degrees north.
  */
 lat_deg: number, };
+
+/**
+ * `parse_buildings` request: an Overpass `out geom` JSON string.
+ */
+export type ParseBuildingsReq = { 
+/**
+ * The Overpass `out geom` response body.
+ */
+overpass_json: string, 
+/**
+ * Fallback eaves height (meters) when no height/levels tag resolves.
+ */
+user_default_height_m: number, 
+/**
+ * ISO-8601 retrieval timestamp.
+ */
+retrieved_at: string, };
+
+/**
+ * A pixel-space window into a COG base image (mirrors
+ * `envi_gis::cog::PixelWindow`). Request-facing.
+ */
+export type PixelWindowDto = { 
+/**
+ * Leftmost column (inclusive).
+ */
+col_off: number, 
+/**
+ * Topmost row (inclusive).
+ */
+row_off: number, 
+/**
+ * Window width in pixels (`> 0`).
+ */
+width: number, 
+/**
+ * Window height in pixels (`> 0`).
+ */
+height: number, };
 
 /**
  * Project metadata persisted to `project.json`.
@@ -378,6 +627,30 @@ crs: CrsDto,
  * Project settings.
  */
 settings: SettingsDto, };
+
+/**
+ * Per-feature provenance the TS orchestrator supplies for an imported layer
+ * (D-11). `source_id` is a registry id (`"ahn4-dtm"`, `"glo30"`, `"worldcover"`,
+ * `"osm-overpass"`); the boundary resolves the `'static` source + license from
+ * the registry so this crate never restates a license literal. Request-facing.
+ */
+export type ProvenanceReqDto = { 
+/**
+ * Registry source id (resolves the `'static` source + license).
+ */
+source_id: string, 
+/**
+ * Per-feature source reference (tile name / OSM element ref).
+ */
+source_ref: string, 
+/**
+ * ISO-8601 retrieval timestamp (assigned by TS).
+ */
+retrieved_at: string, 
+/**
+ * Optional vertical datum note (terrain only).
+ */
+vertical_datum: VerticalDatumDto | null, };
 
 /**
  * Serde twin of `envi_engine::scene::Receiver`, plus a stable feature `id`.
@@ -479,6 +752,57 @@ met: MetDto,
 default_ground_class: string, };
 
 /**
+ * A skipped Overpass element and why (mirrors `envi_gis::buildings::SkipReport`).
+ */
+export type SkipReportDto = { 
+/**
+ * The `(type/id)` reference of the skipped element.
+ */
+source_ref: string, 
+/**
+ * Why it was skipped.
+ */
+reason: string, };
+
+/**
+ * One selected source descriptor (mirrors `envi_gis::registry::SourceDescriptor`
+ * minus the coverage polygon). Everything TS needs to fetch + attribute a layer.
+ */
+export type SourceDescriptorDto = { 
+/**
+ * Stable identifier.
+ */
+id: string, 
+/**
+ * The data kind this source provides.
+ */
+kind: SourceKindDto, 
+/**
+ * Native CRS EPSG label.
+ */
+crs: string, 
+/**
+ * How tiles/queries are addressed.
+ */
+tile_scheme: string, 
+/**
+ * The fetch URL template (TS fills the `{...}` slots).
+ */
+endpoint_template: string, 
+/**
+ * Verified browser CORS reachability.
+ */
+cors: CorsDto, 
+/**
+ * SPDX-ish license tag.
+ */
+license: string, 
+/**
+ * Human-readable attribution string.
+ */
+attribution: string, };
+
+/**
  * Serde twin of `envi_engine::scene::Source`, plus a stable feature `id`.
  */
 export type SourceDto = { 
@@ -490,6 +814,11 @@ id: string,
  * The sub-sources composing this source.
  */
 sub_sources: Array<SubSourceDto>, };
+
+/**
+ * The GIS data kind of a source (mirrors `envi_gis::registry::SourceKind`).
+ */
+export type SourceKindDto = "dtm" | "dsm" | "landcover" | "buildings";
 
 /**
  * Request body for `POST /meta/spl-to-lw`: a free-field SPL spectrum measured at
@@ -552,6 +881,41 @@ job_id: string,
 tensor_hash: string, };
 
 /**
+ * `terrain_features` request (tile bytes are a separate `&[u8]` parameter).
+ */
+export type TerrainFeaturesReq = { 
+/**
+ * The terrain pixel window to decode.
+ */
+window: PixelWindowDto, 
+/**
+ * Target decimated sample count (clamped to the engine cap).
+ */
+target_points: number, 
+/**
+ * The raster's source CRS.
+ */
+source_crs: TerrainSourceCrsDto, 
+/**
+ * Provenance to stamp on each emitted `elevation_point`.
+ */
+provenance: ProvenanceReqDto, 
+/**
+ * Optional decoded-pixel budget override.
+ */
+max_decoded_px: number | null, };
+
+/**
+ * `terrain_features` result: a GeoJSON `FeatureCollection` of WGS84
+ * `elevation_point` features (typed `unknown`; validated by the store on PUT).
+ */
+export type TerrainFeaturesResult = { 
+/**
+ * GeoJSON `FeatureCollection` of `elevation_point` features.
+ */
+features: unknown, };
+
+/**
  * Serde twin of `envi_engine::scene::TerrainProfile`.
  *
  * Conversion is inherently `TryFrom`: the engine's `TerrainProfile::new`
@@ -567,6 +931,12 @@ points: Array<[number, number]>,
  * Ground segments (length `points.len() - 1`).
  */
 segments: Array<GroundSegmentDto>, };
+
+/**
+ * The source CRS of a terrain raster (mirrors
+ * `envi_gis::terrain::TerrainSourceCrs`). Request-facing.
+ */
+export type TerrainSourceCrsDto = "rd_new" | "wgs84";
 
 /**
  * `PUT /projects/{id}` body — metadata/settings patch. All fields optional;
@@ -585,3 +955,9 @@ description: string | null,
  * New settings (unchanged if absent).
  */
 settings: SettingsDto | null, };
+
+/**
+ * A vertical datum note for terrain samples. Maps to a `'static` label, so the
+ * provenance stays owned by fixed strings (no leaked runtime `&'static str`).
+ */
+export type VerticalDatumDto = "nap" | "egm2008";
