@@ -109,7 +109,7 @@
 - [x] **WEB-04**: Draw/edit buildings, walls, ground-effect (impedance A–H + roughness N/S/M/L) zones, forests, and elevation points/lines with DGM re-triangulation; last-object property inheritance; click-to-select validation messages
 - [ ] **WEB-05**: Configure source input conditioning (per-source gain/filter/delay) in the UI with **interactive fast recalculation** (tensor MAC) and a results-stale badge
 - [ ] **WEB-06**: Render isophone overlays as fill polygons with an editable color scale + legend (dB weighting from result metadata)
-- [ ] **WEB-07**: Submit a calculation job and view progress / abort / results; pre-run cost estimate
+- [x] **WEB-07**: Submit a calculation job and view progress / abort / results; pre-run cost estimate
 - [x] **WEB-08**: Draw/assign a **semi-transparent screen** and edit its isolation spectrum (SCN-01)
 - [x] **WEB-09**: Assign **per-façade isolation spectra** on a semi-transparent building (SCN-02)
 - [x] **WEB-10**: **Isolation-spectrum editor** — enter 1/12-octave directly, or 1/1- / 1/3-octave with linear interpolation to the 1/12-octave grid (SCN-03)
@@ -222,7 +222,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | WEB-04 | Phase 7 | Complete |
 | WEB-05 | Phase 11 | Pending |
 | WEB-06 | Phase 11 | Pending |
-| WEB-07 | Phase 10 | Pending |
+| WEB-07 | Phase 10 | Complete |
 | WEB-08 | Phase 7 | Complete |
 | WEB-09 | Phase 7 | Complete |
 | WEB-10 | Phase 7 | Complete |

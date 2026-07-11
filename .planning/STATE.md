@@ -6,15 +6,15 @@ current_phase: 10
 current_phase_name: calculation-service
 status: in-progress
 stopped_at: Phase 10 plan 10-06 complete (real solve_chunk_range + prepare_solve scene marshalling + OPFS runtime open)
-last_updated: "2026-07-11T21:10:34.880Z"
+last_updated: "2026-07-11T22:01:07.575Z"
 last_activity: 2026-07-11
-last_activity_desc: 10-06 executed (prepare_solve + REAL solve_chunk_range bit-equal to a direct engine solve, WASM-safe scene DTOs factored, OPFS runtime open, 3 tasks, all gates green)
+last_activity_desc: 10-06 executed (prepare_solve + REAL solve_chunk_range bit-equal to a direct engine solve, 3 tasks, all quality gates green)
 progress:
   total_phases: 11
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 53
-  completed_plans: 52
-  percent: 82
+  completed_plans: 53
+  percent: 91
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 10 (calculation-service) — IN PROGRESS
-Plan: 5 of 6 complete (10-01 ✓, 10-02 ✓, 10-03 ✓, 10-04 ✓, 10-06 ✓; 10-05 pending)
+Plan: 6 of 6 complete (10-01 ✓, 10-02 ✓, 10-03 ✓, 10-04 ✓, 10-06 ✓; 10-05 pending)
 Status: Phase 10 in progress. 10-06 executed — the last solve seam is CLOSED: the client-side compute is REAL. `prepare_solve` marshals the whole transfer scene ONCE per submit into an owned `PreparedScene` (built via the engine's validating constructors) stored in a shared `static RwLock<Option<PreparedScene>>` keyed by `tensor_hash`; the real `solve_chunk_range` (no more `Pending` stub) is hash-gated + cancel-aware and runs the UNCHANGED `envi_engine::solver::solve` rayon-sharded via `pool::solve_tier`, assembled into ONE sub-source-major `[s][r_local][f]` chunk written to its OPFS `tensor/`+`pincoh/` file pair. The load-bearing gate passes: the marshalled range-solve tensor is `f64::to_bits`-equal to a direct engine solve — with a forest (ENG-09) + isolation spectrum (ENG-10) + a phase-carrying directivity balloon (SC4), phase-free staying bit-identical; two-shard == single-range; hash-mismatch is a typed error. The WASM-safe scene DTOs (terrain/ground/isolation/forest/sound-speed) + the `interpolate` core were factored into `envi-compute` and re-exported at their original paths (source-compatible, `wire.ts` byte-stable, no duplicate `SoundSpeedProfileDto`); the worker preopens the async OPFS handles ahead of the synchronous solve and calls `prepare_solve` once before the (unchanged) tier loop. Engine byte-identical; threaded `build:wasm:compute` exits 0; all gates green. GRID-02 + SVC-02 delivered. Next: 10-05 (CalcPanel UI + offline Playwright UAT of the real threaded bundle).
 Last activity: 2026-07-11 — 10-06 executed (prepare_solve + REAL solve_chunk_range bit-equal to a direct engine solve, 3 tasks, all quality gates green)
 
@@ -101,6 +101,7 @@ Progress: [██████████] Phase 10 — 5/6 plans complete (10-0
 | Phase 10 P03 | 95min | 3 tasks | 13 files |
 | Phase 10 P04 | 40min | 3 tasks | 11 files |
 | Phase 10 P06 | 90min | 3 tasks | 17 files |
+| Phase 10 P05 | 150 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -208,6 +209,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T21:10:15.445Z
+Last session: 2026-07-11T22:00:52.276Z
 Stopped at: Phase 10 context gathered
 Resume file: .planning/phases/10-calculation-service/10-CONTEXT.md
