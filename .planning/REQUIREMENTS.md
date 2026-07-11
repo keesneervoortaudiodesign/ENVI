@@ -78,7 +78,7 @@
 - [x] **DATA-01**: Fetch terrain — Copernicus GLO-30 DEM + national LiDAR DTM where available (client-side whole-tile browser fetch, cached in OPFS, windowed locally in WASM — pivot per Phase-8 CONTEXT D-02/D-03)
 - [x] **DATA-02**: Fetch ESA WorldCover land cover and map classes → Nordtest σ / impedance class (reviewed mapping table)
 - [x] **DATA-03**: Fetch buildings (Overture GeoParquet / OSM) with a height-resolution fallback chain
-- [ ] **DATA-04**: Cache fetched tiles/data locally in the browser (OPFS), per project; the compute path reads only the local cache (verified with the network off) — pivot per Phase-8 CONTEXT D-03
+- [x] **DATA-04**: Cache fetched tiles/data locally in the browser (OPFS), per project; the compute path reads only the local cache (verified with the network off) — pivot per Phase-8 CONTEXT D-03
 
 ### Real GIS geometry pipeline (GEOX)
 
@@ -203,7 +203,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | DATA-01 | Phase 8 | Complete |
 | DATA-02 | Phase 8 | Complete |
 | DATA-03 | Phase 8 | Complete |
-| DATA-04 | Phase 8 | Pending |
+| DATA-04 | Phase 8 | Complete |
 | GEOX-01 | Phase 9 | Pending |
 | GEOX-02 | Phase 9 | Pending |
 | GEOX-03 | Phase 9 | Pending |

@@ -278,7 +278,7 @@ Plans:
   4. Buildings missing height data get heights via the documented fallback chain (measured → height tag → levels×3+1.5 → user default) with per-feature provenance (source + license + retrieval date), and base elevations are sampled from footprint-boundary ground, never DSM-under-building
   5. The map shows attribution for OSM/Overture/ESA WorldCover/Copernicus data
 
-**Plans**: 6/8 plans executed
+**Plans**: 7/8 plans executed
 
 Plans:
 
@@ -288,7 +288,7 @@ Plans:
 - [x] 08-04-PLAN.md — envi-gis feature layer: source registry + terrain decimation/base-elevation + WorldCover→σ table + Overpass buildings/height-chain + re-import merge (DATA-01/02/03)
 - [x] 08-05-PLAN.md — envi-gis WorldCover→ground_zone vectorization (contour dep DECLINED — hand-rolled marching squares) (DATA-02) (completed 2026-07-11)
 - [x] 08-06-PLAN.md — envi-gis-wasm cdylib bindings + Vite/wasm build + version-locked CLI + generated boundary DTOs (DATA-01/02/03)
-- [ ] 08-07-PLAN.md — web import path: OPFS cache + direct/proxy fetchers + per-layer state machine + ImportPanel + impedance overlay + attribution (DATA-01/02/03/04)
+- [x] 08-07-PLAN.md — web import path: OPFS cache + direct/proxy fetchers + per-layer state machine + ImportPanel + impedance overlay + attribution (DATA-01/02/03/04)
 - [ ] 08-08-PLAN.md — Playwright offline import journey + DATA-04 network-off replay (DATA-01/02/03/04)
 
 **Wave 1** *(parallel — no shared files)*
@@ -311,7 +311,7 @@ Plans:
 
 **Wave 5** *(blocked on 08-03, 08-06)*
 
-- [ ] 08-07: web import path (OPFS + fetchers + ImportPanel)
+- [x] 08-07: web import path (OPFS + fetchers + ImportPanel)
 
 **Wave 6** *(blocked on 08-07)*
 

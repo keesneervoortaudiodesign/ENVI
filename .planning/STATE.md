@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 08
 current_phase_name: gis-ingestion-dgm
 status: executing
-stopped_at: Completed 08-06 (envi-gis-wasm WASM boundary cdylib + version-locked wasm-bindgen 0.2.126 + generated no-drift boundary DTOs)
-last_updated: "2026-07-11T02:52:01.117Z"
+stopped_at: Completed 08-07-PLAN.md
+last_updated: "2026-07-11T03:44:23.019Z"
 last_activity: 2026-07-11
-last_activity_desc: "Completed 08-05 (envi-gis WorldCover→ground_zone vectorization: hand-rolled marching squares, contour dependency declined; non-crossing partition polygons carrying the Nord2000 impedance letter + provenance)"
+last_activity_desc: "Completed 08-07 (web import path: OPFS per-project cache + direct/proxy fetchers + per-layer import state machines + ImportPanel + impedance overlay + GLO-30 badge + SC5 attribution; extended the WASM boundary with plan_tiles/window_for_bbox/reproject_ring so all tile/window geometry stays in WASM; DATA-01..04)"
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 41
-  completed_plans: 39
+  completed_plans: 40
   percent: 64
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 08 (gis-ingestion-dgm) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-07-11 — Completed 08-06 (envi-gis-wasm: repo's first WASM crate — thin wasm-bindgen cdylib exposing the pure envi-gis core to the browser; version-locked wasm-bindgen 0.2.126; u8 landcover decode seam closed; all boundary DTOs generated via ts-rs into the single committed wire.ts, no-drift green)
 
@@ -87,6 +87,7 @@ Progress: [██████████] Phase 7 — 10/10 plans complete (env
 | Phase 08 P03 | ~18 min | 2 tasks | 7 files |
 | Phase 08 P04 | 28min | 3 tasks | 8 files |
 | Phase 08 P06 | 70min | 2 tasks | 13 files |
+| Phase 08 P07 | 165min | 3 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -180,6 +181,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T02:52:00.634Z
-Stopped at: Completed 08-06 (envi-gis-wasm WASM boundary cdylib + version-locked wasm-bindgen 0.2.126 + generated no-drift boundary DTOs)
+Last session: 2026-07-11T03:44:22.997Z
+Stopped at: Completed 08-07-PLAN.md
 Resume file: None
