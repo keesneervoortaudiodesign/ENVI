@@ -27,17 +27,31 @@
 // and a fake capability flag — no browser, no real OPFS. The real worker wiring at
 // the bottom is guarded so importing this module under Vitest (Node) is inert.
 
-import type { JobStatus, PlanTiersReq, TierComplete, TierPlanResult } from "../generated/wire";
-import { chunkRelativePath } from "./opfs";
+import type {
+  JobStatus,
+  PlanTiersReq,
+  PrepareSolveReq,
+  TierComplete,
+  TierPlanResult,
+} from "../generated/wire";
+import {
+  chunkRelativePath,
+  preopenChunk,
+  releasePreopenedChunk,
+  setActiveProject,
+} from "./opfs";
 
 // A calc job the client submits to the worker. `planReq` is the generated tier
-// partition request; `receiverIds` are the TS-minted (crypto.randomUUID) receiver
-// UUIDs indexed by GLOBAL receiver index (Pitfall 9 — the wasm mints no ids);
-// `chunkReceivers` is the receiver-axis shard size (one OPFS file per chunk).
+// partition request; `scene` is the generated `PrepareSolveReq` marshalled ONCE per
+// submit (the whole transfer scene); `receiverIds` are the TS-minted
+// (crypto.randomUUID) receiver UUIDs indexed by GLOBAL receiver index (Pitfall 9 —
+// the wasm mints no ids); `chunkReceivers` is the receiver-axis shard size (one OPFS
+// file per chunk).
 export interface CalcJobSpec {
   readonly projectId: string;
   readonly tensorHash: string;
   readonly planReq: PlanTiersReq;
+  readonly scene: PrepareSolveReq;
   readonly receiverIds: readonly string[];
   readonly nSub: number;
   readonly chunkReceivers: number;
@@ -59,6 +73,9 @@ export type WorkerOutbound =
 // calls exactly these — never a second solve path (Pattern 1).
 export interface ComputeWasm {
   plan_tiers(req: PlanTiersReq): TierPlanResult;
+  // Marshal the whole transfer scene ONCE per submit, keyed by tensor_hash. Called
+  // before the tier loop; every solve_chunk_range then solves against it.
+  prepare_solve(req: PrepareSolveReq): unknown;
   solve_chunk_range(req: {
     tensor_hash: string;
     chunk_index: number;
@@ -121,6 +138,20 @@ export function createJobMachine(deps: JobDeps): {
     cancelled = false;
     deps.wasm.reset_cancel();
     post({ state: "queued" });
+
+    // Marshal the whole transfer scene ONCE per submit, BEFORE the tier loop (D-08):
+    // build the owned PreparedScene keyed by tensor_hash the wasm side solves against,
+    // and point OPFS at this project so per-chunk handles resolve. A shape/validation
+    // throw lands the job `failed` (never a half-run).
+    try {
+      setActiveProject(spec.projectId);
+      deps.wasm.prepare_solve(spec.scene);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      post({ state: "failed", reason: reason.length > 0 ? reason : "scene preparation failed" });
+      return;
+    }
+
     post({ state: "running", progress: 0.0001, message: "planning tiers" });
 
     try {
@@ -248,7 +279,21 @@ async function bootstrapWorker(scope: WorkerScope): Promise<void> {
 
   const wasm: ComputeWasm = {
     plan_tiers: (req) => glue.plan_tiers(req) as TierPlanResult,
-    solve_chunk_range: (req) => glue.solve_chunk_range(req),
+    prepare_solve: (req) => glue.prepare_solve(req),
+    // Hoist the async OPFS open ahead of the synchronous engine solve (D-08): open
+    // the chunk's tensor + pincoh sync handles, run the solve (Rust's OpfsChunkSink
+    // closes them on finish), then release any handle still registered on an early
+    // error so no OPFS lock leaks.
+    solve_chunk_range: async (req) => {
+      await preopenChunk(req.tensor_hash, "tensor", req.chunk_index);
+      await preopenChunk(req.tensor_hash, "pincoh", req.chunk_index);
+      try {
+        return glue.solve_chunk_range(req);
+      } finally {
+        releasePreopenedChunk("tensor", req.chunk_index);
+        releasePreopenedChunk("pincoh", req.chunk_index);
+      }
+    },
     request_cancel: () => glue.request_cancel(),
     reset_cancel: () => glue.reset_cancel(),
   };

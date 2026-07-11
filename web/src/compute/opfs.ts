@@ -120,33 +120,81 @@ export async function openChunkHandle(
   return file.createSyncAccessHandle();
 }
 
+// --- Hoisted async-open registry (D-08/D-09) ----------------------------------
+//
+// `createSyncAccessHandle()` is ASYNC while the Rust OPFS sink's `openChunk` extern
+// is SYNCHRONOUS (the engine solve runs synchronously inside a rayon task). So the
+// worker HOISTS the open: it `await`s `preopenChunk(...)` for a chunk's two channels
+// BEFORE calling the synchronous `solve_chunk_range`, stashing each handle under its
+// relative chunk path; the synchronous `openChunk(path)` then just returns the
+// pre-opened handle. The active project id is set once per submit (`setActiveProject`)
+// so a path key is only ever the hex hash + integer chunk index (never a user string).
+
+let activeProjectId: string | null = null;
+
+// Pre-opened `FileSystemSyncAccessHandle`s keyed by relative chunk path
+// (`<channel>/chunk_<idx>.bin`) — exactly the path the Rust extern `openChunk`
+// receives (see `chunk_relative_path` in envi-compute-wasm/src/lib.rs). Chunks are
+// processed sequentially by the worker (one `await solve_chunk_range` at a time),
+// so at most one chunk's tensor+pincoh handles are resident here.
+const preopenedHandles = new Map<string, SyncAccessHandle>();
+
+// Set the OPFS project the current submit's chunks belong to (D-09). Called once by
+// the worker before the tier loop; `preopenChunk` walks
+// `projects/<projectId>/calc/<hash>/…` for this id.
+export function setActiveProject(projectId: string): void {
+  activeProjectId = projectId;
+}
+
+// Asynchronously open one chunk file's sync-access handle AHEAD of the synchronous
+// solve and register it under its relative chunk path. The worker calls this for the
+// `tensor` and `pincoh` channels before each `solve_chunk_range`.
+export async function preopenChunk(
+  tensorHash: string,
+  channel: ChunkChannel,
+  chunkIndex: number,
+): Promise<void> {
+  if (activeProjectId === null) {
+    throw new Error("preopenChunk called before setActiveProject");
+  }
+  const handle = await openChunkHandle(activeProjectId, tensorHash, channel, chunkIndex);
+  preopenedHandles.set(chunkRelativePath(channel, chunkIndex), handle);
+}
+
+// Release a pre-opened handle by (channel, chunk index) if it is still registered —
+// the leak guard for early-error paths where the Rust sink never opened/closed it
+// (on the success path Rust's `closeChunk` already closed + evicted it, so this is a
+// no-op). Idempotent.
+export function releasePreopenedChunk(channel: ChunkChannel, chunkIndex: number): void {
+  const key = chunkRelativePath(channel, chunkIndex);
+  const handle = preopenedHandles.get(key);
+  if (handle !== undefined) {
+    try {
+      handle.close();
+    } catch {
+      // already closed — nothing to release.
+    }
+    preopenedHandles.delete(key);
+  }
+}
+
 // --- The `envi-compute-opfs` extern glue (the Rust OPFS sink binds these names) ---
 //
 // The Rust sink's extern block declares `openChunk`/`writeChunk`/`flushChunk`/
-// `closeChunk` (opfs_sink.rs). These are the JS side of that seam. `openChunk`
-// takes the full relative path `projects/<id>/calc/<hash>/<channel>/chunk_<idx>.bin`
-// and walks it defensively (every segment `safeSeg`-guarded). The synchronous
-// write/flush/close mirror the `FileSystemSyncAccessHandle` methods 1:1.
-//
-// NOTE (integration seam): `createSyncAccessHandle()` is async while the Rust
-// extern `open_chunk` is synchronous. Until `solve_chunk_range` is wired to the
-// sink (per-range scene marshalling, see pool.rs), handles are opened via the
-// async `openChunkHandle` above; `openChunk` here is the path-parsing entry the
-// wired sink will use once the open is hoisted ahead of the synchronous solve.
+// `closeChunk` (opfs_sink.rs). These are the JS side of that seam. `openChunk` is
+// SYNCHRONOUS and returns the handle the worker pre-opened under `path`
+// (`<channel>/chunk_<idx>.bin`); the hex-hash path guard already ran inside
+// `preopenChunk` → `openChunkHandle` → `channelDir` (`assertHex`/`safeSeg`, V12).
+// The synchronous write/flush/close mirror the `FileSystemSyncAccessHandle` methods.
 
-// Walk an already-safe relative chunk path and open its sync handle (worker-only).
-export async function openChunk(path: string): Promise<SyncAccessHandle> {
-  const segments = path.split("/").filter((s) => s.length > 0);
-  if (segments.length === 0) {
-    throw new Error("empty OPFS chunk path");
+// Return the pre-opened sync handle registered for `path` (throws if the worker did
+// not hoist the open first — the synchronous solve must never block on an async open).
+export function openChunk(path: string): SyncAccessHandle {
+  const handle = preopenedHandles.get(path);
+  if (handle === undefined) {
+    throw new Error(`no pre-opened OPFS handle for chunk path: ${path}`);
   }
-  let dir = await navigator.storage.getDirectory();
-  for (let i = 0; i < segments.length - 1; i += 1) {
-    dir = await dir.getDirectoryHandle(safeSeg(segments[i]), { create: true });
-  }
-  const leaf = safeSeg(segments[segments.length - 1]);
-  const file = (await dir.getFileHandle(leaf, { create: true })) as SyncCapableFileHandle;
-  return file.createSyncAccessHandle();
+  return handle;
 }
 
 // Synchronously write `bytes` at byte offset `at`; returns bytes written.
@@ -159,7 +207,14 @@ export function flushChunk(handle: SyncAccessHandle): void {
   handle.flush();
 }
 
-// Release the exclusive lock (final).
+// Release the exclusive lock (final) AND evict the handle from the pre-open registry
+// (found by identity) so a re-run / cache reopen (D-09) does not collide.
 export function closeChunk(handle: SyncAccessHandle): void {
   handle.close();
+  for (const [key, value] of preopenedHandles) {
+    if (value === handle) {
+      preopenedHandles.delete(key);
+      break;
+    }
+  }
 }

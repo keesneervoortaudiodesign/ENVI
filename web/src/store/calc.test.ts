@@ -5,8 +5,37 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CostEstimateResult, JobStatus, TierComplete } from "../generated/wire";
+import type {
+  CostEstimateResult,
+  JobStatus,
+  PrepareSolveReq,
+  TierComplete,
+} from "../generated/wire";
 import { DEFAULT_FINE_SPACING_M, useCalcStore } from "./calc";
+
+// A minimal (unvalidated) transfer scene — the store forwards the spec to a mocked
+// submit, so the scene content is irrelevant beyond satisfying the CalcJobSpec type.
+function minimalScene(): PrepareSolveReq {
+  return {
+    tensor_hash: "deadbeef",
+    n_sub: 1,
+    terrain: {
+      points: [
+        [0, 0],
+        [100, 0],
+      ],
+      segments: [{ flow_resistivity: 200, roughness: 0 }],
+    },
+    atmosphere: { temperature_c: 15, humidity_pct: 70, pressure_kpa: 101.325 },
+    coherence: { cv2: 0, ct2: 0, t_air_c: 15, c0: 340.348, roughness_r: 0, f_delta_nu: 1, d_m: 97.5 },
+    weather: null,
+    sub_sources: [{ position: [2.5, 0, 0.5], directivity: null }],
+    receivers: [],
+    forest: null,
+    forest_path_length_m: null,
+    isolation: null,
+  };
+}
 
 function costWith(level: CostEstimateResult["guardrail_level"]): CostEstimateResult {
   return {
@@ -78,6 +107,7 @@ describe("calc store slice", () => {
         discrete_points: [],
         coarse_multiples: [],
       },
+      scene: minimalScene(),
       receiverIds: [],
       nSub: 1,
       chunkReceivers: 256,
@@ -102,6 +132,7 @@ describe("calc store slice", () => {
         discrete_points: [],
         coarse_multiples: [],
       },
+      scene: minimalScene(),
       receiverIds: [],
       nSub: 1,
       chunkReceivers: 256,
