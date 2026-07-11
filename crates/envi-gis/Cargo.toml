@@ -1,0 +1,34 @@
+[package]
+name = "envi-gis"
+description = "ENVI GIS ingestion boundary — pure-Rust, sans-I/O COG/BigTIFF decode + windowing (DATA-01..04); no network, no OPFS, no browser DOM bindings — TS owns all I/O"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# Boundary rule (08-CONTEXT pivot D-01/D-02/D-03, 08-RESEARCH Pattern 1): the
+# sans-I/O GIS core. It decodes cached tile bytes and maps GIS data to scene
+# features with NO network, NO OPFS, NO browser DOM bindings — the runtime graph
+# must stay free of any async/network/browser crate (verify: `cargo tree -p
+# envi-gis`; no HTTP client, no async runtime, no browser bindings).
+# TypeScript owns fetch + OPFS; this crate is math over `&[u8]`, natively
+# `cargo test`-able and WASM-safe. Reprojection goes through `envi-geo` ONLY
+# (GEOX-04) — this crate never adds a second `proj4rs` edge. Depending on
+# `envi-engine` is legal (mirrors `envi-store`); the engine's 3-dep quarantine is
+# one-directional and gains nothing from this edge.
+[dependencies]
+envi-engine = { path = "../envi-engine" }
+envi-geo = { path = "../envi-geo" }
+tiff = "0.11.3"
+geo = "0.30"
+geojson = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# Dev-only: the committed COG fixtures are read as bytes; the expected-window
+# TOMLs are parsed with `toml`/`serde` and compared with `approx`. None of these
+# enter the runtime graph.
+[dev-dependencies]
+approx = "0.5"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
