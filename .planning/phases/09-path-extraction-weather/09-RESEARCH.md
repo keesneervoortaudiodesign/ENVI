@@ -373,11 +373,13 @@ for cand in tree.locate_in_envelope_intersecting(&bbox) {
 
 **If this table drove a decision, discuss-phase already ran — these are researcher defaults the planner should keep as named constants and the reviewer should sanity-check, not silent facts.**
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All four questions were resolved during planning; each `Recommendation:` below is the accepted resolution (`RESOLVED:`) and the plans (09-01..09-06) comply — Q1/Q2 no-engine-retrofit + Phase-9 delivers inputs+path-cache (09-04 Task 3); Q3 lattice-clipped-to-CDT (09-02); Q4 forest-crossing left deferred (consistent with CONTEXT deferred ideas).
 
 1. **Does `SolveJob` fan-out (producing `Vec<SolveJob>` and calling `solve()`) land in Phase 9 or Phase 10?**
    - What we know: ROADMAP Phase 9 says "feed real-world PropagationPaths"; Phase 10 is "wiring the promoted engine solver + chunked tensor store." CONTEXT says Phase 9 "builds its inputs; it does not redesign the struct." No production `SolveJob` construction exists yet (only tests).
-   - Recommendation: **Phase 9 produces the geometry+met inputs** (TerrainProfile with segments+screen vertices, per-azimuth `SoundSpeedProfile`/`WeatherComponents`, receiver positions, `CoherenceInputs`) and a **path-assembly function** + path-cache shape; **Phase 10 owns the fan-out loop, `solve()`, and the tensor sink.** Design the path-cache key now (`hash(geometry features ∩ corridor)` per ARCHITECTURE Tier-3).
+   - RESOLVED: **Phase 9 produces the geometry+met inputs** (TerrainProfile with segments+screen vertices, per-azimuth `SoundSpeedProfile`/`WeatherComponents`, receiver positions, `CoherenceInputs`) and a **path-assembly function** + path-cache shape; **Phase 10 owns the fan-out loop, `solve()`, and the tensor sink.** Design the path-cache key now (`hash(geometry features ∩ corridor)` per ARCHITECTURE Tier-3).
 
 2. **Also unresolved: was `compute_tensor(&Scene,&MetInputs,&[PropagationPath])` ever built?**
    - What we know: `solver.rs` has `SolveJob`/`solve()` but **no** `compute_tensor` and **no** `PropagationPath` type — the "promote-the-solver" refactor (ARCHITECTURE) was only partially done in Phase 4 (the streaming `solve()` exists; the `Scene`-level entry does not).
@@ -410,7 +412,7 @@ for cand in tree.locate_in_envelope_intersecting(&bbox) {
 
 ## Validation Architecture
 
-Nyquist validation is enabled (no `workflow.nyquist_validation:false` in config). Test framework = Rust `cargo test` (in-crate + `envi-harness` integration tests) + committed oracle/fixture files + offline Playwright for the web journey.
+Nyquist validation is DISABLED for this phase (`workflow.nyquist_validation: false` in config), so no `*-VALIDATION.md` is required — the "File Exists?" column below is informational, not a Nyquist gate. Test framework = Rust `cargo test` (in-crate + `envi-harness` integration tests) + committed oracle/fixture files + offline Playwright for the web journey.
 
 ### Test Framework
 | Property | Value |
