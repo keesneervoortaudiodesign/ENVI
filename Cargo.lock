@@ -526,6 +526,7 @@ dependencies = [
  "approx",
  "calamine",
  "envi-engine",
+ "envi-gis",
  "libtest-mimic",
  "num-complex",
  "serde",

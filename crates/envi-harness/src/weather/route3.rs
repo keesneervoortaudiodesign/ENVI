@@ -10,11 +10,14 @@
 //!
 //! # I/O quarantine (D-15) + no linalg crate (D-08)
 //!
-//! Route 3 lives entirely in `envi-harness`. The 3-parameter least-squares solve
-//! is a **hand-rolled 3×3 normal-equations** system (`XᵀX β = Xᵀy`) solved
-//! closed-form by Cramer's rule — **no `nalgebra` / `ndarray-linalg`** (a
-//! checkpoint guards any linalg-crate proposal). The singular case is a typed
-//! error, never a panic or a NaN profile (T-03-03-02).
+//! The Route-3 reconstruction lives in `envi-harness`. The 3-parameter
+//! least-squares solve is a **hand-rolled 3×3 normal-equations** system
+//! (`XᵀX β = Xᵀy`) solved closed-form by Cramer's rule — **no `nalgebra` /
+//! `ndarray-linalg`** (a checkpoint guards any linalg-crate proposal). As of
+//! 09-03 (METX-01) that LSQ was **lifted** into the WASM-safe
+//! [`envi_gis::weather::fit_profile`] (single source of truth); [`fit_profile`]
+//! here delegates to it and maps the error back to [`CaseLoadError`]. The
+//! singular case is a typed error, never a panic or a NaN profile (T-03-03-02).
 //!
 //! # ⚠️ The stability constants are `[ASSUMED]` (RESEARCH Open Q1, D-04)
 //!
@@ -150,91 +153,39 @@ pub fn reconstruct_profiles(met: &SurfaceMet, heights: &[f64]) -> Result<Vec<f64
     Ok(c_eff)
 }
 
-/// Solve the 3×3 system `M·β = r` by Cramer's rule (cofactor determinants).
-///
-/// Returns `None` when the matrix is singular (`|det| ≤ eps·‖M‖`), which the
-/// caller maps to a typed error — no `nalgebra`, no panic (D-08 / T-03-03-02).
-fn solve_3x3(m: [[f64; 3]; 3], r: [f64; 3]) -> Option<[f64; 3]> {
-    let det3 = |a: [[f64; 3]; 3]| {
-        a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
-            - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
-            + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0])
-    };
-    let det = det3(m);
-    // Scale guard: reject a determinant that is negligible vs the matrix norm.
-    let scale: f64 = m.iter().flatten().map(|v| v.abs()).sum::<f64>().max(1e-30);
-    if !det.is_finite() || det.abs() <= 1e-12 * scale.powi(3) {
-        return None;
-    }
-    let mut beta = [0.0; 3];
-    for (i, b) in beta.iter_mut().enumerate() {
-        let mut mi = m;
-        for row in 0..3 {
-            mi[row][i] = r[row];
-        }
-        *b = det3(mi) / det;
-    }
-    if beta.iter().all(|v| v.is_finite()) {
-        Some(beta)
-    } else {
-        None
-    }
-}
-
 /// Least-squares fit of the log-lin model `c_eff(z) ≈ A·ln(z/z₀+1) + B·z + C` to
 /// the `(heights, c_eff)` samples via the hand-rolled 3×3 normal equations
 /// `XᵀX β = Xᵀy` (D-08). Returns `(A, B, C)`.
 ///
-/// The basis is `[ln(z/z₀+1), z, 1]`; `z₀` is clamped ≥ 0.001 m. With ≥ 3
-/// non-degenerate heights the normal matrix is well-conditioned; a synthetic
-/// profile generated from an exact `(A, B, C)` is recovered exactly (the
-/// round-trip identity, the oracle for MET-06).
+/// # Single source of truth (09-03, METX-01)
+///
+/// The 3×3 Cramer LSQ was **lifted** into the WASM-safe [`envi_gis::weather`];
+/// this function is a thin delegator that maps the lifted [`envi_gis::GisError`]
+/// back to the harness's [`CaseLoadError`] so every existing Route-3 call site
+/// and test is unchanged. There is **no second copy** of the fit here — the
+/// round-trip identity oracle (below) still covers the one implementation.
 ///
 /// # Errors
 ///
-/// - [`CaseLoadError::Invalid`] if fewer than 3 samples or mismatched lengths.
+/// - [`CaseLoadError::Invalid`] if fewer than 3 samples, mismatched lengths, or
+///   the normal matrix is singular (collinear heights) — a typed error, never a
+///   panic (T-03-03-02).
 /// - [`CaseLoadError::NonFinite`] if any sample is non-finite.
-/// - [`CaseLoadError::Invalid`] if the normal matrix is singular (collinear
-///   heights) — a typed error, never a panic (T-03-03-02).
 pub fn fit_profile(
     heights: &[f64],
     c_eff: &[f64],
     z0: f64,
 ) -> Result<(f64, f64, f64), CaseLoadError> {
-    if heights.len() != c_eff.len() || heights.len() < 3 {
-        return Err(CaseLoadError::Invalid {
+    envi_gis::weather::fit_profile(heights, c_eff, z0).map_err(|e| match e {
+        envi_gis::GisError::NonFinite { what } => CaseLoadError::NonFinite {
             context: "weather route 3 (fit)".to_string(),
-            message: format!(
-                "need ≥ 3 matched samples, got {} heights / {} values",
-                heights.len(),
-                c_eff.len()
-            ),
-        });
-    }
-    let z0 = z0.max(Z0_MIN_M);
-    // Accumulate XᵀX (symmetric 3×3) and Xᵀy.
-    let mut m = [[0.0_f64; 3]; 3];
-    let mut r = [0.0_f64; 3];
-    for (&z, &y) in heights.iter().zip(c_eff) {
-        if !(z.is_finite() && z >= 0.0 && y.is_finite()) {
-            return Err(CaseLoadError::NonFinite {
-                context: "weather route 3 (fit)".to_string(),
-                what: "sample height or c_eff".to_string(),
-            });
-        }
-        let phi = [(z / z0 + 1.0).ln(), z, 1.0];
-        for i in 0..3 {
-            for j in 0..3 {
-                m[i][j] += phi[i] * phi[j];
-            }
-            r[i] += phi[i] * y;
-        }
-    }
-    let beta = solve_3x3(m, r).ok_or_else(|| CaseLoadError::Invalid {
-        context: "weather route 3 (fit)".to_string(),
-        message: "singular normal matrix (collinear / insufficient heights)".to_string(),
-    })?;
-    Ok((beta[0], beta[1], beta[2]))
+            what,
+        },
+        other => CaseLoadError::Invalid {
+            context: "weather route 3 (fit)".to_string(),
+            message: other.to_string(),
+        },
+    })
 }
 
 #[cfg(test)]

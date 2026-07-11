@@ -54,6 +54,7 @@ pub mod registry;
 pub mod screening;
 pub mod terrain;
 pub mod tiles;
+pub mod weather;
 
 use thiserror::Error;
 
@@ -222,6 +223,25 @@ pub enum GisError {
     #[error("receiver-grid region is invalid: {message}")]
     InvalidGridRegion {
         /// Human-readable `envi_dgm::DgmError` text.
+        message: String,
+    },
+    /// The weather-route log-lin least-squares fit could not be solved: fewer
+    /// than three matched samples, mismatched lengths, or a singular normal
+    /// matrix (collinear heights). A typed error, never a panic or a NaN profile
+    /// (METX-01, threat T-09-03-01). `envi-harness` Route 2/3 delegate to the
+    /// single [`weather::fit_profile`] and map this back to their `CaseLoadError`.
+    #[error("weather-route profile fit failed: {message}")]
+    WeatherFit {
+        /// What made the fit unsolvable.
+        message: String,
+    },
+    /// An ERA5 single-level field was non-finite or physically degenerate (zero
+    /// friction velocity, non-positive air density / virtual temperature), so the
+    /// Obukhov derivation could not proceed. A typed error, never a panic
+    /// (METX-02, threat T-09-03-02).
+    #[error("ERA5 field error: {message}")]
+    Era5Field {
+        /// What made the ERA5 derivation fail.
         message: String,
     },
 }

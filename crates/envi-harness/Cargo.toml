@@ -7,6 +7,13 @@ rust-version.workspace = true
 
 [dependencies]
 envi-engine = { path = "../envi-engine" }
+# METX-01 (09-03): the weather-route log-lin LSQ + `WeatherComponents` /
+# `profile_for_bearing` / `ReflectionProfiles` were lifted into the WASM-safe
+# `envi-gis::weather` (single source of truth). The harness DELEGATES to them
+# (Route 2/3) instead of keeping a second copy of the 3×3 Cramer fit. envi-gis is
+# pure-Rust (no async/network/browser edge), so this dependency is quarantine-safe
+# and introduces no cycle (envi-gis never depends on envi-harness).
+envi-gis = { path = "../envi-gis" }
 calamine = "0.36"
 serde = { version = "1", features = ["derive"] }
 toml = "1"

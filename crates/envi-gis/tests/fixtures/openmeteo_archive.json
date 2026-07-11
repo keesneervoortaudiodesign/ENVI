@@ -1,0 +1,43 @@
+{
+  "_provenance": "SYNTHETIC, real-SHAPED Open-Meteo Archive (archive-api.open-meteo.com/v1/archive) pressure-level response for METX-01 offline derivation tests. NOT a captured live response (no copyright/attribution concern); hand-authored to exercise a temperature INVERSION (T rising with height) + wind shear (speed rising with height), wind FROM the west (270deg -> downwind bearing 90deg). elevation is AMSL site elevation; geopotential_height_*hPa are AMSL and MUST be converted to AGL by subtracting elevation before fitting (Pitfall 5). One hour only (D-01 single representative hour). No network/Python needed at test time (mirrors tests/fixtures/cog provenance).",
+  "latitude": 52.1,
+  "longitude": 5.1,
+  "elevation": 10.0,
+  "hourly_units": {
+    "time": "iso8601",
+    "temperature_1000hPa": "°C",
+    "wind_speed_1000hPa": "m/s",
+    "wind_direction_1000hPa": "°",
+    "geopotential_height_1000hPa": "m"
+  },
+  "hourly": {
+    "time": ["2023-01-18T03:00"],
+    "temperature_2m": [7.0],
+    "wind_speed_10m": [3.0],
+    "wind_direction_10m": [270.0],
+    "temperature_1000hPa": [8.0],
+    "temperature_975hPa": [9.0],
+    "temperature_950hPa": [10.0],
+    "temperature_925hPa": [11.0],
+    "temperature_900hPa": [12.0],
+    "temperature_850hPa": [14.0],
+    "wind_speed_1000hPa": [4.0],
+    "wind_speed_975hPa": [6.0],
+    "wind_speed_950hPa": [8.0],
+    "wind_speed_925hPa": [9.0],
+    "wind_speed_900hPa": [10.0],
+    "wind_speed_850hPa": [12.0],
+    "wind_direction_1000hPa": [270.0],
+    "wind_direction_975hPa": [270.0],
+    "wind_direction_950hPa": [270.0],
+    "wind_direction_925hPa": [270.0],
+    "wind_direction_900hPa": [270.0],
+    "wind_direction_850hPa": [270.0],
+    "geopotential_height_1000hPa": [100.0],
+    "geopotential_height_975hPa": [320.0],
+    "geopotential_height_950hPa": [540.0],
+    "geopotential_height_925hPa": [760.0],
+    "geopotential_height_900hPa": [990.0],
+    "geopotential_height_850hPa": [1460.0]
+  }
+}
