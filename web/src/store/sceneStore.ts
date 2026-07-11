@@ -131,6 +131,15 @@ export interface SceneState {
   // re-hydrates its view. The scene wire is geometry-only (spectra are not carried by PUT /scene).
   loadScene(collection: SceneCollection): void;
 
+  // Replace the scene with the D-09 MERGE result of an import (the imported orchestrator computes
+  // `merge(existing, incoming)` in WASM and hands back the whole merged FeatureCollection). Unlike
+  // `commitFeature`, this PRESERVES each feature's properties verbatim (imported provenance +
+  // `impedance_class` / `z_m` / `eaves_height_m` must survive — `commitFeature` would reseed kind
+  // defaults over them) and keeps the existing `spectra`/project identity. Marks the scene dirty and
+  // bumps `loadEpoch` so Terra Draw re-hydrates the imported geometry (SC4). The caller persists via
+  // `saveScene` so post-import the compute path reads the committed features.
+  loadImportedScene(collection: SceneCollection): void;
+
   // The authoritative features to re-add into Terra Draw (e.g. after `style.load` re-hydration).
   terraDrawFeatures(): GeoJSONStoreFeatures[];
   // The whole-scene GeoJSON FeatureCollection for a PUT.
@@ -478,6 +487,32 @@ export const useSceneStore = create<SceneState>((set, get) => ({
         dirty: false,
         groundReject: null,
         zoomRequest: null,
+        loadEpoch: state.loadEpoch + 1,
+      };
+    }),
+
+  loadImportedScene: (collection) =>
+    set((state) => {
+      const features: Record<string, GeoJSONStoreFeatures> = {};
+      for (const raw of collection.features ?? []) {
+        const props = (raw as { properties?: Record<string, unknown> }).properties ?? {};
+        const id = String(
+          (raw as { id?: unknown }).id ?? (props as { id?: unknown }).id ?? crypto.randomUUID(),
+        );
+        // Preserve properties verbatim (imported provenance / class / height); only guarantee the id.
+        features[id] = {
+          ...(raw as GeoJSONStoreFeatures),
+          id,
+          properties: { ...props, id },
+        } as GeoJSONStoreFeatures;
+      }
+      return {
+        features,
+        selection: null,
+        groundReject: null,
+        zoomRequest: null,
+        dirty: true,
+        commitEpoch: state.commitEpoch + 1,
         loadEpoch: state.loadEpoch + 1,
       };
     }),
