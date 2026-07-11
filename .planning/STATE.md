@@ -6,15 +6,15 @@ current_phase: 10
 current_phase_name: calculation-service
 status: in-progress
 stopped_at: Phase 10 plan 10-03 complete (envi-compute-wasm boundary + OPFS TensorSink + threaded build)
-last_updated: "2026-07-11T19:34:51.385Z"
+last_updated: "2026-07-11T20:06:22.463Z"
 last_activity: 2026-07-11
-last_activity_desc: 10-03 executed (envi-compute-wasm cdylib + OPFS TensorSink + scoped threaded build:wasm:compute, 3 tasks, all quality gates green)
+last_activity_desc: 10-03 executed (envi-compute-wasm boundary + OPFS TensorSink + threaded build, 3 tasks, all quality gates green)
 progress:
   total_phases: 11
   completed_phases: 9
   total_plans: 52
-  completed_plans: 50
-  percent: 96
+  completed_plans: 51
+  percent: 82
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 10 (calculation-service) — IN PROGRESS
-Plan: 3 of 5 complete (10-01 ✓, 10-02 ✓, 10-03 ✓; 10-04..10-05 pending)
+Plan: 4 of 5 complete (10-01 ✓, 10-02 ✓, 10-03 ✓; 10-04..10-05 pending)
 Status: Phase 10 in progress. 10-03 executed — the browser compute boundary `envi-compute-wasm` (cdylib+rlib) landed: a thin `wasm-bindgen` boundary (`estimate_cost`/`plan_tiers` delegating to the pure `envi-compute` cost/tier core; `request_cancel`/`reset_cancel` D-11 cooperative-cancel flag; `solve_chunk_range` signature seam for the 10-04 pool), the `OpfsChunkSink` — a NEW impl of the engine's existing `TensorSink` trait (no engine change) writing the frozen `[s][r_local][f]` interleaved-`(re,im)`-f64-LE (16 B) + `P_incoh` f64-LE (8 B) chunk format over a boxed `ChunkHandle` seam (native Vec<u8> mock + wasm `FileSystemSyncAccessHandle` extern glue), byte-exact round-trip vs `InMemorySink` (incl. a non-contiguous sliced view, Pitfall 7); the `TierComplete` D-07 event + cost/tier DTOs ts-rs-generated into the single committed `wire.ts` (no-drift green, `JobStatus` reused from envi-service); and the scoped `build:wasm:compute` npm script (`cargo +nightly-2026-07-11` `-Zbuild-std` + inline `--config` atomics + off-by-default `threads` feature) — verified to produce the threaded SharedArrayBuffer module (`initThreadPool` exported) with NO leak onto the stable gis build (Pitfall 1). Engine + envi-compute byte-identical; all gates green. Next: 10-04 (rayon pool driver + Web Worker job machine, wire the OPFS glue), 10-05 (CalcPanel UI).
 Last activity: 2026-07-11 — 10-03 executed (envi-compute-wasm boundary + OPFS TensorSink + threaded build, 3 tasks, all quality gates green)
 
@@ -99,6 +99,7 @@ Progress: [██████████] Phase 10 — 3/5 plans complete (10-0
 | Phase 10 P01 | ~45min | 3 tasks | 12 files |
 | Phase 10 P02 | ~20min | 2 tasks | 4 files |
 | Phase 10 P03 | 95min | 3 tasks | 13 files |
+| Phase 10 P04 | 40min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -176,6 +177,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 10, 10-03] envi-compute-wasm cdylib: thin boundary (estimate_cost/plan_tiers) over pure envi-compute core + OpfsChunkSink (NEW impl of engine TensorSink; frozen [s][r_local][f] interleaved-LE chunk format over FileSystemSyncAccessHandle, worker-only; byte-exact round-trip vs InMemorySink). Engine byte-identical.
 - [Phase ?]: [Phase 10, 10-03] Threaded-wasm build scoped to ONE npm script: cargo +nightly-2026-07-11 -Zbuild-std + inline --config atomics + off-by-default 'threads' feature gating wasm-bindgen-rayon/rayon — no rust-toolchain.toml, no .cargo/config.toml (Pitfall 1). Verified end-to-end; stable gis build untouched.
 - [Phase ?]: [Phase 10, 10-03] JobStatus reused verbatim from existing wire.ts (envi-service, D-10) client-side; no duplicate re-derivation. TierComplete D-07 event + cost/tier DTOs ts-rs-generated into the single committed wire.ts (no-drift green).
+- [Phase ?]: 10-04: rayon native-normal + wasm-optional (threads-gated) so cargo test runs the real par_iter driver; stable wasm build stays rayon-free
+- [Phase ?]: 10-04: pool::solve_tier shards disjoint ranges (one file per range at local offset 0); solve_chunk_range remains a typed seam pending a scene-context DTO
 
 ### Pending Todos
 
@@ -204,6 +207,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T19:34:34.731Z
+Last session: 2026-07-11T20:06:01.698Z
 Stopped at: Phase 10 context gathered
 Resume file: .planning/phases/10-calculation-service/10-CONTEXT.md
