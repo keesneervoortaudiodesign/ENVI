@@ -43,6 +43,7 @@
 pub mod buildings;
 pub mod cog;
 mod geojson_util;
+pub mod grid;
 pub mod impedance;
 pub mod impedance_table;
 pub mod landcover;
@@ -189,6 +190,39 @@ pub enum GisError {
         got: usize,
         /// The documented maximum ([`screening::MAX_CORRIDOR_CANDIDATES`]).
         limit: usize,
+    },
+    /// The requested receiver-grid spacing was below the
+    /// [`grid::MIN_SPACING_M`] guardrail (or was non-finite). A finer grid
+    /// explodes receiver count × sub-sources on the client-side WASM solve, so it
+    /// is rejected before any lattice is generated (GRID-01, D-06, threat
+    /// T-09-02-02).
+    #[error("receiver-grid spacing {got} m is below the minimum of {min} m")]
+    SpacingTooSmall {
+        /// The requested spacing (meters).
+        got: f64,
+        /// The documented minimum ([`grid::MIN_SPACING_M`]).
+        min: f64,
+    },
+    /// The receiver grid would contain more points than the
+    /// [`grid::MAX_RECEIVERS`] cap. Enforced against the bounding-box lattice
+    /// count **before** the full set is allocated so the browser cannot OOM
+    /// (GRID-01, threat T-09-02-02).
+    #[error("receiver grid would produce {got} receivers, exceeding the cap of {limit}")]
+    ReceiverCapExceeded {
+        /// Receiver count the request would produce (upper bound).
+        got: usize,
+        /// The documented maximum ([`grid::MAX_RECEIVERS`]).
+        limit: usize,
+    },
+    /// Building-aware receiver-grid construction failed the constrained-Delaunay
+    /// validity guard: `envi_dgm::build_tin` rejected intersecting/degenerate
+    /// footprint rings or the `calc_area` boundary (GRID-01, threat T-09-02-03).
+    /// The underlying `DgmError` is captured as a message so [`GisError`] stays
+    /// `PartialEq` (mirroring [`GisError::Tiff`]/[`GisError::Reproject`]).
+    #[error("receiver-grid region is invalid: {message}")]
+    InvalidGridRegion {
+        /// Human-readable `envi_dgm::DgmError` text.
+        message: String,
     },
 }
 
