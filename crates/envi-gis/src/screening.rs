@@ -45,7 +45,7 @@
 
 use envi_dgm::tin::Tin;
 use geo::line_intersection::{LineIntersection, line_intersection};
-use geo::{BoundingRect, Coord, Line, LineString, Polygon};
+use geo::{BoundingRect, Contains, Coord, Line, LineString, Point, Polygon};
 use rstar::{AABB, RTree, RTreeObject};
 
 use crate::GisError;
@@ -258,9 +258,20 @@ pub fn inject_screens(
                     let z = screen_top_z(tin, s, r, x0, span, x, *eaves_height_m)?;
                     tops.push([x, z]);
                 }
-                // Pair consecutive crossings (entry→exit) as hard spans: the line
-                // is inside the footprint between an even and the next odd crossing.
-                for pair in xs.chunks_exact(2) {
+                // Pair crossings (entry→exit) into hard spans. `ring_crossings`
+                // excludes the path endpoints, so if S or R lies *inside* the
+                // footprint the crossing count is ODD and a naive `chunks_exact(2)`
+                // would silently drop the unpaired interior span (IN-02). Anchor the
+                // sequence with x0 when S is inside and xn when R is inside so the
+                // list is always even and every inside interval is tagged hard.
+                let mut bounds = xs.clone();
+                if footprint.contains(&Point::new(s[0], s[1])) {
+                    bounds.insert(0, x0);
+                }
+                if footprint.contains(&Point::new(r[0], r[1])) {
+                    bounds.push(xn);
+                }
+                for pair in bounds.chunks_exact(2) {
                     hard_spans.push([pair[0], pair[1]]);
                 }
             }
@@ -627,6 +638,46 @@ mod tests {
         let screens = vec![building(8.0, 12.0, 6.0)];
         let err = inject_screens(&base, &screens, &small).unwrap_err();
         assert_eq!(err, GisError::OutsideHull, "hull miss is OutsideHull");
+    }
+
+    // IN-02: the SOURCE lies inside a footprint, so the exterior-ring query yields
+    // an ODD crossing count (only the exit at x = 5; the entry endpoint is
+    // excluded). The interior span [x0, exit] must still be tagged hard — the old
+    // `chunks_exact(2)` dropped it, leaving the ground under the building class A.
+    #[test]
+    fn source_inside_footprint_tags_interior_span_hard() {
+        let tin = flat_tin();
+        let base = base_along_x(); // S = (0,0), R = (20,0)
+        // A footprint x ∈ [−3, 5] straddling the x-axis: it CONTAINS S = (0,0) and
+        // the path exits it at x = 5 (a single interior crossing).
+        let screens = vec![building(-3.0, 5.0, 6.0)];
+        let out = inject_screens(&base, &screens, &tin).unwrap();
+
+        let sigma_h = impedance_class('H').unwrap();
+        let interior = out
+            .segments
+            .iter()
+            .zip(out.points.windows(2))
+            .find(|(_, w)| {
+                let mid = (w[0][0] + w[1][0]) / 2.0;
+                mid > 0.0 && mid < 5.0
+            })
+            .map(|(s, _)| s)
+            .expect("an interval between the source and the exit crossing");
+        assert_eq!(
+            interior.flow_resistivity, sigma_h,
+            "the span from an interior source to the footprint exit must be hard"
+        );
+        // Beyond the exit the ground reverts to the inherited class A.
+        let sigma_a = impedance_class('A').unwrap();
+        let beyond = out
+            .segments
+            .iter()
+            .zip(out.points.windows(2))
+            .find(|(_, w)| (w[0][0] + w[1][0]) / 2.0 > 5.0)
+            .map(|(s, _)| s)
+            .expect("an interval past the exit crossing");
+        assert_eq!(beyond.flow_resistivity, sigma_a);
     }
 
     // WR-02: an over-large wire-supplied `screens` set is rejected BEFORE the
