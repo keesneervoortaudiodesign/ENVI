@@ -66,9 +66,14 @@ pub struct ImportTiles {
 #[must_use]
 pub fn plan_tiles(bbox: Bbox) -> ImportTiles {
     let terrain_src = registry::terrain_source(bbox);
-    let terrain = match terrain_src.id {
-        "ahn4-dtm" => ahn_tiles(bbox, terrain_src),
-        _ => glo30_tiles(bbox, terrain_src),
+    // Dispatch on the descriptor's tile addressing scheme, not a hardcoded source
+    // id, so a new terrain source slots in by declaring its scheme (D-04). An
+    // unknown scheme yields NO tiles rather than a silent GLO-30 fallback that
+    // would mislabel it — a new scheme must be wired here deliberately.
+    let terrain = match terrain_src.tile_scheme {
+        "kaartblad" => ahn_tiles(bbox, terrain_src),
+        "1deg" => glo30_tiles(bbox, terrain_src),
+        _ => Vec::new(),
     };
     let landcover = registry::source("worldcover")
         .map(|d| worldcover_tiles(bbox, d))
