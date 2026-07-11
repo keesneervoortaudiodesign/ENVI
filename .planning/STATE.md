@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 08
 current_phase_name: gis-ingestion-dgm
 status: executing
-stopped_at: Phase 8 context gathered
-last_updated: "2026-07-11T00:12:31.137Z"
+stopped_at: Completed 08-02 (envi-gis sans-I/O COG decode core)
+last_updated: "2026-07-11T00:58:24.431Z"
 last_activity: 2026-07-11
-last_activity_desc: Completed 08-01 (envi-geo RD New EPSG:28992 + pyproj oracle)
+last_activity_desc: Completed 08-02 (envi-gis sans-I/O COG/BigTIFF decode core + GDAL fixtures)
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 41
-  completed_plans: 34
+  completed_plans: 35
   percent: 64
 ---
 
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 08 (gis-ingestion-dgm) — EXECUTING
-Plan: 2 of 8
-Status: Executing Phase 08
-Last activity: 2026-07-11 — Completed 08-01 (envi-geo RD New + pyproj oracle)
+Plan: 3 of 8
+Status: Ready to execute
+Last activity: 2026-07-11 — Completed 08-02 (envi-gis sans-I/O COG/BigTIFF decode core + GDAL fixtures)
 
 Progress: [██████████] Phase 7 — 10/10 plans complete (envi-store DTOs · envi-dgm TIN · endpoints · web scaffold+theme · Terra Draw lifecycle · generated wire types · 9-kind palette+DGM producer · spectrum editor+ring-diff · validation+autosave · SC1–SC4 E2E)
 
@@ -83,6 +83,7 @@ Progress: [██████████] Phase 7 — 10/10 plans complete (env
 | Phase 07 P09 | 42min | 4 tasks | 15 files |
 | Phase 07 P10 | 17min | 3 tasks | 15 files |
 | Phase 08 P01 | 30min | 2 tasks | 6 files |
+| Phase 08 P02 | ~55 min | 3 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -144,6 +145,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 07-10: reopen-last on boot restores the last project; getLastProject maps 404/id-less to null so the boot GET is transparent to the offline test suite
 - [Phase ?]: 07-10: SC1-SC4 proven by integrated offline Playwright journeys; final web/dist committed (zero external assets); envi-dgm documented with its own quarantine gate
 - [Phase 08, 08-01] RD New (EPSG:28992) added to envi-geo as a sibling source type `RdNewCrs` (to_rd/to_wgs84), NOT an overload of the UTM-specific ProjectCrs — RD is the transient AHN import source CRS, reprojected to WGS84 then handed to the project ProjectCrs (GEOX-04 single boundary preserved). proj4rs sterea + Bessel + 7-param towgs84, ZERO new deps; radians stay quarantined in transform.rs. Pinned to a committed pyproj EPSG:4326↔28992 oracle (rd_landmarks.toml, sha256 provenance, tol_m read from [meta]) at ≤1.0 m round-trip — the ~0.5 m towgs84-vs-RDNAPTRANS gap sits inside tolerance; no runtime Python. Fallible constructor wraps bad proj strings into GeoError::Proj (no panic, T-08-01-02)
+- [Phase 08]: envi-gis is the sans-I/O, WASM-safe GIS-ingestion boundary: decodes cached COG/BigTIFF over &[u8] (tiff crate), NO network/OPFS/browser deps (cargo tree gate); guard-first decode_window enforces a pre-decode max_decoded_px DoS budget from IFD dims (T-08-02-01), geotransform from ModelPixelScale/Tiepoint not nominal (T-08-02-04), nodata + non-finite dropped to Option holes never silent 0.0 (T-08-02-03). Fixtures are real GDAL 3.12.1 COGs (dev-time rasterio), Python not a test dep; envi-engine byte-identical. — Load-bearing security-critical foundation of the client-side import pipeline; sans-I/O keeps the whole core natively cargo test-able and WASM-ready.
 
 ### Pending Todos
 
@@ -171,6 +173,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11
+Last session: 2026-07-11T00:57:27.692Z
 Stopped at: Completed 08-01-PLAN.md (envi-geo RD New + pyproj oracle)
 Resume file: None

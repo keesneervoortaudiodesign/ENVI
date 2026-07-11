@@ -278,12 +278,12 @@ Plans:
   4. Buildings missing height data get heights via the documented fallback chain (measured → height tag → levels×3+1.5 → user default) with per-feature provenance (source + license + retrieval date), and base elevations are sampled from footprint-boundary ground, never DSM-under-building
   5. The map shows attribution for OSM/Overture/ESA WorldCover/Copernicus data
 
-**Plans**: 8 plans
+**Plans**: 2/8 plans executed
 
 Plans:
 
 - [x] 08-01-PLAN.md — envi-geo RD-New (EPSG:28992) + pyproj oracle (DATA-01)
-- [ ] 08-02-PLAN.md — envi-gis crate + sans-I/O COG decode core + committed COG fixtures (DATA-01)
+- [x] 08-02-PLAN.md — envi-gis crate + sans-I/O COG decode core + committed COG fixtures (DATA-01)
 - [ ] 08-03-PLAN.md — envi-service allowlisted byte proxy (GLO-30/WorldCover) + SSRF contract tests (DATA-01/02)
 - [ ] 08-04-PLAN.md — envi-gis feature layer: source registry + terrain decimation/base-elevation + WorldCover→σ table + Overpass buildings/height-chain + re-import merge (DATA-01/02/03)
 - [ ] 08-05-PLAN.md — envi-gis WorldCover→ground_zone vectorization (contour dep human-verify gate) (DATA-02)
