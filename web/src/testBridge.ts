@@ -16,8 +16,19 @@ import type { GeoJSONStoreFeatures } from "terra-draw";
 import { KIND_META, isKind, type Kind } from "./draw/kinds";
 import { useSceneStore } from "./store/sceneStore";
 import { reopenLast } from "./store/projectActions";
+import { useImportStore, type LayerKey, type LayerStatus } from "./store/import";
+import { runImport, retryLayer } from "./import/importJob";
+import { getTile, removeTile } from "./import/opfs";
 import type { GroundZoneOutcome } from "./validate/groundZone";
-import type { AuthoredSpectrumDto } from "./generated/wire";
+import type { AuthoredSpectrumDto, BboxDto } from "./generated/wire";
+
+// A JSON-safe per-layer import status snapshot (the 08-08 offline E2E asserts on these).
+export interface ImportLayerSnapshot {
+  readonly status: LayerStatus;
+  readonly featureCount: number;
+  readonly surfaceModel: boolean;
+  readonly error: { readonly status: number; readonly detail: string } | null;
+}
 
 // Build a minimal valid geometry for a kind's Terra Draw geometry mode, offset around [lng, lat].
 function geometryFor(kind: Kind, lng: number, lat: number): GeoJSONStoreFeatures["geometry"] {
@@ -90,6 +101,29 @@ export interface EnviTestBridge {
   featureIds(): string[];
   // Trigger the whole-scene PUT.
   save(): Promise<void>;
+
+  // --- GIS import (08-08 offline E2E). Drives the REAL import orchestrator (D-06/D-07), not a stub. ---
+  // Run a viewport import for the currently-open project over the given WGS84 bbox (every enabled layer).
+  runImport(bbox: BboxDto): void;
+  // Enable/disable a layer for the next import/retry (D-06 per-layer toggles).
+  setImportLayerEnabled(layer: LayerKey, enabled: boolean): void;
+  // Retry a single failed layer without touching its siblings (D-07).
+  retryImportLayer(layer: LayerKey): void;
+  // A JSON-safe snapshot of every layer's import status (assertions).
+  importState(): {
+    layers: Record<LayerKey, ImportLayerSnapshot>;
+    attributedSources: string[];
+    debugOverlay: boolean;
+  };
+  // Toggle the SC3 impedance debug overlay.
+  toggleImpedanceOverlay(): void;
+  // The scene load epoch — bumped on every import commit (loadImportedScene). A re-run signal for the
+  // DATA-04 replay that is independent of the D-09 idempotent-merge feature count.
+  sceneEpoch(): number;
+  // Whether a source tile is cached in this project's OPFS (DATA-04 replay asserts an OPFS hit).
+  cachedTile(source: string, tile: string): Promise<boolean>;
+  // Evict a cached source tile — the DATA-04 negative guard (removed entry ⇒ the compute read fails).
+  evictTile(source: string, tile: string): Promise<void>;
 }
 
 export function installTestBridge(): void {
@@ -182,6 +216,52 @@ export function installTestBridge(): void {
     },
     save() {
       return useSceneStore.getState().saveScene();
+    },
+    runImport(bbox) {
+      const projectId = useSceneStore.getState().projectId;
+      if (!projectId) {
+        throw new Error("runImport: no project is open");
+      }
+      runImport(projectId, bbox);
+    },
+    setImportLayerEnabled(layer, enabled) {
+      useImportStore.getState().setLayerEnabled(layer, enabled);
+    },
+    retryImportLayer(layer) {
+      retryLayer(layer);
+    },
+    importState() {
+      const s = useImportStore.getState();
+      const layers = {} as Record<LayerKey, ImportLayerSnapshot>;
+      for (const layer of Object.keys(s.layers) as LayerKey[]) {
+        const l = s.layers[layer];
+        layers[layer] = {
+          status: l.status,
+          featureCount: l.featureCount,
+          surfaceModel: l.surfaceModel,
+          error: l.error ? { status: l.error.status, detail: l.error.detail } : null,
+        };
+      }
+      return { layers, attributedSources: [...s.attributedSources], debugOverlay: s.debugOverlay };
+    },
+    toggleImpedanceOverlay() {
+      useImportStore.getState().toggleDebugOverlay();
+    },
+    sceneEpoch() {
+      return useSceneStore.getState().loadEpoch;
+    },
+    async cachedTile(source, tile) {
+      const projectId = useSceneStore.getState().projectId;
+      if (!projectId) {
+        return false;
+      }
+      return (await getTile(projectId, source, tile)) !== null;
+    },
+    async evictTile(source, tile) {
+      const projectId = useSceneStore.getState().projectId;
+      if (projectId) {
+        await removeTile(projectId, source, tile);
+      }
     },
   };
   (window as unknown as { __enviTest?: EnviTestBridge }).__enviTest = bridge;

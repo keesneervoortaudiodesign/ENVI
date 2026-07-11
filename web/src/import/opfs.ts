@@ -84,6 +84,18 @@ export async function getTile(
   }
 }
 
+// Remove a cached tile (best-effort). Used to evict a cached source tile so a subsequent compute read
+// misses OPFS and must re-fetch — the DATA-04 network-off replay's negative guard depends on this to
+// prove a render came from OPFS rather than a lingering in-memory copy. A miss is not an error.
+export async function removeTile(projectId: string, source: string, tile: string): Promise<void> {
+  try {
+    const dir = await cacheDir(projectId, source);
+    await dir.removeEntry(safeSeg(tile));
+  } catch {
+    /* already absent — nothing to evict */
+  }
+}
+
 // An honest storage-quota snapshot (threat T-08-07-01): callers block/warn before a write that would
 // exhaust the origin's quota, rather than letting a `write` fail opaquely. Both fields may be undefined.
 export async function estimateQuota(): Promise<QuotaEstimate> {

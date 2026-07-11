@@ -9,6 +9,9 @@
 //   mocks AFTER — Playwright matches the most-recently-registered route first, so the specific mocks win.
 // - Valid input range: localhost (the Vite-served bundle), data: and blob: URLs are always allowed.
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import type { Page, Route } from "@playwright/test";
 
 // A minimal dark vector style — background only, NO external sources — so intercepting the style URL is
@@ -85,6 +88,113 @@ export async function bootOffline(page: Page): Promise<string[]> {
   await page.goto("/");
   await page.waitForFunction(() => typeof window.__enviTest !== "undefined");
   return unmocked;
+}
+
+// --- GIS import mocks (08-08 offline import journey + DATA-04 replay) --------------------------------
+//
+// Serve the committed E2E fixtures (`fixtures/*.tif` + `overpass_buildings.json`) for EVERY GIS source the
+// import path fetches: AHN via PDOK (cross-origin Direct), GLO-30 + WorldCover via the same-origin byte
+// proxy (`/api/v1/proxy/**`), and OSM buildings via Overpass (Direct). Registered AFTER `installOffline`/
+// `bootOffline` so each specific GIS route wins over the offline guard AND the generic `**/api/v1/**` mock
+// (a proxy tile must return TIFF bytes, not the `{}` fallback) — the load-bearing most-recent-route ordering.
+//
+// Every route bumps a per-source counter so the DATA-04 replay can assert ZERO GIS egress after import
+// (the empty unmocked collector proves nothing escaped; the counters prove the compute read hit OPFS, not
+// the network). The Overpass route has a switchable 429 mode for the D-07 partial-failure/retry branch.
+
+const FIXTURE = (name: string): Buffer =>
+  readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)));
+
+// Per-GIS-source request counters + a switchable Overpass mode, returned to the spec by `installGisMocks`.
+export interface GisMockControl {
+  readonly counts: {
+    pdok: number;
+    proxyGlo30: number;
+    proxyWorldcover: number;
+    overpass: number;
+  };
+  // Flip Overpass between a 200 (fixture JSON) and a 429 (rate-limited) response for the retry branch.
+  setOverpassMode(mode: "ok" | "429"): void;
+}
+
+// Fulfill a whole-tile TIFF request, honouring a `Range` header with a 206 slice (defensive — the ENVI
+// fetcher issues a plain whole-tile GET with no Range, but a COG reader could range-request, 08-RESEARCH).
+function serveTiff(route: Route, bytes: Buffer): Promise<void> {
+  const range = route.request().headers()["range"];
+  const match = range ? /bytes=(\d+)-(\d*)/.exec(range) : null;
+  if (match) {
+    const start = Number(match[1]);
+    const end = match[2] ? Number(match[2]) : bytes.length - 1;
+    const slice = bytes.subarray(start, end + 1);
+    return route.fulfill({
+      status: 206,
+      contentType: "image/tiff",
+      headers: {
+        "content-range": `bytes ${start}-${end}/${bytes.length}`,
+        "accept-ranges": "bytes",
+      },
+      body: slice,
+    });
+  }
+  return route.fulfill({ status: 200, contentType: "image/tiff", body: bytes });
+}
+
+// Install the fixture-serving GIS routes. Call AFTER `bootOffline(page)`. The fixtures are the committed
+// bytes the real WASM decode path processes (never a reimplementation of the app).
+export async function installGisMocks(page: Page): Promise<GisMockControl> {
+  const ahn = FIXTURE("ahn_dtm_fixture.tif");
+  const worldcover = FIXTURE("worldcover_fixture.tif");
+  const overpass = FIXTURE("overpass_buildings.json").toString("utf-8");
+  const control: GisMockControl = {
+    counts: { pdok: 0, proxyGlo30: 0, proxyWorldcover: 0, overpass: 0 },
+    setOverpassMode(mode) {
+      overpassMode = mode;
+    },
+  };
+  let overpassMode: "ok" | "429" = "ok";
+
+  // AHN terrain — PDOK, cross-origin Direct (whole `dtm_05m/*.tif`).
+  await page.route(/service\.pdok\.nl\/.*\.tif/, (route: Route) => {
+    control.counts.pdok += 1;
+    return serveTiff(route, ahn);
+  });
+  // GLO-30 terrain — same-origin byte proxy (defensive: the AHN viewport never hits it, but Pitfall 11
+  // says mock every proxied origin; a stray GLO-30 fetch is thus caught by the counter, not the network).
+  await page.route(/\/api\/v1\/proxy\/glo30\//, (route: Route) => {
+    control.counts.proxyGlo30 += 1;
+    return serveTiff(route, ahn);
+  });
+  // WorldCover land cover — same-origin byte proxy.
+  await page.route(/\/api\/v1\/proxy\/worldcover\//, (route: Route) => {
+    control.counts.proxyWorldcover += 1;
+    return serveTiff(route, worldcover);
+  });
+  // OSM buildings — Overpass, cross-origin Direct (POST). Switchable 429 for the D-07 retry branch.
+  await page.route(/overpass-api\.de\/api\/interpreter/, (route: Route) => {
+    control.counts.overpass += 1;
+    if (overpassMode === "429") {
+      return route.fulfill({
+        status: 429,
+        contentType: "text/plain",
+        body: "rate_limited",
+      });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: overpass });
+  });
+
+  return control;
+}
+
+// The committed WGS84 import viewport + resolved tile names (generated with the fixtures by
+// tools/gis_oracle/gen_e2e_fixtures.py). Imported by the import specs so coordinates have one source of truth.
+export interface E2eViewport {
+  readonly viewport: { min_lon: number; min_lat: number; max_lon: number; max_lat: number };
+  readonly kaartblad: string;
+  readonly worldcover_tile: string;
+}
+export function importViewport(): E2eViewport {
+  const raw = FIXTURE("viewport.json").toString("utf-8");
+  return JSON.parse(raw) as E2eViewport;
 }
 
 // A valid 105-band 1/12-octave freq axis (band-index keyed; nominal Hz display-only). Built from the x/12

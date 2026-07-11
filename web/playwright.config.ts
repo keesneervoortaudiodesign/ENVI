@@ -13,6 +13,12 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
+  // Cap parallelism: every spec drives a MapLibre GL map through headless Chromium's SOFTWARE WebGL
+  // (swiftshader — see launchOptions), which is CPU-bound, and the WASM GIS decode in the import specs
+  // adds more. Playwright's default (~half the core count) over-subscribes on many-core machines and
+  // starves the software-rendered contexts into 30 s timeouts; four workers keeps the whole suite green
+  // and fast regardless of host core count.
+  workers: 4,
   reporter: [["list"]],
   use: {
     baseURL: "http://localhost:5174",
