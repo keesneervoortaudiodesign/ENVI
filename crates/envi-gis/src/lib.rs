@@ -42,6 +42,7 @@
 
 pub mod buildings;
 pub mod cog;
+pub mod era5;
 mod geojson_util;
 pub mod grid;
 pub mod impedance;

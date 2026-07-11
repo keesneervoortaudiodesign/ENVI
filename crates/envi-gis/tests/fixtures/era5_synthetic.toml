@@ -1,0 +1,98 @@
+# SYNTHETIC ERA5 single-level fixture for the METX-02 Obukhov + wind×stability
+# occurrence-statistics derivation (09-03 Task 2). NOT captured CDS data — no key,
+# no network, no Python needed at test time (mirrors tests/fixtures/cog + the
+# scipy-oracle pattern). Hand-authored to exercise: daytime UNSTABLE (ishf < 0,
+# ECMWF downward-positive), night STABLE (ishf > 0), near-neutral (ishf ≈ 0), and
+# every wind-speed bin. The expected 1/L was computed by an INDEPENDENT
+# reimplementation of the ECMWF Obukhov recipe (u* = √(|τ|/ρ), θ* = −ishf/(ρ·c_p·u*),
+# 1/L = −κ·g·θ*/(T_v·u*²); T_v from Tetens vapour pressure). Occurrence statistics
+# ONLY (D-05) — NO class → A/B/C, NO L_den. The bin edges are [ASSUMED]; only the
+# counting + the 1/L sign/magnitude are validated, never a FORCE numeric weather pass.
+# SHA/provenance banner mirrors the committed-COG fixtures.
+
+[meta]
+# Absolute tolerance on the hour-0 inverse Obukhov length (independent-recipe oracle).
+inv_l_tol = 1e-4
+# Hour 0 (daytime, ishf = -120 W/m², |τ| from iews/inss) inverse Obukhov length, m⁻¹.
+inv_l_hour0 = -0.02771232
+
+[expected]
+total = 6
+reliable = 6
+# counts[wind_bin][stability] with stability order [Unstable, Neutral, Stable] and
+# wind bins [<2, 2–5, 5–8, ≥8] m/s.
+counts = [[0, 0, 1], [2, 0, 1], [1, 0, 0], [0, 1, 0]]
+
+# --- Hours (SI units, ECMWF short names) ---
+
+# h0: daytime unstable, wind √(4²+2²)=4.47 m/s → bin 1 (2–5).
+[[hour]]
+iews = -0.15
+inss = 0.05
+ishf = -120.0
+t2m_k = 293.15
+d2m_k = 283.15
+sp_pa = 101325.0
+sdfor_m = 5.0
+u10_ms = -4.0
+v10_ms = 2.0
+
+# h1: strongly unstable, wind 6.0 m/s → bin 2 (5–8).
+[[hour]]
+iews = -0.15
+inss = 0.05
+ishf = -150.0
+t2m_k = 293.15
+d2m_k = 283.15
+sp_pa = 101325.0
+sdfor_m = 5.0
+u10_ms = 0.0
+v10_ms = 6.0
+
+# h2: stable, wind √2=1.41 m/s → bin 0 (<2).
+[[hour]]
+iews = -0.15
+inss = 0.05
+ishf = 80.0
+t2m_k = 293.15
+d2m_k = 283.15
+sp_pa = 101325.0
+sdfor_m = 5.0
+u10_ms = 1.0
+v10_ms = 1.0
+
+# h3: stable, wind √8=2.83 m/s → bin 1 (2–5).
+[[hour]]
+iews = -0.15
+inss = 0.05
+ishf = 60.0
+t2m_k = 293.15
+d2m_k = 283.15
+sp_pa = 101325.0
+sdfor_m = 5.0
+u10_ms = 2.0
+v10_ms = 2.0
+
+# h4: near-neutral (tiny flux), wind √72=8.49 m/s → bin 3 (≥8).
+[[hour]]
+iews = -0.15
+inss = 0.05
+ishf = 2.0
+t2m_k = 293.15
+d2m_k = 283.15
+sp_pa = 101325.0
+sdfor_m = 5.0
+u10_ms = 6.0
+v10_ms = 6.0
+
+# h5: unstable, wind √10=3.16 m/s → bin 1 (2–5).
+[[hour]]
+iews = -0.15
+inss = 0.05
+ishf = -100.0
+t2m_k = 293.15
+d2m_k = 283.15
+sp_pa = 101325.0
+sdfor_m = 5.0
+u10_ms = 3.0
+v10_ms = 1.0
