@@ -97,7 +97,7 @@
 ### Receiver grid & output (GRID)
 
 - [x] **GRID-01**: Generate a building-aware receiver grid via constrained Delaunay (spade); plus discrete receiver points
-- [ ] **GRID-02**: Batch-compute the transfer tensor over the grid, parallelized (rayon), receiver-axis chunked
+- [x] **GRID-02**: Batch-compute the transfer tensor over the grid, parallelized (rayon), receiver-axis chunked
 - [ ] **GRID-04**: Contour results into isophone fill polygons (pure-Rust `contour`; `gdal-sys` escape hatch)
 - [ ] **GRID-05**: Export results (GeoTIFF / GeoJSON) and spectra (CSV)
 
@@ -119,7 +119,7 @@
 ### Service & persistence (SVC)
 
 - [x] **SVC-01**: Persist projects as a project folder (scene + settings + chunked cached tensors)
-- [ ] **SVC-02**: Compute-job model (submit, queue, run, progress via SSE, cancel, fetch results) with a Queued/Running/Done/Failed/Cancelled state machine
+- [x] **SVC-02**: Compute-job model (submit, queue, run, progress via SSE, cancel, fetch results) with a Queued/Running/Done/Failed/Cancelled state machine
 - [x] **SVC-03**: Rust HTTP API backend (axum), serving the built frontend bundle
 - [x] **SVC-04**: Single self-hosted deployable service (localhost bind; startup self-check) — *self-check scope adjusted by Phase-6 decision D-08: Phase 6 ships a **pure-Rust CRS landmark round-trip** self-check (zero C toolchain); the **GDAL/PROJ** version / `proj.db` / `GDAL_DATA` self-check lands in Phase 8 with the C `gdal` dependency*
 - [x] **SVC-05**: Project CRUD lifecycle — create / open / save (autosave) / delete / duplicate with metadata; reopen-last
@@ -213,7 +213,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | METX-03 | Phase 11 | Pending |
 | METX-04 | Phase 11 | Pending |
 | GRID-01 | Phase 9 | Complete |
-| GRID-02 | Phase 10 | Pending |
+| GRID-02 | Phase 10 | Complete |
 | GRID-04 | Phase 11 | Pending |
 | GRID-05 | Phase 11 | Pending |
 | WEB-01 | Phase 7 | Complete |
@@ -229,7 +229,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | WEB-11 | Phase 11 | Pending |
 | WEB-12 | Phase 11 | Pending |
 | SVC-01 | Phase 6 | Complete |
-| SVC-02 | Phase 10 | Pending |
+| SVC-02 | Phase 10 | Complete |
 | SVC-03 | Phase 6 | Complete |
 | SVC-04 | Phase 6 | Complete |
 | SVC-05 | Phase 6 | Complete |
