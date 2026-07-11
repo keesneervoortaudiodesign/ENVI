@@ -198,6 +198,32 @@ fn missing_elevation_is_rejected_not_defaulted_to_zero() {
     assert!(levels_from_openmeteo(&with_elev, 0).is_ok());
 }
 
+/// WR-01: on an elevated site the site elevation can exceed a low pressure
+/// level's geopotential height, giving a negative AGL. Those sub-surface levels
+/// are discarded (never fed to the fit, which rejects `z < 0`) so a legitimate
+/// elevated-site import still derives on the valid above-ground levels — not a
+/// blanket failure.
+#[test]
+fn elevated_site_drops_subsurface_levels_and_still_derives() {
+    // elevation 500 m; 1000 hPa gph 100 (AGL −400) and 975 hPa gph 300 (AGL −200)
+    // sit below ground; 950/925/900/850 stay positive, plus the 10 m anchor.
+    let bytes = openmeteo_body(Some(500.0), [100.0, 300.0, 550.0, 800.0, 1100.0, 1500.0]);
+    let levels = levels_from_openmeteo(&bytes, 0).expect("elevated-site levels parse");
+    assert!(
+        levels.iter().all(|l| l.height_agl_m >= 0.0),
+        "no sub-surface (negative-AGL) level may survive: {levels:?}"
+    );
+    // Two pressure levels were below ground; anchor + four remain.
+    assert_eq!(
+        levels.len(),
+        PRESSURE_LEVELS_HPA.len() + 1 - 2,
+        "the two below-ground pressure levels are discarded"
+    );
+    // The derivation runs to a finite profile rather than failing outright.
+    let comp = components_from_levels(&levels, 90.0, 0.03).expect("elevated-site components");
+    assert!(comp.a_wind.is_finite() && comp.b.is_finite() && comp.c.is_finite());
+}
+
 /// `components_from_levels` rejects a non-finite level field with a typed error
 /// (defence in depth beyond the parser, for callers building `Level`s directly).
 #[test]

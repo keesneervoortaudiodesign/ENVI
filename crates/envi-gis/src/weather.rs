@@ -610,6 +610,24 @@ pub fn levels_from_openmeteo(json: &[u8], hour_index: usize) -> Result<Vec<Level
             wind_direction_deg: wd,
         });
     }
+    // Drop sub-surface levels (WR-01): on an elevated/mountain site the site
+    // elevation can exceed a low pressure level's geopotential height (Open-Meteo
+    // still returns extrapolated data below ground), giving a negative AGL. The
+    // fits reject `z < 0`, so a single below-ground level would otherwise fail the
+    // whole legitimate derivation. Discard them and fit on the valid (positive-AGL)
+    // levels; the near-surface anchor (10 m) is always retained.
+    levels.retain(|l| l.height_agl_m >= 0.0);
+    // At least two distinct heights are needed for the linear temperature fit;
+    // fewer means every level sat below ground — a typed error, never a bad fit.
+    if levels.len() < 2 {
+        return Err(GisError::WeatherFit {
+            message: format!(
+                "only {} above-ground level(s) after discarding sub-surface levels; \
+                 need ≥ 2 for the profile fit",
+                levels.len()
+            ),
+        });
+    }
     // Ascending AGL height (1000 hPa is nearest the ground; guard against an
     // out-of-order response with an explicit sort by finite height).
     levels.sort_by(|a, b| {
