@@ -381,7 +381,7 @@ Plans:
   3. The grid solve runs rayon-parallel over receiver-axis chunks streamed to the on-disk tensor store — a large-grid run (~100k receivers) completes within the stated memory budget, RSS bounded by workers × chunk size
   4. The calc manifest records content hashes (scene geometry, met, receiver set, engine version, band axis) so every stored tensor's identity is verifiable, and a scene containing forests and semi-transparent screens/façades computes through ENG-09/10 with their effects visible in the results
 
-**Plans**: 4/5 plans executed
+**Plans**: 5/6 plans executed
 
 Plans:
 
@@ -390,6 +390,7 @@ Plans:
 - [x] 10-03-PLAN.md — envi-compute-wasm cdylib: thin boundary + ts-rs DTOs (TierComplete/JobStatus) + OPFS TensorSink + threaded-wasm build toolchain [wave 2]
 - [x] 10-04-PLAN.md — Caller-side rayon pool sharding + Web Worker job machine + client/store/opfs glue (GRID-02/SVC-02, D-03/D-10/D-11) [wave 3]
 - [ ] 10-05-PLAN.md — CalcPanel UI + App mount + offline Playwright UAT of the real threaded-wasm bundle (WEB-07) [wave 4]
+- [x] 10-06-PLAN.md — Close the solve_chunk_range seam: PrepareSolveReq scene marshalling + prepare_solve + REAL range-solve (bit-equal to a direct engine solve, ENG-09/10 + directional phase) + OPFS runtime open (GRID-02/SVC-02) [wave 4]
 
 **UI hint**: yes
 

@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 10
 current_phase_name: calculation-service
 status: in-progress
-stopped_at: Phase 10 plan 10-03 complete (envi-compute-wasm boundary + OPFS TensorSink + threaded build)
-last_updated: "2026-07-11T20:06:22.463Z"
+stopped_at: Phase 10 plan 10-06 complete (real solve_chunk_range + prepare_solve scene marshalling + OPFS runtime open)
+last_updated: "2026-07-11T21:10:34.880Z"
 last_activity: 2026-07-11
-last_activity_desc: 10-03 executed (envi-compute-wasm boundary + OPFS TensorSink + threaded build, 3 tasks, all quality gates green)
+last_activity_desc: 10-06 executed (prepare_solve + REAL solve_chunk_range bit-equal to a direct engine solve, WASM-safe scene DTOs factored, OPFS runtime open, 3 tasks, all gates green)
 progress:
   total_phases: 11
   completed_phases: 9
-  total_plans: 52
-  completed_plans: 51
+  total_plans: 53
+  completed_plans: 52
   percent: 82
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 10 (calculation-service) — IN PROGRESS
-Plan: 4 of 5 complete (10-01 ✓, 10-02 ✓, 10-03 ✓; 10-04..10-05 pending)
-Status: Phase 10 in progress. 10-03 executed — the browser compute boundary `envi-compute-wasm` (cdylib+rlib) landed: a thin `wasm-bindgen` boundary (`estimate_cost`/`plan_tiers` delegating to the pure `envi-compute` cost/tier core; `request_cancel`/`reset_cancel` D-11 cooperative-cancel flag; `solve_chunk_range` signature seam for the 10-04 pool), the `OpfsChunkSink` — a NEW impl of the engine's existing `TensorSink` trait (no engine change) writing the frozen `[s][r_local][f]` interleaved-`(re,im)`-f64-LE (16 B) + `P_incoh` f64-LE (8 B) chunk format over a boxed `ChunkHandle` seam (native Vec<u8> mock + wasm `FileSystemSyncAccessHandle` extern glue), byte-exact round-trip vs `InMemorySink` (incl. a non-contiguous sliced view, Pitfall 7); the `TierComplete` D-07 event + cost/tier DTOs ts-rs-generated into the single committed `wire.ts` (no-drift green, `JobStatus` reused from envi-service); and the scoped `build:wasm:compute` npm script (`cargo +nightly-2026-07-11` `-Zbuild-std` + inline `--config` atomics + off-by-default `threads` feature) — verified to produce the threaded SharedArrayBuffer module (`initThreadPool` exported) with NO leak onto the stable gis build (Pitfall 1). Engine + envi-compute byte-identical; all gates green. Next: 10-04 (rayon pool driver + Web Worker job machine, wire the OPFS glue), 10-05 (CalcPanel UI).
-Last activity: 2026-07-11 — 10-03 executed (envi-compute-wasm boundary + OPFS TensorSink + threaded build, 3 tasks, all quality gates green)
+Plan: 5 of 6 complete (10-01 ✓, 10-02 ✓, 10-03 ✓, 10-04 ✓, 10-06 ✓; 10-05 pending)
+Status: Phase 10 in progress. 10-06 executed — the last solve seam is CLOSED: the client-side compute is REAL. `prepare_solve` marshals the whole transfer scene ONCE per submit into an owned `PreparedScene` (built via the engine's validating constructors) stored in a shared `static RwLock<Option<PreparedScene>>` keyed by `tensor_hash`; the real `solve_chunk_range` (no more `Pending` stub) is hash-gated + cancel-aware and runs the UNCHANGED `envi_engine::solver::solve` rayon-sharded via `pool::solve_tier`, assembled into ONE sub-source-major `[s][r_local][f]` chunk written to its OPFS `tensor/`+`pincoh/` file pair. The load-bearing gate passes: the marshalled range-solve tensor is `f64::to_bits`-equal to a direct engine solve — with a forest (ENG-09) + isolation spectrum (ENG-10) + a phase-carrying directivity balloon (SC4), phase-free staying bit-identical; two-shard == single-range; hash-mismatch is a typed error. The WASM-safe scene DTOs (terrain/ground/isolation/forest/sound-speed) + the `interpolate` core were factored into `envi-compute` and re-exported at their original paths (source-compatible, `wire.ts` byte-stable, no duplicate `SoundSpeedProfileDto`); the worker preopens the async OPFS handles ahead of the synchronous solve and calls `prepare_solve` once before the (unchanged) tier loop. Engine byte-identical; threaded `build:wasm:compute` exits 0; all gates green. GRID-02 + SVC-02 delivered. Next: 10-05 (CalcPanel UI + offline Playwright UAT of the real threaded bundle).
+Last activity: 2026-07-11 — 10-06 executed (prepare_solve + REAL solve_chunk_range bit-equal to a direct engine solve, 3 tasks, all quality gates green)
 
-Progress: [██████████] Phase 10 — 3/5 plans complete (10-01 core · 10-02 COOP/COEP · 10-03 envi-compute-wasm boundary + OPFS sink + threaded build)
+Progress: [██████████] Phase 10 — 5/6 plans complete (10-01 core · 10-02 COOP/COEP · 10-03 boundary+OPFS sink · 10-04 pool+worker · 10-06 real solve seam closed)
 
 ## Performance Metrics
 
@@ -100,6 +100,7 @@ Progress: [██████████] Phase 10 — 3/5 plans complete (10-0
 | Phase 10 P02 | ~20min | 2 tasks | 4 files |
 | Phase 10 P03 | 95min | 3 tasks | 13 files |
 | Phase 10 P04 | 40min | 3 tasks | 11 files |
+| Phase 10 P06 | 90min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -207,6 +208,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T20:06:01.698Z
+Last session: 2026-07-11T21:10:15.445Z
 Stopped at: Phase 10 context gathered
 Resume file: .planning/phases/10-calculation-service/10-CONTEXT.md
