@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 09
 current_phase_name: path-extraction-weather
 status: executing
-stopped_at: Completed 09-04-PLAN.md (WASM boundary + flagged ERA5 endpoint + PropagationPathInputs/PathCacheKey)
-last_updated: "2026-07-11T15:06:38.770Z"
+stopped_at: Completed 09-06-PLAN.md (offline Playwright weather-import journey + SC4 zero-egress what-if proof)
+last_updated: "2026-07-11T15:16:18.000Z"
 last_activity: 2026-07-11
-last_activity_desc: Completed 09-04-PLAN.md
+last_activity_desc: Completed 09-06-PLAN.md
 progress:
   total_phases: 11
   completed_phases: 8
   total_plans: 47
-  completed_plans: 46
+  completed_plans: 47
   percent: 73
 ---
 
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 09 (path-extraction-weather) — EXECUTING
-Plan: 6 of 6
-Status: Executing — 09-04 complete (WASM boundary DTOs+shims for the Phase-9 core via ts-rs no-drift wire.ts; flagged-off feature=era5 SSRF-allowlisted ERA5/CDS async endpoint on the Phase-6 job machine; envi_gis::path PropagationPathInputs bundle + weather-invariant FNV-1a PathCacheKey — METX-02 groundwork complete)
-Last activity: 2026-07-11 — Completed 09-04-PLAN.md
+Phase: 09 (path-extraction-weather) — EXECUTING (all 6 plans executed; phase-completion gates pending)
+Plan: 6 of 6 — complete
+Status: All Phase-9 plans executed — 09-06 complete (offline Playwright weather-import journey: drives the real WeatherPanel over committed Open-Meteo fixtures, both date-switch branches, and proves SC4 — a what-if edit after a cached import issues ZERO Open-Meteo calls, egress collector []; suite 19/19 green, fully offline). METX-01 automated proof landed. Remaining before phase close: the five CLAUDE.md completion gates (code-review · simplify · secure · verify · doc-consistency).
+Last activity: 2026-07-11 — Completed 09-06-PLAN.md
 
-Progress: [██████░░░░] Phase 9 — 4/6 plans complete (GEOX-01/02 cut-profile+impedance · GEOX-03/GRID-01 screening+receiver grid · METX-01/02 Open-Meteo A/B/C lift + ERA5 Obukhov/occurrence derivation · WASM boundary+flagged ERA5 endpoint+PropagationPathInputs/PathCacheKey)
+Progress: [██████████] Phase 9 — 6/6 plans complete (GEOX-01/02 cut-profile+impedance · GEOX-03/GRID-01 screening+receiver grid · METX-01/02 Open-Meteo A/B/C lift + ERA5 Obukhov/occurrence derivation · WASM boundary+flagged ERA5 endpoint+PropagationPathInputs/PathCacheKey · web weather-import panel+overlays · offline Playwright SC4 zero-egress proof)
 
 ## Performance Metrics
 
@@ -94,6 +94,7 @@ Progress: [██████░░░░] Phase 9 — 4/6 plans complete (GEOX-
 | Phase 09 P03 | 40min | 2 tasks | 12 files |
 | Phase 09 P04 | 55min | 3 tasks | 12 files |
 | Phase 09 P05 | 50min | 2 tasks | 10 files |
+| Phase 09 P06 | 12min | 1 task | 4 files |
 
 ## Accumulated Context
 
@@ -194,6 +195,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T14:44:30.321Z
-Stopped at: Completed 09-04-PLAN.md (WASM boundary + flagged ERA5 endpoint + PropagationPathInputs/PathCacheKey)
+Last session: 2026-07-11T15:16:18.000Z
+Stopped at: Completed 09-06-PLAN.md (offline Playwright weather-import journey + SC4 zero-egress what-if proof)
 Resume file: None
