@@ -9,7 +9,9 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build:wasm": "cargo build -p envi-gis-wasm --release --target wasm32-unknown-unknown && wasm-bindgen --target web --out-dir src/generated/wasm --out-name envi_gis_wasm ../target/wasm32-unknown-unknown/release/envi_gis_wasm.wasm",
+    "build": "npm run build:wasm && tsc --noEmit && vite build",
+    "build:web": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",

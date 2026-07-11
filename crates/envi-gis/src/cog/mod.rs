@@ -16,7 +16,7 @@ pub mod geo_tags;
 pub mod header;
 pub mod window;
 
-pub use window::{PixelWindow, Raster, decode_window};
+pub use window::{PixelWindow, Raster, decode_window, decode_window_u8};
 
 /// Maximum decoded pixel count accepted per window (DoS budget, threat
 /// T-08-02-01). Enforced from IFD dimensions *before* any decode allocates the

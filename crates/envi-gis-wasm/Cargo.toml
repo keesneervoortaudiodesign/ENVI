@@ -1,0 +1,32 @@
+[package]
+name = "envi-gis-wasm"
+description = "ENVI GIS-ingestion WASM boundary — the thin wasm-bindgen cdylib exposing the pure envi-gis core (decode/terrain/landcover/buildings/merge) to the browser. Boundary ONLY: marshalling, no GIS math. Wire DTOs are ts-rs-generated (D-10)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# The first WASM crate in the repo (08-PATTERNS "No Analog Found"). It is a thin
+# cdylib wrapper around `envi-gis` — the ONLY place the WASM boundary lives; it
+# holds no acoustics/GIS logic (delegates to envi-gis). `rlib` is added alongside
+# `cdylib` so the native `cargo test` harness (and envi-service's no-drift test)
+# can see the boundary DTOs; the wasm bundle uses only the `cdylib` output.
+#
+# wasm-bindgen is version-PINNED with `=` (Pitfall 8): the `wasm-bindgen-cli` used
+# in the Vite build MUST be installed at this EXACT version
+# (`cargo install wasm-bindgen-cli --locked --version 0.2.126`). See web/README.md.
+# No getrandom/uuid (Pitfall 9) — ids are minted in TS via crypto.randomUUID().
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+envi-gis = { path = "../envi-gis" }
+wasm-bindgen = "=0.2.126"
+js-sys = "0.3"
+serde-wasm-bindgen = "0.6.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+geojson = "1"
+# ts-rs (D-10): derive the committed TS mirror on the boundary DTOs. The generator
+# (fs export) is only ever invoked by the native no-drift test; the trait itself
+# is pure-Rust and compiles for wasm32 (it never runs on the wasm path).
+ts-rs = { version = "12", features = ["no-serde-warnings"] }

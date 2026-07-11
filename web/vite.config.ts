@@ -11,13 +11,30 @@
 // path envi-service serves it from. CSS is inlined into one stylesheet (`cssCodeSplit: false`);
 // a single module chunk keeps the served asset surface minimal. `@vitejs/plugin-react` is the
 // ENVI divergence from the metrao3 ancestor (which is vanilla TS with no React plugin).
+//
+// # WASM ingestion boundary (DATA-01..03, plan 08-06)
+// `npm run build:wasm` compiles the `envi-gis-wasm` cdylib for `wasm32-unknown-unknown` and runs
+// the version-locked `wasm-bindgen` (target `web`) to emit ESM glue + `.wasm` into
+// `src/generated/wasm/` (git-ignored — a build artifact regenerated from the Rust crate; see
+// web/README.md for the mandatory CLI↔crate version lockstep). The `@wasm` alias below is the
+// stable import point the future ingestion UI uses (`import init, { plan_import, ... } from
+// "@wasm/envi_gis_wasm"`); wasm-bindgen's `--target web` output is a standard ESM that fetches its
+// `.wasm` via `new URL(..., import.meta.url)`, which Vite bundles/serves natively. The generated
+// TS *types* for the boundary DTOs are the committed, no-drift-tested `src/generated/wire.ts`.
 
+import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   base: "./",
   plugins: [react()],
+  resolve: {
+    alias: {
+      // Stable import point for the wasm-bindgen ingestion glue (build:wasm output).
+      "@wasm": fileURLToPath(new URL("./src/generated/wasm", import.meta.url)),
+    },
+  },
   build: {
     target: "es2022",
     outDir: "dist",

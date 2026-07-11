@@ -244,6 +244,133 @@ pub fn decode_window(
     })
 }
 
+/// Decode `window` from a cached whole COG tile into a [`u8`] [`Raster`].
+///
+/// The `u8` sibling of [`decode_window`] for **class rasters** (ESA WorldCover
+/// v200 land-cover codes are single-byte). The guard-first ordering, bounds
+/// check, geotransform derivation, and nodata-drop semantics are identical — only
+/// the decoded sample type differs (a chunk that is not `u8` is a typed
+/// [`GisError::UnexpectedSampleFormat`]). This is the decode producer
+/// [`crate::landcover::vectorize_landcover`] consumes (it takes a `Raster<u8>`),
+/// closing the seam left open in 08-05 where only the `f32` terrain path existed.
+///
+/// # Errors
+/// Same set as [`decode_window`], except the sample-format guard requires `u8`.
+pub fn decode_window_u8(
+    tile_bytes: &[u8],
+    window: PixelWindow,
+    max_decoded_px: usize,
+) -> Result<Raster<u8>, GisError> {
+    // Cap the IFD chain up front (T-08-02-02) before trusting any navigation.
+    header::guard_image_count(tile_bytes)?;
+
+    let mut dec = header::open(tile_bytes)?;
+    let hdr = header::read_header(&mut dec)?;
+
+    // Zero-extent check first (cheap).
+    if window.width == 0 || window.height == 0 {
+        return Err(GisError::WindowOutOfBounds {
+            what: format!("zero-extent window {}x{}", window.width, window.height),
+        });
+    }
+
+    // DoS budget FIRST (T-08-02-01), from the window pixel count.
+    let requested_px = (window.width as usize)
+        .checked_mul(window.height as usize)
+        .ok_or(GisError::DecodeBudgetExceeded {
+            requested_px: usize::MAX,
+            limit: max_decoded_px,
+        })?;
+    if requested_px > max_decoded_px {
+        return Err(GisError::DecodeBudgetExceeded {
+            requested_px,
+            limit: max_decoded_px,
+        });
+    }
+
+    // Bounds: crop to ImageWidth/Length; reject overreach (no padding).
+    let col_end = window.col_off.checked_add(window.width);
+    let row_end = window.row_off.checked_add(window.height);
+    match (col_end, row_end) {
+        (Some(ce), Some(re)) if ce <= hdr.width && re <= hdr.height => {}
+        _ => {
+            return Err(GisError::WindowOutOfBounds {
+                what: format!(
+                    "window [{}+{}, {}+{}] exceeds image {}x{}",
+                    window.col_off,
+                    window.width,
+                    window.row_off,
+                    window.height,
+                    hdr.width,
+                    hdr.height
+                ),
+            });
+        }
+    }
+
+    // Work: geo-tags, then read the covering chunks once and assemble.
+    let geo = geo_tags::read_geotransform(&mut dec)?;
+    let nodata = geo_tags::read_nodata(&mut dec)?;
+
+    let chunks_across = hdr.chunks_across();
+    let (cw, ch) = (hdr.chunk_w, hdr.chunk_h);
+
+    let (tx0, tx1) = (
+        window.col_off / cw,
+        (window.col_off + window.width - 1) / cw,
+    );
+    let (ty0, ty1) = (
+        window.row_off / ch,
+        (window.row_off + window.height - 1) / ch,
+    );
+    let mut cache: HashMap<u32, (Vec<u8>, u32)> = HashMap::new();
+    for ty in ty0..=ty1 {
+        for tx in tx0..=tx1 {
+            let idx = ty * chunks_across + tx;
+            let (data_w, _data_h) = dec.chunk_data_dimensions(idx);
+            let data = match dec.read_chunk(idx)? {
+                DecodingResult::U8(v) => v,
+                other => {
+                    return Err(GisError::UnexpectedSampleFormat {
+                        got: decoding_result_kind(&other).to_string(),
+                    });
+                }
+            };
+            cache.insert(idx, (data, data_w));
+        }
+    }
+
+    let mut samples: Vec<Option<u8>> = Vec::with_capacity(requested_px);
+    for r in 0..window.height {
+        let row = window.row_off + r;
+        let (ty, local_row) = (row / ch, row % ch);
+        for c in 0..window.width {
+            let col = window.col_off + c;
+            let (tx, local_col) = (col / cw, col % cw);
+            let idx = ty * chunks_across + tx;
+            let (data, data_w) = &cache[&idx];
+            let sample = data[(local_row as usize) * (*data_w as usize) + local_col as usize];
+
+            // Drop the nodata sentinel to a hole — never a silent class `0`.
+            let keep = nodata.is_none_or(|nd| f64::from(sample) != nd);
+            samples.push(keep.then_some(sample));
+        }
+    }
+
+    let (origin_x, origin_y) = geo.pixel_to_map(window.col_off as f64, window.row_off as f64);
+    Ok(Raster {
+        width: window.width as usize,
+        height: window.height as usize,
+        geo: GeoTransform {
+            origin_x,
+            origin_y,
+            pixel_size_x: geo.pixel_size_x,
+            pixel_size_y: geo.pixel_size_y,
+        },
+        samples,
+    })
+}
+
 /// Human-readable kind of a non-`f32` [`DecodingResult`], for error reporting.
 fn decoding_result_kind(r: &DecodingResult) -> &'static str {
     match r {

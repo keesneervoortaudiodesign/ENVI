@@ -218,6 +218,47 @@ where
     median(values)
 }
 
+/// Footprint-boundary median base elevation sampled from a decoded terrain
+/// [`Raster<f32>`] (threat T-08-04-04) — the raster-backed adapter over
+/// [`sample_base_elevation`].
+///
+/// `ring` shares the terrain raster's **source CRS** (RD/UTM meters for AHN,
+/// WGS84 degrees for GLO-30): each boundary point is mapped to the nearest raster
+/// pixel through the raster's own geotransform and read as the ground height.
+/// Holes (nodata) and out-of-window points contribute no sample, so the result is
+/// the median of the finite boundary reads — `None` when none exist (never a
+/// fabricated `0.0`, D-07).
+///
+/// This lives in the core (not the WASM boundary) so the boundary stays a
+/// logic-free marshaller: it decodes the window and calls this.
+#[must_use]
+pub fn base_elevation_on_raster(
+    ring: &[[f64; 2]],
+    max_spacing: f64,
+    terrain: &Raster<f32>,
+) -> Option<f64> {
+    sample_base_elevation(ring, max_spacing, |x, y| {
+        sample_raster_nearest(terrain, x, y)
+    })
+}
+
+/// Nearest-pixel terrain read at source-CRS map coordinates `(x, y)` via the
+/// raster's inverse geotransform. `None` for a non-finite/out-of-window point or a
+/// hole. The transform is north-up affine (no rotation), so the inverse is a
+/// direct division per axis.
+fn sample_raster_nearest(terrain: &Raster<f32>, x: f64, y: f64) -> Option<f64> {
+    let g = &terrain.geo;
+    if g.pixel_size_x == 0.0 || g.pixel_size_y == 0.0 {
+        return None;
+    }
+    let col = ((x - g.origin_x) / g.pixel_size_x).floor();
+    let row = ((y - g.origin_y) / g.pixel_size_y).floor();
+    if !col.is_finite() || !row.is_finite() || col < 0.0 || row < 0.0 {
+        return None;
+    }
+    terrain.get(col as usize, row as usize).map(f64::from)
+}
+
 /// Median of a set of finite values, or `None` if empty.
 fn median(mut v: Vec<f64>) -> Option<f64> {
     if v.is_empty() {
@@ -395,6 +436,40 @@ mod tests {
         // Terrain absent everywhere → None, never a fabricated 0.0 (D-07).
         let base = sample_base_elevation(&ring, 2.0, |_x, _y| None);
         assert_eq!(base, None);
+    }
+
+    #[test]
+    fn base_elevation_on_raster_reads_the_boundary_from_a_decoded_window() {
+        // A 20×20 RD raster of uniform 12 m ground. A footprint ring inside the
+        // window samples the raster and yields the 12 m median; the boundary
+        // adapter turns a decoded window into base elevation with no boundary logic.
+        let r = raster(20, 20, 12.0, &[], rd_geo());
+        // Ring in RD meters near the raster origin (0.5 m pixels from 121_000,487_000).
+        let ring = [
+            [121_001.0, 486_999.0],
+            [121_004.0, 486_999.0],
+            [121_004.0, 486_996.0],
+            [121_001.0, 486_996.0],
+            [121_001.0, 486_999.0],
+        ];
+        let base = base_elevation_on_raster(&ring, 0.5, &r).expect("boundary samples exist");
+        assert!(
+            (base - 12.0).abs() < 1e-9,
+            "boundary median is 12 m, got {base}"
+        );
+    }
+
+    #[test]
+    fn base_elevation_on_raster_is_none_when_ring_is_outside_the_window() {
+        // A ring far outside the raster extent samples no pixel → None (D-07).
+        let r = raster(8, 8, 5.0, &[], rd_geo());
+        let ring = [
+            [200_000.0, 400_000.0],
+            [200_010.0, 400_000.0],
+            [200_010.0, 400_010.0],
+            [200_000.0, 400_000.0],
+        ];
+        assert_eq!(base_elevation_on_raster(&ring, 1.0, &r), None);
     }
 
     #[test]
