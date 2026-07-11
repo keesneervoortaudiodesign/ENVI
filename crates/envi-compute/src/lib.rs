@@ -38,5 +38,5 @@
 
 pub mod cost;
 pub mod identity;
+pub mod job_assembly;
 pub mod tiers;
-// `job_assembly` is added in Task 3 of this plan.

@@ -34,3 +34,6 @@ ts-rs = { version = "12", features = ["uuid-impl"] }
 
 [dev-dependencies]
 approx = "0.5"
+# The job-assembly end-to-end test inspects the engine's complex H_coh tensor
+# (arg/norm of `Complex<f64>`); dev-only, never in the runtime graph.
+num-complex = "0.4"

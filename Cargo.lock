@@ -465,6 +465,7 @@ dependencies = [
  "blake3",
  "envi-engine",
  "geojson",
+ "num-complex",
  "serde",
  "serde_json",
  "thiserror",
