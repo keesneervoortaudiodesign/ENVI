@@ -48,6 +48,7 @@ pub mod merge;
 pub mod provenance;
 pub mod registry;
 pub mod terrain;
+pub mod tiles;
 
 use thiserror::Error;
 

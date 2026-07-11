@@ -572,7 +572,9 @@ retrieved_at: string, };
 
 /**
  * A pixel-space window into a COG base image (mirrors
- * `envi_gis::cog::PixelWindow`). Request-facing.
+ * `envi_gis::cog::PixelWindow`). Both request-facing (decode inputs) and
+ * result-facing (the resolved [`WindowForBboxResult`] window), so it derives
+ * `Serialize` too; `deny_unknown_fields` still guards the deserialize side.
  */
 export type PixelWindowDto = { 
 /**
@@ -591,6 +593,29 @@ width: number,
  * Window height in pixels (`> 0`).
  */
 height: number, };
+
+/**
+ * `plan_tiles` request: enumerate the covering source tiles for a viewport.
+ */
+export type PlanTilesReq = { 
+/**
+ * The WGS84 import viewport.
+ */
+bbox: BboxDto, };
+
+/**
+ * `plan_tiles` result: the covering tiles per raster layer (buildings are a
+ * bbox-query, handled TS-side, so they carry no tile list here).
+ */
+export type PlanTilesResult = { 
+/**
+ * Covering terrain tiles (AHN kaartblads in NL, else GLO-30 1° cells).
+ */
+terrain: Array<TileRefDto>, 
+/**
+ * Covering WorldCover 3° land-cover tiles.
+ */
+landcover: Array<TileRefDto>, };
 
 /**
  * Project metadata persisted to `project.json`.
@@ -939,6 +964,25 @@ segments: Array<GroundSegmentDto>, };
 export type TerrainSourceCrsDto = "rd_new" | "wgs84";
 
 /**
+ * One covering source tile (mirrors `envi_gis::tiles::TileRef`): the absolute
+ * upstream fetch URL + the stable per-tile cache key / provenance `source_ref`.
+ */
+export type TileRefDto = { 
+/**
+ * Registry source id (`"ahn4-dtm"`, `"glo30"`, `"worldcover"`).
+ */
+source_id: string, 
+/**
+ * Tile identifier — cache key + provenance `source_ref`.
+ */
+tile: string, 
+/**
+ * Absolute upstream fetch URL (Direct sources fetch it as-is; Proxy sources
+ * are rewritten to `/api/v1/proxy/{source_id}/{path}` by the TS fetcher).
+ */
+url: string, };
+
+/**
  * `PUT /projects/{id}` body — metadata/settings patch. All fields optional;
  * absent fields are left unchanged. Strict against unknown fields.
  */
@@ -961,3 +1005,31 @@ settings: SettingsDto | null, };
  * provenance stays owned by fixed strings (no leaked runtime `&'static str`).
  */
 export type VerticalDatumDto = "nap" | "egm2008";
+
+/**
+ * `window_for_bbox` request (tile bytes are a separate `&[u8]` parameter): the
+ * WGS84 viewport + the tile's source CRS, resolved to a [`PixelWindowDto`].
+ */
+export type WindowForBboxReq = { 
+/**
+ * The WGS84 import viewport to window into this tile.
+ */
+bbox: BboxDto, 
+/**
+ * The tile raster's source CRS (RD New reprojects through `envi_geo`).
+ */
+source_crs: TerrainSourceCrsDto, 
+/**
+ * Optional decoded-pixel budget override (defaults to `MAX_DECODED_PX`).
+ */
+max_decoded_px: number | null, };
+
+/**
+ * `window_for_bbox` result: the resolved pixel window, or `null` when the
+ * viewport covers no in-image pixel (never a guessed full-tile clamp, D-07).
+ */
+export type WindowForBboxResult = { 
+/**
+ * The pixel window to decode, or `null` for no overlap.
+ */
+window: PixelWindowDto | null, };

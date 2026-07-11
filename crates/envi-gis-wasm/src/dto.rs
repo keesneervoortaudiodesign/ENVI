@@ -23,8 +23,10 @@ use ts_rs::TS;
 // --- Shared value objects -------------------------------------------------
 
 /// A pixel-space window into a COG base image (mirrors
-/// `envi_gis::cog::PixelWindow`). Request-facing.
-#[derive(Debug, Clone, Copy, Deserialize, TS)]
+/// `envi_gis::cog::PixelWindow`). Both request-facing (decode inputs) and
+/// result-facing (the resolved [`WindowForBboxResult`] window), so it derives
+/// `Serialize` too; `deny_unknown_fields` still guards the deserialize side.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 #[ts(export_to = "wire.ts")]
 pub struct PixelWindowDto {
@@ -106,6 +108,30 @@ pub struct ProvenanceReqDto {
 pub struct ImportPlanReq {
     /// The WGS84 import viewport.
     pub bbox: BboxDto,
+}
+
+/// `plan_tiles` request: enumerate the covering source tiles for a viewport.
+#[derive(Debug, Clone, Copy, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct PlanTilesReq {
+    /// The WGS84 import viewport.
+    pub bbox: BboxDto,
+}
+
+/// `window_for_bbox` request (tile bytes are a separate `&[u8]` parameter): the
+/// WGS84 viewport + the tile's source CRS, resolved to a [`PixelWindowDto`].
+#[derive(Debug, Clone, Copy, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct WindowForBboxReq {
+    /// The WGS84 import viewport to window into this tile.
+    pub bbox: BboxDto,
+    /// The tile raster's source CRS (RD New reprojects through `envi_geo`).
+    pub source_crs: TerrainSourceCrsDto,
+    /// Optional decoded-pixel budget override (defaults to `MAX_DECODED_PX`).
+    #[serde(default)]
+    pub max_decoded_px: Option<u32>,
 }
 
 /// `decode_window` request (tile bytes are a separate `&[u8]` parameter).
@@ -349,4 +375,38 @@ pub struct MergeResult {
     /// GeoJSON `FeatureCollection` after the D-09 re-import merge.
     #[ts(type = "unknown")]
     pub features: serde_json::Value,
+}
+
+/// One covering source tile (mirrors `envi_gis::tiles::TileRef`): the absolute
+/// upstream fetch URL + the stable per-tile cache key / provenance `source_ref`.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct TileRefDto {
+    /// Registry source id (`"ahn4-dtm"`, `"glo30"`, `"worldcover"`).
+    pub source_id: String,
+    /// Tile identifier — cache key + provenance `source_ref`.
+    pub tile: String,
+    /// Absolute upstream fetch URL (Direct sources fetch it as-is; Proxy sources
+    /// are rewritten to `/api/v1/proxy/{source_id}/{path}` by the TS fetcher).
+    pub url: String,
+}
+
+/// `plan_tiles` result: the covering tiles per raster layer (buildings are a
+/// bbox-query, handled TS-side, so they carry no tile list here).
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct PlanTilesResult {
+    /// Covering terrain tiles (AHN kaartblads in NL, else GLO-30 1° cells).
+    pub terrain: Vec<TileRefDto>,
+    /// Covering WorldCover 3° land-cover tiles.
+    pub landcover: Vec<TileRefDto>,
+}
+
+/// `window_for_bbox` result: the resolved pixel window, or `null` when the
+/// viewport covers no in-image pixel (never a guessed full-tile clamp, D-07).
+#[derive(Debug, Clone, Copy, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct WindowForBboxResult {
+    /// The pixel window to decode, or `null` for no overlap.
+    pub window: Option<PixelWindowDto>,
 }

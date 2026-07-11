@@ -42,13 +42,15 @@ use envi_gis::merge::merge;
 use envi_gis::provenance::Provenance;
 use envi_gis::registry::{self, Bbox, Cors, SourceDescriptor, SourceKind};
 use envi_gis::terrain::{TerrainSourceCrs, base_elevation_on_raster};
+use envi_gis::tiles::{self, TileRef};
 
 use dto::{
     BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, CorsDto, DecodeWindowReq,
     DecodeWindowResult, GeoTransformDto, ImportPlanReq, ImportPlanResult, LandcoverResult,
-    MapLandcoverReq, MergeReq, MergeResult, ParseBuildingsReq, PixelWindowDto, ProvenanceReqDto,
-    SkipReportDto, SourceDescriptorDto, SourceKindDto, TerrainFeaturesReq, TerrainFeaturesResult,
-    TerrainSourceCrsDto, VerticalDatumDto,
+    MapLandcoverReq, MergeReq, MergeResult, ParseBuildingsReq, PixelWindowDto, PlanTilesReq,
+    PlanTilesResult, ProvenanceReqDto, SkipReportDto, SourceDescriptorDto, SourceKindDto,
+    TerrainFeaturesReq, TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto,
+    WindowForBboxReq, WindowForBboxResult,
 };
 
 // --- Marshalling helpers (the ONLY glue; no domain logic) -----------------
@@ -86,6 +88,33 @@ fn pixel_window(w: PixelWindowDto) -> PixelWindow {
         row_off: w.row_off,
         width: w.width,
         height: w.height,
+    }
+}
+
+/// A [`PixelWindowDto`] from a core [`PixelWindow`] (the resolved-window result).
+fn pixel_window_dto(w: PixelWindow) -> PixelWindowDto {
+    PixelWindowDto {
+        col_off: w.col_off,
+        row_off: w.row_off,
+        width: w.width,
+        height: w.height,
+    }
+}
+
+/// The core [`TerrainSourceCrs`] from its DTO.
+fn terrain_source_crs(c: TerrainSourceCrsDto) -> TerrainSourceCrs {
+    match c {
+        TerrainSourceCrsDto::RdNew => TerrainSourceCrs::RdNew,
+        TerrainSourceCrsDto::Wgs84 => TerrainSourceCrs::Wgs84,
+    }
+}
+
+/// A [`TileRefDto`] from a core [`TileRef`].
+fn tile_ref_dto(t: &TileRef) -> TileRefDto {
+    TileRefDto {
+        source_id: t.source_id.to_string(),
+        tile: t.tile.clone(),
+        url: t.url.clone(),
     }
 }
 
@@ -194,6 +223,66 @@ pub fn plan_import(req: JsValue) -> Result<JsValue, JsValue> {
         terrain: descriptor_dto(plan.terrain),
         landcover: descriptor_dto(plan.landcover),
         buildings: descriptor_dto(plan.buildings),
+    })
+}
+
+/// Enumerate the covering source tiles for a WGS84 viewport (delegates to
+/// `envi_gis::tiles::plan_tiles`). Buildings are a bbox-query (TS-side), so the
+/// result carries only the raster layers.
+///
+/// # Errors
+/// A shape error in the request DTO.
+#[wasm_bindgen]
+pub fn plan_tiles(req: JsValue) -> Result<JsValue, JsValue> {
+    let req: PlanTilesReq = from_js(req)?;
+    let BboxDto {
+        min_lon,
+        min_lat,
+        max_lon,
+        max_lat,
+    } = req.bbox;
+    let plan = tiles::plan_tiles(Bbox {
+        min_lon,
+        min_lat,
+        max_lon,
+        max_lat,
+    });
+    to_js(&PlanTilesResult {
+        terrain: plan.terrain.iter().map(tile_ref_dto).collect(),
+        landcover: plan.landcover.iter().map(tile_ref_dto).collect(),
+    })
+}
+
+/// Resolve the pixel window of a WGS84 viewport within a cached terrain/land-cover
+/// tile (delegates to `envi_gis::tiles::window_for_bbox`), reprojecting through
+/// `envi_geo` for RD-New sources. `null` window = the viewport does not overlap
+/// this tile (never a guessed clamp).
+///
+/// # Errors
+/// A shape error, or any [`GisError`] from the IFD read / reprojection / budget.
+#[wasm_bindgen]
+pub fn window_for_bbox(tile_bytes: &[u8], req: JsValue) -> Result<JsValue, JsValue> {
+    let req: WindowForBboxReq = from_js(req)?;
+    let BboxDto {
+        min_lon,
+        min_lat,
+        max_lon,
+        max_lat,
+    } = req.bbox;
+    let window = tiles::window_for_bbox(
+        tile_bytes,
+        Bbox {
+            min_lon,
+            min_lat,
+            max_lon,
+            max_lat,
+        },
+        terrain_source_crs(req.source_crs),
+        budget(req.max_decoded_px),
+    )
+    .map_err(gis_err)?;
+    to_js(&WindowForBboxResult {
+        window: window.map(pixel_window_dto),
     })
 }
 
