@@ -40,6 +40,7 @@
 #![deny(unsafe_code)]
 
 pub mod dto;
+pub mod opfs_sink;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
