@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 09
 current_phase_name: path-extraction-weather
 status: executing
-stopped_at: Completed 09-03-PLAN.md (METX-01/02 derivation)
-last_updated: "2026-07-11T14:20:00.000Z"
+stopped_at: Completed 09-04-PLAN.md (WASM boundary + flagged ERA5 endpoint + PropagationPathInputs/PathCacheKey)
+last_updated: "2026-07-11T14:44:42.257Z"
 last_activity: 2026-07-11
-last_activity_desc: Phase 09 execution started
+last_activity_desc: Completed 09-04-PLAN.md (METX-02 transport groundwork)
 progress:
   total_phases: 11
   completed_phases: 8
   total_plans: 47
-  completed_plans: 44
+  completed_plans: 45
   percent: 73
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 09 (path-extraction-weather) — EXECUTING
-Plan: 4 of 6
-Status: Executing — 09-03 complete (METX-01 Open-Meteo→per-azimuth A/B/C via the lifted Phase-3 fit + METX-02 ERA5 Obukhov/occurrence-stats derivation)
-Last activity: 2026-07-11 — Phase 09 execution started
+Plan: 5 of 6
+Status: Executing — 09-04 complete (WASM boundary DTOs+shims for the Phase-9 core via ts-rs no-drift wire.ts; flagged-off feature=era5 SSRF-allowlisted ERA5/CDS async endpoint on the Phase-6 job machine; envi_gis::path PropagationPathInputs bundle + weather-invariant FNV-1a PathCacheKey — METX-02 groundwork complete)
+Last activity: 2026-07-11 — Completed 09-04-PLAN.md
 
-Progress: [██████████] Phase 8 — 8/8 plans complete (envi-geo RD-New · envi-gis sans-I/O COG core · allowlisted byte proxy · source registry+terrain+σ table+Overpass buildings+re-import merge · WorldCover→ground_zone vectorization · envi-gis-wasm cdylib+generated DTOs · web OPFS import path+ImportPanel+overlay+attribution · offline Playwright import+DATA-04 replay)
+Progress: [██████░░░░] Phase 9 — 4/6 plans complete (GEOX-01/02 cut-profile+impedance · GEOX-03/GRID-01 screening+receiver grid · METX-01/02 Open-Meteo A/B/C lift + ERA5 Obukhov/occurrence derivation · WASM boundary+flagged ERA5 endpoint+PropagationPathInputs/PathCacheKey)
 
 ## Performance Metrics
 
@@ -92,6 +92,7 @@ Progress: [██████████] Phase 8 — 8/8 plans complete (envi-
 | Phase 09 P01 | 45min | 2 tasks | 10 files |
 | Phase 09 P02 | 40min | 2 tasks | 5 files |
 | Phase 09 P03 | 40min | 2 tasks | 12 files |
+| Phase 09 P04 | 55min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -192,6 +193,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T14:20:00.000Z
-Stopped at: Completed 09-03-PLAN.md (METX-01/02 derivation)
+Last session: 2026-07-11T14:44:30.321Z
+Stopped at: Completed 09-04-PLAN.md (WASM boundary + flagged ERA5 endpoint + PropagationPathInputs/PathCacheKey)
 Resume file: None
