@@ -59,9 +59,7 @@ pub enum GisError {
     /// A decompression bomb was rejected: the decoded pixel count implied by the
     /// IFD dimensions exceeds the [`cog::MAX_DECODED_PX`] budget. Enforced
     /// **before** any decode allocates the output raster (threat T-08-02-01).
-    #[error(
-        "decoded-pixel budget exceeded: window implies {requested_px} px, limit is {limit} px"
-    )]
+    #[error("decoded-pixel budget exceeded: window implies {requested_px} px, limit is {limit} px")]
     DecodeBudgetExceeded {
         /// Pixel count the requested window/tile would decode to.
         requested_px: usize,

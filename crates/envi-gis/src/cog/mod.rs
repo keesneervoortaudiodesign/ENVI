@@ -9,8 +9,14 @@
 //!   data — the [`MAX_DECODED_PX`] budget is enforced from IFD dimensions BEFORE
 //!   any pixel is decoded (threat T-08-02-01).
 //!
-//! Submodules land in plan 08-02 Task 3: `header` (IFD/BigTIFF parse + overview
-//! navigation), `geo_tags` (geotransform + nodata), `window` (`decode_window`).
+//! Submodules: [`header`] (IFD/BigTIFF parse + overview navigation + IFD-chain
+//! cap), [`geo_tags`] (geotransform + nodata), [`window`] (`decode_window`).
+
+pub mod geo_tags;
+pub mod header;
+pub mod window;
+
+pub use window::{PixelWindow, Raster, decode_window};
 
 /// Maximum decoded pixel count accepted per window (DoS budget, threat
 /// T-08-02-01). Enforced from IFD dimensions *before* any decode allocates the
