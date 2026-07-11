@@ -332,11 +332,11 @@ Plans:
   4. Weather import fetches Open-Meteo once per (site, time window), caches it with the project, and derives per-azimuth A/B/C from the multi-level profile; subsequent what-if edits issue zero API calls (verified by network log), and the weighted call cost is logged per fetch
   5. ERA5/CDS groundwork retrieves reanalysis as an async job and derives wind×stability weather-class occurrence statistics (Obukhov length) — full L_den combination stays deferred with GRID-03
 
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 
 Plans:
 
-- [ ] 09-01-PLAN.md — DEM cut-profile extractor (GRASS-faithful oracle) + impedance segmentation drawn&gt;imported&gt;default (GEOX-01/02)
+- [x] 09-01-PLAN.md — DEM cut-profile extractor (GRASS-faithful oracle) + impedance segmentation drawn&gt;imported&gt;default (GEOX-01/02)
 - [ ] 09-02-PLAN.md — screening edges → TerrainProfile vertices (rstar corridor) + building-aware CDT receiver grid (GEOX-03/GRID-01)
 - [ ] 09-03-PLAN.md — Open-Meteo multi-level → per-azimuth A/B/C (lift Phase-3 fit) + ERA5 Obukhov/occurrence-stats derivation (METX-01/02)
 - [ ] 09-04-PLAN.md — WASM boundary DTOs/shims + flagged-off ERA5/CDS service endpoint + wire no-drift (METX-02)
@@ -345,7 +345,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 09-01: cut-profile + impedance segmentation
+- [x] 09-01: cut-profile + impedance segmentation
 
 **Wave 2** *(blocked on 09-01)*
 

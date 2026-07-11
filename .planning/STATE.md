@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 08
-current_phase_name: gis-ingestion-dgm
+current_phase: 09
+current_phase_name: path-extraction-weather
 status: executing
 stopped_at: Phase 9 context gathered
-last_updated: "2026-07-11T12:40:46.585Z"
+last_updated: "2026-07-11T13:06:16.870Z"
 last_activity: 2026-07-11
-last_activity_desc: "Phase 8 closed: 8/8 plans + 5 gates green (offline Playwright 17/17)"
+last_activity_desc: Phase 09 execution started
 progress:
   total_phases: 11
   completed_phases: 8
-  total_plans: 41
-  completed_plans: 41
+  total_plans: 47
+  completed_plans: 42
   percent: 73
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** A numerically faithful Nord2000 engine — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain.
-**Current focus:** Phase 08 — gis-ingestion-dgm
+**Current focus:** Phase 09 — path-extraction-weather
 
 ## Current Position
 
-Phase: 08 (gis-ingestion-dgm) — COMPLETE
-Plan: 8 of 8 complete (08-01 … 08-08)
-Status: Ready to execute
-Last activity: 2026-07-11 — Phase 8 closed: 8/8 plans + 5 gates green (offline Playwright 17/17)
+Phase: 09 (path-extraction-weather) — EXECUTING
+Plan: 2 of 6
+Status: Executing — 09-01 complete (GEOX-01 cut-profile + GEOX-02 impedance segmentation)
+Last activity: 2026-07-11 — Phase 09 execution started
 
 Progress: [██████████] Phase 8 — 8/8 plans complete (envi-geo RD-New · envi-gis sans-I/O COG core · allowlisted byte proxy · source registry+terrain+σ table+Overpass buildings+re-import merge · WorldCover→ground_zone vectorization · envi-gis-wasm cdylib+generated DTOs · web OPFS import path+ImportPanel+overlay+attribution · offline Playwright import+DATA-04 replay)
 
@@ -89,6 +89,7 @@ Progress: [██████████] Phase 8 — 8/8 plans complete (envi-
 | Phase 08 P06 | 70min | 2 tasks | 13 files |
 | Phase 08 P07 | 165min | 3 tasks | 18 files |
 | Phase 08 P08 | 150 | 2 tasks | 13 files |
+| Phase 09 P01 | 45min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -155,6 +156,8 @@ Recent decisions affecting current work:
 - [Phase 08, 08-04]: envi-gis feature layer is deterministic pure data + transforms. registry = SourceDescriptor table-as-data (D-04): AHN4 DTM inside a coarse WGS84 NL coverage hull, GLO-30 DSM globally, WorldCover + Overpass; verified D-02 CORS mode per source; committed registry/ahn_index.toml kaartblad↔RD index (DO-NOT-EDIT + sha256 banner, include_str!, parsed only in tests). terrain: decimate_window grid-strides to ≤target and ≤MAX_TERRAIN_POINTS=50k (T-08-04-01), dropping nodata holes; terrain_features reprojects RD/WGS84→WGS84 through envi_geo ONLY (grep proj=0, GEOX-04) and emits editable elevation_point features WGS84-on-the-wire with NO Rust id (TS assigns crypto.randomUUID); sample_base_elevation = footprint-boundary MEDIAN, never DSM-under-roof (T-08-04-04), typed None when terrain absent (never silent 0.0, D-07). impedance_table = 11-row reviewed WorldCover→Nord2000 class table; per-row test resolves σ via envi_engine::scene::impedance_class — σ NEVER restated in envi-gis (only in a //! doc comment); roughness defaults to class N. buildings: Overpass ways+multipolygon relations → building features with the LOCKED D-10 height chain (measured reserved → height/building:height tag tolerant-parse rejecting non-finite/negative → building:levels×3+1.5 → user default), emitting eaves_height_m (the exact key building_from_feature reads, NOT a parallel height_m) + height_provenance + D-11 provenance; ring validation + skip-and-report (T-08-04-02, never fails the layer). merge = D-09 re-import keyed on (source, source_ref) with the user_modified guard (user edits survive, untouched refresh, new added, absent retained, user-created kept), deterministic order. provenance = plain GeoJSON properties (Pattern 4, zero store schema change). GisError gained Reproject + Json variants (additive; nothing outside envi-gis matches GisError). No new deps (T-08-04-SC). 28 unit + 8 integ tests green; clippy/fmt clean.
 - [Phase 08, 08-05]: envi-gis/landcover.rs vectorizes a WorldCover Raster<u8> window into editable WGS84 ground_zone polygons — one per contiguous same-class region. SUS `contour` crate DECLINED at the pre-resolved human-verify checkpoint (T-08-05-SC): hand-rolled marching squares instead, ZERO new deps (only the already-present `geo`); cargo tree confirms no contour/reqwest/tokio/web-sys. Tracer = directed interior-on-right unit half-edges stitched into closed rings with sharpest-right-turn saddle resolution → a per-class partition yielding adjacency/containment ONLY, never partial crossings (T-08-05-01, Phase-7 draw rule; asserted via geo::Relate is_overlaps()). Exteriors (signed area>0) + holes (area<0) → nested Polygons; min-area drop + geo Douglas–Peucker BOTH in pixel space (CRS-independent tol); bounded-work caps MAX_GROUND_ZONES/MAX_TOTAL_VERTICES. Impedance letter via worldcover_to_class (σ stays in engine — one source of truth); roughness defaults N; D-11 provenance; no Rust id. Water (WC 80→H) emitted as zones (Open-Q5); unknown codes + nodata skipped, never a silent zone (D-07). WorldCover is EPSG:4326 → geotransform yields WGS84 directly (identity via envi_geo::LonLat, grep proj=0). 9 unit tests; full workspace green, engine byte-identical. — NOTE: consumes a Raster<u8>; the WorldCover u8-COG decode path (class-raster producer) is the remaining upstream seam (cog::decode_window currently handles f32 terrain only).
 - [Phase 08]: [Phase 08, 08-06] envi-gis-wasm = the repo's first WASM crate: a thin wasm-bindgen cdylib exposing the pure envi-gis core (plan_import/decode_window/terrain_features/sample_base_elevation/map_landcover/parse_buildings/merge_features) to the browser — marshalling only, all GIS math delegated to envi_gis::. wasm-bindgen pinned '=0.2.126' with wasm-bindgen-cli 0.2.126 lockstep (Pitfall 8); no getrandom/uuid (Pitfall 9). Tile bytes cross as a direct &[u8] param (not a serde field); provenance built by resolving the registry source id -> 'static source+license. Closed the 08-05 u8-seam (cog::decode_window_u8) + added terrain::base_elevation_on_raster so the boundary stays logic-free. All 24 boundary DTOs generated via ts-rs into the SINGLE committed web/src/generated/wire.ts (envi-service dev-deps envi-gis-wasm; no-drift test green) — one source of truth for the HTTP wire AND the WASM boundary, no hand-written TS. DATA-01/02/03.
+- [Phase 09]: GEOX-01 samples the DGM TIN (barycentric), not the raw raster; the r.profile oracle pins a documented TIN-vs-bilinear tolerance, not bit-equality
+- [Phase 09]: GEOX-02 segment_ground returns GroundSegmentation { points, planar_xy, segments } so boundary-spliced points stay in sync with segments for a valid TerrainProfile
 
 ### Pending Todos
 
@@ -182,6 +185,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T11:56:06.500Z
+Last session: 2026-07-11T13:03:37.996Z
 Stopped at: Phase 9 context gathered
 Resume file: .planning/phases/09-path-extraction-weather/09-CONTEXT.md

@@ -82,8 +82,8 @@
 
 ### Real GIS geometry pipeline (GEOX)
 
-- [ ] **GEOX-01**: Extract the terrain elevation profile (DEM cut-profile) along a source→receiver line from a DEM raster (oracle: GRASS `r.profile`)
-- [ ] **GEOX-02**: Segment ground into impedance classes along the profile from land cover + drawn/imported overrides (priority: drawn > imported > default)
+- [x] **GEOX-01**: Extract the terrain elevation profile (DEM cut-profile) along a source→receiver line from a DEM raster (oracle: GRASS `r.profile`)
+- [x] **GEOX-02**: Segment ground into impedance classes along the profile from land cover + drawn/imported overrides (priority: drawn > imported > default)
 - [ ] **GEOX-03**: Derive screening edges from building/barrier/wall geometry along the path
 - [x] **GEOX-04**: Reproject inputs to an auto-selected local metric CRS (UTM), pinned per project, at a single reprojection boundary
 
@@ -204,8 +204,8 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | DATA-02 | Phase 8 | Complete |
 | DATA-03 | Phase 8 | Complete |
 | DATA-04 | Phase 8 | Complete |
-| GEOX-01 | Phase 9 | Pending |
-| GEOX-02 | Phase 9 | Pending |
+| GEOX-01 | Phase 9 | Complete |
+| GEOX-02 | Phase 9 | Complete |
 | GEOX-03 | Phase 9 | Pending |
 | GEOX-04 | Phase 6 | Complete |
 | METX-01 | Phase 9 | Pending |
