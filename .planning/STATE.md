@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 08
 current_phase_name: gis-ingestion-dgm
 status: executing
-stopped_at: Completed 08-03 (envi-service allowlisted byte relay + SSRF contract tests)
-last_updated: "2026-07-11T01:16:00Z"
+stopped_at: Completed 08-04 (envi-gis feature layer — registry/terrain/impedance/buildings/merge)
+last_updated: "2026-07-11T03:42:00Z"
 last_activity: 2026-07-11
-last_activity_desc: Completed 08-03 (envi-service allowlisted byte proxy for GLO-30/WorldCover + offline SSRF contract tests)
+last_activity_desc: Completed 08-04 (envi-gis deterministic feature layer — source registry, terrain decimation + WGS84 elevation features + footprint-boundary base elevation, SC3 WorldCover→σ table, Overpass buildings + height chain, D-09 re-import merge)
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 41
-  completed_plans: 36
+  completed_plans: 37
   percent: 64
 ---
 
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 08 (gis-ingestion-dgm) — EXECUTING
-Plan: 4 of 8
+Plan: 5 of 8
 Status: Ready to execute
-Last activity: 2026-07-11 — Completed 08-03 (envi-service allowlisted byte proxy for GLO-30/WorldCover + offline SSRF contract tests)
+Last activity: 2026-07-11 — Completed 08-04 (envi-gis deterministic feature layer: source registry + terrain decimation/base-elevation + SC3 WorldCover→σ table + Overpass buildings/height-chain + D-09 re-import merge)
 
 Progress: [██████████] Phase 7 — 10/10 plans complete (envi-store DTOs · envi-dgm TIN · endpoints · web scaffold+theme · Terra Draw lifecycle · generated wire types · 9-kind palette+DGM producer · spectrum editor+ring-diff · validation+autosave · SC1–SC4 E2E)
 
@@ -85,6 +85,7 @@ Progress: [██████████] Phase 7 — 10/10 plans complete (env
 | Phase 08 P01 | 30min | 2 tasks | 6 files |
 | Phase 08 P02 | ~55 min | 3 tasks | 22 files |
 | Phase 08 P03 | ~18 min | 2 tasks | 7 files |
+| Phase 08 P04 | 28min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -148,6 +149,7 @@ Recent decisions affecting current work:
 - [Phase 08, 08-01] RD New (EPSG:28992) added to envi-geo as a sibling source type `RdNewCrs` (to_rd/to_wgs84), NOT an overload of the UTM-specific ProjectCrs — RD is the transient AHN import source CRS, reprojected to WGS84 then handed to the project ProjectCrs (GEOX-04 single boundary preserved). proj4rs sterea + Bessel + 7-param towgs84, ZERO new deps; radians stay quarantined in transform.rs. Pinned to a committed pyproj EPSG:4326↔28992 oracle (rd_landmarks.toml, sha256 provenance, tol_m read from [meta]) at ≤1.0 m round-trip — the ~0.5 m towgs84-vs-RDNAPTRANS gap sits inside tolerance; no runtime Python. Fallible constructor wraps bad proj strings into GeoError::Proj (no panic, T-08-01-02)
 - [Phase 08, 08-03]: envi-service gains its ONE new network surface — an allowlisted, bytes-only GET/Range byte relay `GET /api/v1/proxy/{source}/{*path}` (D-02, Pattern 5) for the two CORS-blocked S3 sources (GLO-30, WorldCover); every other source (PDOK AHN, Overpass) stays direct browser fetch. SSRF-proof by construction: a hardcoded `SOURCES` (id, host, path_prefix) table + a pure `resolve_upstream()` that rejects unknown source (404), prefix escape, and `..` traversal (400) BEFORE any outbound request; the shared `reqwest::Client` follows NO redirects (`Policy::none()`), has a connect timeout, and streams the body under a 128 MiB cap. Pure-Rust TLS (`reqwest` rustls-tls, default-features=false — no native-tls/openssl in the graph). MED-1: `From<reqwest::Error>` logs the full error server-side but returns a generic 500 (no host/path leak). GET-only via `get(relay)` (405 otherwise). Pinned by offline `contract_proxy.rs` (unknown-source/prefix-escape/non-GET router cases + resolve_upstream URL-builder unit cases); no test hits the network. — The single server-side surface of the client-side import pipeline; keeps "compute on the local machine" (bytes-only, no transform).
 - [Phase 08]: envi-gis is the sans-I/O, WASM-safe GIS-ingestion boundary: decodes cached COG/BigTIFF over &[u8] (tiff crate), NO network/OPFS/browser deps (cargo tree gate); guard-first decode_window enforces a pre-decode max_decoded_px DoS budget from IFD dims (T-08-02-01), geotransform from ModelPixelScale/Tiepoint not nominal (T-08-02-04), nodata + non-finite dropped to Option holes never silent 0.0 (T-08-02-03). Fixtures are real GDAL 3.12.1 COGs (dev-time rasterio), Python not a test dep; envi-engine byte-identical. — Load-bearing security-critical foundation of the client-side import pipeline; sans-I/O keeps the whole core natively cargo test-able and WASM-ready.
+- [Phase 08, 08-04]: envi-gis feature layer is deterministic pure data + transforms. registry = SourceDescriptor table-as-data (D-04): AHN4 DTM inside a coarse WGS84 NL coverage hull, GLO-30 DSM globally, WorldCover + Overpass; verified D-02 CORS mode per source; committed registry/ahn_index.toml kaartblad↔RD index (DO-NOT-EDIT + sha256 banner, include_str!, parsed only in tests). terrain: decimate_window grid-strides to ≤target and ≤MAX_TERRAIN_POINTS=50k (T-08-04-01), dropping nodata holes; terrain_features reprojects RD/WGS84→WGS84 through envi_geo ONLY (grep proj=0, GEOX-04) and emits editable elevation_point features WGS84-on-the-wire with NO Rust id (TS assigns crypto.randomUUID); sample_base_elevation = footprint-boundary MEDIAN, never DSM-under-roof (T-08-04-04), typed None when terrain absent (never silent 0.0, D-07). impedance_table = 11-row reviewed WorldCover→Nord2000 class table; per-row test resolves σ via envi_engine::scene::impedance_class — σ NEVER restated in envi-gis (only in a //! doc comment); roughness defaults to class N. buildings: Overpass ways+multipolygon relations → building features with the LOCKED D-10 height chain (measured reserved → height/building:height tag tolerant-parse rejecting non-finite/negative → building:levels×3+1.5 → user default), emitting eaves_height_m (the exact key building_from_feature reads, NOT a parallel height_m) + height_provenance + D-11 provenance; ring validation + skip-and-report (T-08-04-02, never fails the layer). merge = D-09 re-import keyed on (source, source_ref) with the user_modified guard (user edits survive, untouched refresh, new added, absent retained, user-created kept), deterministic order. provenance = plain GeoJSON properties (Pattern 4, zero store schema change). GisError gained Reproject + Json variants (additive; nothing outside envi-gis matches GisError). No new deps (T-08-04-SC). 28 unit + 8 integ tests green; clippy/fmt clean.
 
 ### Pending Todos
 
@@ -175,6 +177,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T01:16:00Z
-Stopped at: Completed 08-03-PLAN.md (envi-service allowlisted byte proxy + SSRF contract tests)
+Last session: 2026-07-11T03:42:00Z
+Stopped at: Completed 08-04-PLAN.md (envi-gis feature layer — registry/terrain/impedance/buildings/merge)
 Resume file: None
