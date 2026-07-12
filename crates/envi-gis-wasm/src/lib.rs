@@ -67,7 +67,7 @@ use dto::{
     SegmentGroundReq, SkipReportDto, SoundSpeedProfileDto, SourceDescriptorDto, SourceKindDto,
     TerrainFeaturesReq, TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto,
     WeatherComponentsDto, WeatherDeriveReq, WeatherDeriveResult, WindowForBboxReq,
-    WindowForBboxResult,
+    WindowForBboxResult, profile_dto,
 };
 
 // --- Marshalling helpers (the ONLY glue; no domain logic) -----------------
@@ -664,27 +664,15 @@ pub fn derive_weather(req: JsValue) -> Result<JsValue, JsValue> {
         .path_azimuths_deg
         .iter()
         .map(|&az| {
-            let p = sound_speed_profile_for_azimuth(&comp, az, req.phi_wind_deg);
-            SoundSpeedProfileDto {
-                a: p.a,
-                b: p.b,
-                c: p.c,
-                s_a: p.s_a,
-                s_b: p.s_b,
-                z0: p.z0,
-            }
+            profile_dto(&sound_speed_profile_for_azimuth(
+                &comp,
+                az,
+                req.phi_wind_deg,
+            ))
         })
         .collect();
     to_js(&WeatherDeriveResult {
-        components: WeatherComponentsDto {
-            a_temp: comp.a_temp,
-            a_wind: comp.a_wind,
-            b: comp.b,
-            c: comp.c,
-            s_a: comp.s_a,
-            s_b: comp.s_b,
-            z0: comp.z0,
-        },
+        components: WeatherComponentsDto::from(&comp),
         profiles,
     })
 }
@@ -755,27 +743,11 @@ pub fn derive_weather_friendly(req: JsValue) -> Result<JsValue, JsValue> {
             // (φ_u = az) so the wind part is fully favourable per azimuth — the
             // standard Nord2000 worst-case envelope. Otherwise project the real wind.
             let phi = if req.downwind_worst_case { az } else { phi_u };
-            let p = sound_speed_profile_for_azimuth(&comp, az, phi);
-            SoundSpeedProfileDto {
-                a: p.a,
-                b: p.b,
-                c: p.c,
-                s_a: p.s_a,
-                s_b: p.s_b,
-                z0: p.z0,
-            }
+            profile_dto(&sound_speed_profile_for_azimuth(&comp, az, phi))
         })
         .collect();
     to_js(&WeatherDeriveResult {
-        components: WeatherComponentsDto {
-            a_temp: comp.a_temp,
-            a_wind: comp.a_wind,
-            b: comp.b,
-            c: comp.c,
-            s_a: comp.s_a,
-            s_b: comp.s_b,
-            z0: comp.z0,
-        },
+        components: WeatherComponentsDto::from(&comp),
         profiles,
     })
 }

@@ -17,6 +17,8 @@
 //! - **No ids, no getrandom (Pitfall 9):** feature `id`s are assigned in TS via
 //!   `crypto.randomUUID()`; nothing here mints an id.
 
+use envi_engine::propagation::refraction::SoundSpeedProfile;
+use envi_gis::weather::WeatherComponents;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -26,6 +28,23 @@ use ts_rs::TS;
 // result). Re-exported at its original path so `envi_gis_wasm::dto::SoundSpeedProfileDto`
 // stays source-compatible and the committed `wire.ts` is byte-identical (one export).
 pub use envi_compute::scene_dto::SoundSpeedProfileDto;
+
+/// Project an engine per-azimuth [`SoundSpeedProfile`] into the wire
+/// [`SoundSpeedProfileDto`]. A free fn rather than a `From` impl because BOTH types are
+/// foreign to this crate (the orphan rule forbids the impl here): `SoundSpeedProfileDto`
+/// lives in `envi_compute::scene_dto`, `SoundSpeedProfile` in `envi_engine`. One field
+/// mapping, so the `derive_weather` / `derive_weather_friendly` shims never restate it.
+#[must_use]
+pub fn profile_dto(p: &SoundSpeedProfile) -> SoundSpeedProfileDto {
+    SoundSpeedProfileDto {
+        a: p.a,
+        b: p.b,
+        c: p.c,
+        s_a: p.s_a,
+        s_b: p.s_b,
+        z0: p.z0,
+    }
+}
 
 // --- Shared value objects -------------------------------------------------
 
@@ -547,6 +566,20 @@ pub struct WeatherComponentsDto {
     pub s_b: f64,
     /// Roughness length `z₀`, m.
     pub z0: f64,
+}
+
+impl From<&WeatherComponents> for WeatherComponentsDto {
+    fn from(c: &WeatherComponents) -> Self {
+        Self {
+            a_temp: c.a_temp,
+            a_wind: c.a_wind,
+            b: c.b,
+            c: c.c,
+            s_a: c.s_a,
+            s_b: c.s_b,
+            z0: c.z0,
+        }
+    }
 }
 
 /// One hour of ERA5 single-level fields (wire mirror of
