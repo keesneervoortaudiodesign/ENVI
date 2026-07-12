@@ -28,6 +28,15 @@ const LAYER_LABELS: Record<LayerKey, string> = {
   buildings: "Buildings",
 };
 
+// Explicit per-layer InfoButton ids (WR-01 / D-25): a `Record<LayerKey, ControlId>`
+// makes the coverage a `tsc` guarantee — a new layer without a catalog entry fails to
+// compile, unlike the previous `as ControlId` cast that could crash at render.
+const LAYER_CONTROL_IDS: Record<LayerKey, ControlId> = {
+  terrain: "import.layer_terrain",
+  landcover: "import.layer_landcover",
+  buildings: "import.layer_buildings",
+};
+
 // The chip severity for a layer status (reusing the shared `.chip.warn` / `.chip.crit` styles).
 function statusSeverity(status: LayerState["status"]): "" | "warn" | "crit" {
   if (status === "error") {
@@ -56,7 +65,7 @@ function LayerRow({ layer }: { readonly layer: LayerKey }): ReactElement {
         />
         <span className="issue-text">{LAYER_LABELS[layer]}</span>
       </label>
-      <InfoButton controlId={`import.layer_${layer}` as ControlId} />
+      <InfoButton controlId={LAYER_CONTROL_IDS[layer]} />
 
       <span className={`chip ${severity}`} data-testid={`import-status-${layer}`}>
         {state.status === "error" ? <span className="dot crit" aria-hidden="true" /> : null}

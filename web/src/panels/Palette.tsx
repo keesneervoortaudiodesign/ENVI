@@ -17,19 +17,44 @@ import { useSceneStore } from "../store/sceneStore";
 import { InfoButton } from "../help/InfoButton";
 import type { ControlId } from "../help/controlIds";
 
-// One palette entry: its tool identity, label, icon, and kind-hue token (select has no hue).
+// One palette entry: its tool identity, InfoButton id, label, icon, and kind-hue token
+// (select has no hue). The explicit `controlId` (WR-01 / D-25) makes the InfoButton
+// coverage a `tsc` guarantee via the `Record<DrawTool, ControlId>` map below — no
+// `as ControlId` cast that could crash at render on a missing catalog entry.
 interface ToolRow {
   readonly tool: DrawTool;
+  readonly controlId: ControlId;
   readonly label: string;
   readonly icon: IconName;
   readonly hueToken: string | null;
 }
 
+// Explicit per-tool InfoButton ids: a `Record<DrawTool, ControlId>` fails `tsc` if a
+// tool is added without a catalog-backed control id.
+const TOOL_CONTROL_IDS: Record<DrawTool, ControlId> = {
+  select: "palette.select",
+  source: "palette.source",
+  receiver: "palette.receiver",
+  wall: "palette.wall",
+  building: "palette.building",
+  forest: "palette.forest",
+  ground_zone: "palette.ground_zone",
+  elevation_point: "palette.elevation_point",
+  elevation_line: "palette.elevation_line",
+  calc_area: "palette.calc_area",
+};
+
 const ROWS: readonly ToolRow[] = [
-  { tool: "select", label: "Select / pan", icon: "select", hueToken: null },
+  { tool: "select", controlId: TOOL_CONTROL_IDS.select, label: "Select / pan", icon: "select", hueToken: null },
   ...KINDS.map((kind): ToolRow => {
     const meta = KIND_META[kind];
-    return { tool: kind, label: meta.label, icon: meta.icon, hueToken: meta.hueToken };
+    return {
+      tool: kind,
+      controlId: TOOL_CONTROL_IDS[kind],
+      label: meta.label,
+      icon: meta.icon,
+      hueToken: meta.hueToken,
+    };
   }),
 ];
 
@@ -77,7 +102,7 @@ export function Palette(): ReactElement {
                 <span className="dot" style={{ background: `var(${row.hueToken})` }} />
               ) : null}
             </button>
-            <InfoButton controlId={`palette.${row.tool}` as ControlId} />
+            <InfoButton controlId={row.controlId} />
           </li>
         ))}
       </ul>

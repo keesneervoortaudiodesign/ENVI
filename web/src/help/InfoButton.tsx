@@ -222,7 +222,7 @@ function HelpDock({
 
 // The public affordance. Renders the glyph button; clicking it toggles the glance popover; "More"
 // opens the docked panel for depth. One component, two depths (D-23).
-export function InfoButton({ controlId }: { readonly controlId: ControlId }): ReactElement {
+export function InfoButton({ controlId }: { readonly controlId: ControlId }): ReactElement | null {
   const entry = catalog[controlId];
   const [open, setOpen] = useState(false);
   const [docked, setDocked] = useState(false);
@@ -283,6 +283,14 @@ export function InfoButton({ controlId }: { readonly controlId: ControlId }): Re
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [docked]);
+
+  // Defence-in-depth (WR-01): every call site now passes a concrete `ControlId` so the
+  // `Record<ControlId, HelpEntry>` type guarantees an entry, but guard the lookup anyway
+  // so a future catalog gap renders nothing rather than throwing on `entry.title` and
+  // white-screening the panel (there is no error boundary above this).
+  if (!entry) {
+    return null;
+  }
 
   return (
     <span className="info-button-wrap" ref={wrapRef}>

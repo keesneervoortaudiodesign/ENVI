@@ -22,11 +22,13 @@ import { InfoButton } from "../help/InfoButton";
 import type { ControlId } from "../help/controlIds";
 
 // The three export formats + their menu copy (UI-SPEC §Export menu inventory; sentence
-// case, English-only, units/identity shown).
-const FORMATS: { id: UiExportFormat; label: string; hint: string }[] = [
-  { id: "geotiff", label: "GeoTIFF", hint: "raster level grid" },
-  { id: "geojson", label: "GeoJSON", hint: "isophone polygons" },
-  { id: "csv", label: "CSV", hint: "spectra: band index + exact Hz" },
+// case, English-only, units/identity shown). Each carries an explicit `controlId` so the
+// InfoButton coverage is a `tsc` guarantee — no `as ControlId` cast that could hide a
+// missing catalog entry (WR-01 / D-25).
+const FORMATS: { id: UiExportFormat; controlId: ControlId; label: string; hint: string }[] = [
+  { id: "geotiff", controlId: "export.geotiff", label: "GeoTIFF", hint: "raster level grid" },
+  { id: "geojson", controlId: "export.geojson", label: "GeoJSON", hint: "isophone polygons" },
+  { id: "csv", controlId: "export.csv", label: "CSV", hint: "spectra: band index + exact Hz" },
 ];
 
 export function ExportMenu(): ReactElement {
@@ -98,7 +100,7 @@ export function ExportMenu(): ReactElement {
                   <span className="export-menu-label">{f.label}</span>
                   <span className="export-menu-hint mono">{f.hint}</span>
                 </button>
-                <InfoButton controlId={`export.${f.id}` as ControlId} />
+                <InfoButton controlId={f.controlId} />
               </div>
             ))}
           </div>
