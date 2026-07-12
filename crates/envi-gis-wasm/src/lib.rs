@@ -52,20 +52,22 @@ use envi_gis::screening::{ScreenObject, inject_screens};
 use envi_gis::terrain::{TerrainSourceCrs, base_elevation_on_raster};
 use envi_gis::tiles::{self, TileRef};
 use envi_gis::weather::{
-    components_from_levels, levels_from_openmeteo, sound_speed_profile_for_azimuth,
+    components_from_friendly, components_from_levels, levels_from_openmeteo,
+    sound_speed_profile_for_azimuth,
 };
 
 use dto::{
     BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, ClassOccurrenceDto, CorsDto,
     CutProfileReq, CutProfileResult, DecodeWindowReq, DecodeWindowResult, DrawnZoneDto,
-    Era5DeriveReq, Era5DeriveResult, Era5HourDto, GeoTransformDto, GroundSegmentationDto,
-    ImportPlanReq, ImportPlanResult, ImportedZoneDto, InjectScreensReq, LandcoverResult,
-    MapLandcoverReq, MergeReq, MergeResult, ParseBuildingsReq, PixelWindowDto, PlanTilesReq,
-    PlanTilesResult, ProfileSegmentDto, ProvenanceReqDto, ReceiverGridReq, ReceiverGridResult,
-    ReprojectRingReq, ReprojectRingResult, ScreenObjectDto, SegmentGroundReq, SkipReportDto,
-    SoundSpeedProfileDto, SourceDescriptorDto, SourceKindDto, TerrainFeaturesReq,
-    TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto, WeatherComponentsDto,
-    WeatherDeriveReq, WeatherDeriveResult, WindowForBboxReq, WindowForBboxResult,
+    Era5DeriveReq, Era5DeriveResult, Era5HourDto, FriendlyWeatherReq, GeoTransformDto,
+    GroundSegmentationDto, ImportPlanReq, ImportPlanResult, ImportedZoneDto, InjectScreensReq,
+    LandcoverResult, MapLandcoverReq, MergeReq, MergeResult, ParseBuildingsReq, PixelWindowDto,
+    PlanTilesReq, PlanTilesResult, ProfileSegmentDto, ProvenanceReqDto, RawProfileDto,
+    ReceiverGridReq, ReceiverGridResult, ReprojectRingReq, ReprojectRingResult, ScreenObjectDto,
+    SegmentGroundReq, SkipReportDto, SoundSpeedProfileDto, SourceDescriptorDto, SourceKindDto,
+    TerrainFeaturesReq, TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto,
+    WeatherComponentsDto, WeatherDeriveReq, WeatherDeriveResult, WindowForBboxReq,
+    WindowForBboxResult,
 };
 
 // --- Marshalling helpers (the ONLY glue; no domain logic) -----------------
@@ -685,6 +687,127 @@ pub fn derive_weather(req: JsValue) -> Result<JsValue, JsValue> {
         },
         profiles,
     })
+}
+
+/// Derive the per-azimuth sound-speed profiles from FRIENDLY what-if met knobs
+/// (METX-03/04, D-14). Marshals the friendly knobs → the SAME `envi_gis::weather`
+/// per-azimuth A/B/C derivation `derive_weather` uses (the friendly path only
+/// synthesises the level profile; no forked met math). The downwind-worst-case
+/// envelope (D-15) is a per-bearing projection: each azimuth is treated as the
+/// downwind bearing so `A = a_temp + a_wind` independently. A raw override bypasses
+/// the derivation and emits `(A, B, C, z₀)` for every azimuth verbatim.
+///
+/// # Errors
+/// A shape error, or any [`GisError`] from the range gate / fit (T-11-08-01).
+#[wasm_bindgen]
+pub fn derive_weather_friendly(req: JsValue) -> Result<JsValue, JsValue> {
+    let req: FriendlyWeatherReq = from_js(req)?;
+
+    // Advanced raw override (METX-03): the expert sets (A, B, C, z₀) directly, the
+    // same profile for every azimuth — no derivation, no wind projection.
+    if let Some(RawProfileDto { a, b, c, z0 }) = req.raw_override {
+        for (v, what) in [(a, "a"), (b, "b"), (c, "c"), (z0, "z0")] {
+            if !v.is_finite() {
+                return Err(js_err(&format!("raw override {what} is not finite")));
+            }
+        }
+        let z0 = z0.max(0.001);
+        let profile = SoundSpeedProfileDto {
+            a,
+            b,
+            c,
+            s_a: 0.0,
+            s_b: 0.0,
+            z0,
+        };
+        let profiles = vec![profile; req.path_azimuths_deg.len()];
+        return to_js(&WeatherDeriveResult {
+            components: WeatherComponentsDto {
+                a_temp: a,
+                a_wind: 0.0,
+                b,
+                c,
+                s_a: 0.0,
+                s_b: 0.0,
+                z0,
+            },
+            profiles,
+        });
+    }
+
+    let comp = components_from_friendly(
+        req.temperature_c,
+        req.temp_gradient_c_per_m,
+        req.wind_speed_ms,
+        req.wind_from_deg,
+        req.z0,
+    )
+    .map_err(gis_err)?;
+    // The reference downwind bearing φ_u the wind part is projected relative to.
+    let phi_u = req.wind_from_deg + 180.0;
+    let profiles: Vec<SoundSpeedProfileDto> = req
+        .path_azimuths_deg
+        .iter()
+        .map(|&az| {
+            // Downwind worst-case (D-15): treat EACH bearing as the downwind bearing
+            // (φ_u = az) so the wind part is fully favourable per azimuth — the
+            // standard Nord2000 worst-case envelope. Otherwise project the real wind.
+            let phi = if req.downwind_worst_case { az } else { phi_u };
+            let p = sound_speed_profile_for_azimuth(&comp, az, phi);
+            SoundSpeedProfileDto {
+                a: p.a,
+                b: p.b,
+                c: p.c,
+                s_a: p.s_a,
+                s_b: p.s_b,
+                z0: p.z0,
+            }
+        })
+        .collect();
+    to_js(&WeatherDeriveResult {
+        components: WeatherComponentsDto {
+            a_temp: comp.a_temp,
+            a_wind: comp.a_wind,
+            b: comp.b,
+            c: comp.c,
+            s_a: comp.s_a,
+            s_b: comp.s_b,
+            z0: comp.z0,
+        },
+        profiles,
+    })
+}
+
+/// The per-receiver signed dB(A) difference `A − B` between two scenarios' cached
+/// readouts (METX-04 / D-16, D-01). Both inputs are WASM-produced weighted totals
+/// (`ReceiverReadoutDto::total_dba`); this returns the elementwise difference so
+/// the frontend performs ZERO acoustic arithmetic — TypeScript only marshals the
+/// two number arrays in and renders the returned deltas. Kept a pure numeric op on
+/// already-weighted totals (no tensor access), so it lives in this stable-toolchain
+/// GIS boundary rather than forcing a nightly compute-wasm rebuild.
+///
+/// # Errors
+/// The two arrays must be the same length (aligned receiver-for-receiver) and
+/// finite — a mismatch/non-finite is a typed boundary error, never a silent NaN.
+#[wasm_bindgen]
+pub fn difference_dba(a_dba: &[f64], b_dba: &[f64]) -> Result<Vec<f64>, JsValue> {
+    if a_dba.len() != b_dba.len() {
+        return Err(js_err(&format!(
+            "difference_dba length mismatch: {} vs {}",
+            a_dba.len(),
+            b_dba.len()
+        )));
+    }
+    let mut out = Vec::with_capacity(a_dba.len());
+    for (i, (&a, &b)) in a_dba.iter().zip(b_dba).enumerate() {
+        if !a.is_finite() || !b.is_finite() {
+            return Err(js_err(&format!(
+                "difference_dba received a non-finite total at receiver {i}"
+            )));
+        }
+        out.push(a - b);
+    }
+    Ok(out)
 }
 
 /// Derive the ERA5 wind×stability occurrence table + per-hour `1/L` (METX-02, D-05

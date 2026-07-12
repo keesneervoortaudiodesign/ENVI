@@ -70,10 +70,11 @@ use envi_gis_wasm::dto::{
     ImportPlanReq, ImportPlanResult, ImportedZoneDto, InjectScreensReq, LandcoverResult,
     MapLandcoverReq, MergeReq, MergeResult, ParseBuildingsReq, PixelWindowDto, PlanTilesReq,
     PlanTilesResult, ProfileSegmentDto, ProvenanceReqDto, ReceiverGridReq, ReceiverGridResult,
-    ReprojectRingReq, ReprojectRingResult, ScreenObjectDto, SegmentGroundReq, SkipReportDto,
-    SoundSpeedProfileDto, SourceDescriptorDto, SourceKindDto, TerrainFeaturesReq,
-    TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto, WeatherComponentsDto,
-    WeatherDeriveReq, WeatherDeriveResult, WindowForBboxReq, WindowForBboxResult,
+    FriendlyWeatherReq, RawProfileDto, ReprojectRingReq, ReprojectRingResult, ScreenObjectDto,
+    SegmentGroundReq, SkipReportDto, SoundSpeedProfileDto, SourceDescriptorDto, SourceKindDto,
+    TerrainFeaturesReq, TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto,
+    WeatherComponentsDto, WeatherDeriveReq, WeatherDeriveResult, WindowForBboxReq,
+    WindowForBboxResult,
 };
 
 // The envi-compute-wasm browser compute-boundary DTOs (SVC-02 / GRID-02, plan
@@ -197,6 +198,8 @@ fn export_all_wire_types(cfg: &Config) {
     InjectScreensReq::export_all(cfg).unwrap();
     ReceiverGridReq::export_all(cfg).unwrap();
     WeatherDeriveReq::export_all(cfg).unwrap();
+    RawProfileDto::export_all(cfg).unwrap();
+    FriendlyWeatherReq::export_all(cfg).unwrap();
     Era5DeriveReq::export_all(cfg).unwrap();
     // Result DTOs.
     CutProfileResult::export_all(cfg).unwrap();

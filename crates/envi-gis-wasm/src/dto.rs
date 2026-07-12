@@ -711,6 +711,60 @@ pub struct WeatherDeriveResult {
     pub profiles: Vec<SoundSpeedProfileDto>,
 }
 
+/// A raw per-azimuth `(A, B, C, z₀)` advanced override (METX-03, D-14): the
+/// expert bypass that sets the sound-speed profile directly, skipping the
+/// friendly-knob → A/B/C derivation. Applied to EVERY requested azimuth.
+/// Request-facing.
+#[derive(Debug, Clone, Copy, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct RawProfileDto {
+    /// Logarithmic coefficient `A`, m/s.
+    pub a: f64,
+    /// Linear coefficient `B`, s⁻¹.
+    pub b: f64,
+    /// Ground sound speed `C`, m/s.
+    pub c: f64,
+    /// Roughness length `z₀`, m (clamped ≥ 0.001 m).
+    pub z0: f64,
+}
+
+/// `derive_weather_friendly` request: the FRIENDLY what-if met knobs (METX-03/04,
+/// D-14) — a surface temperature, a temperature gradient, a wind speed (already
+/// converted from a Beaufort class by the caller) + the direction it blows FROM, a
+/// roughness length, and a downwind-worst-case toggle — that drive the SAME
+/// `envi_gis::weather` per-azimuth A/B/C derivation the Open-Meteo path uses.
+///
+/// `downwind_worst_case` (D-15): assume downward-refraction (favourable) along
+/// EACH `path_azimuths_deg` bearing INDEPENDENTLY — the standard Nord2000
+/// worst-case envelope — by projecting the wind part as if every bearing were the
+/// downwind bearing (`A = a_temp + a_wind` per azimuth).
+///
+/// `raw_override` (advanced): when present, the friendly knobs are ignored and the
+/// raw `(A, B, C, z₀)` is emitted for every azimuth verbatim.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct FriendlyWeatherReq {
+    /// Surface air temperature, °C.
+    pub temperature_c: f64,
+    /// Temperature gradient dT/dz, °C/m (positive = inversion ⇒ B > 0).
+    pub temp_gradient_c_per_m: f64,
+    /// Near-surface wind speed, m/s (Beaufort class → m/s is done caller-side).
+    pub wind_speed_ms: f64,
+    /// Meteorological wind direction it blows FROM, degrees clockwise from north.
+    pub wind_from_deg: f64,
+    /// Roughness length z₀, meters (clamped ≥ 0.001 m).
+    pub z0: f64,
+    /// Downwind worst-case (D-15): favourable downward-refraction per bearing.
+    pub downwind_worst_case: bool,
+    /// Path azimuths (degrees clockwise from north) to emit a profile for.
+    pub path_azimuths_deg: Vec<f64>,
+    /// Advanced raw per-azimuth `(A, B, C, z₀)` override (skips the derivation).
+    #[serde(default)]
+    pub raw_override: Option<RawProfileDto>,
+}
+
 /// `derive_era5` request: a batch of ERA5 single-level hours.
 #[derive(Debug, Clone, Deserialize, TS)]
 #[serde(deny_unknown_fields)]

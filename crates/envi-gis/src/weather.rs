@@ -181,6 +181,106 @@ pub fn sound_speed_profile_for_azimuth(
     }
 }
 
+/// The synthetic vertical heights (m AGL) the friendly what-if profile is
+/// evaluated over (METX-03/04, D-14). A near-surface anchor plus a spread of
+/// heights up to ~800 m gives the temperature (linear) + wind (log) fits a
+/// well-conditioned height range, exactly like the real Open-Meteo level set
+/// [`components_from_levels`] consumes — the friendly path reuses the SAME
+/// `envi_gis::weather` derivation, it only SYNTHESISES the levels from the
+/// friendly knobs instead of parsing them from an Open-Meteo body.
+const FRIENDLY_HEIGHTS_M: [f64; 6] = [NEAR_SURFACE_HEIGHT_M, 50.0, 100.0, 200.0, 400.0, 800.0];
+
+/// Physically-plausible friendly-override bounds (T-11-08-01): reject out-of-range
+/// what-if inputs with a typed error BEFORE the fit, never a fabricated/NaN profile.
+const FRIENDLY_TEMP_C: (f64, f64) = (-60.0, 60.0);
+const FRIENDLY_GRADIENT_C_PER_M: (f64, f64) = (-0.5, 0.5);
+const FRIENDLY_WIND_MS: (f64, f64) = (0.0, 120.0);
+
+/// Derive the bearing-independent [`WeatherComponents`] from FRIENDLY what-if knobs
+/// (METX-03/04, D-14) — a surface temperature, a temperature gradient (dT/dz), a
+/// wind speed, and the direction the wind blows FROM — by SYNTHESISING a vertical
+/// level profile and driving the SAME [`components_from_levels`] Route-2 fit the
+/// Open-Meteo path uses. There is no forked met math: the friendly path only builds
+/// the [`Level`] set the derivation already consumes.
+///
+/// - **Temperature** varies linearly with height: `T(z) = temperature_c +
+///   temp_gradient_c_per_m · z`. A positive gradient (inversion) ⇒ `B > 0`
+///   (downward-refracting), exactly as [`components_from_levels`] fits it.
+/// - **Wind** follows a neutral log profile normalised to `wind_speed_ms` at the
+///   near-surface anchor: `u(z) = wind_speed_ms · ln(z/z₀+1) / ln(z_ref/z₀+1)`, so
+///   it strengthens with height ⇒ `a_wind > 0` ⇒ downwind A > upwind A (MET-02).
+/// - **Direction** is constant with height (`wind_from_deg`); the downwind
+///   reference bearing is `wind_from_deg + 180°`.
+///
+/// # Errors
+///
+/// [`GisError::NonFinite`] on a non-finite knob; [`GisError::WeatherFit`] if a knob
+/// is outside its physical range (T-11-08-01) or the synthesised fit is
+/// under-determined (never a panic).
+pub fn components_from_friendly(
+    temperature_c: f64,
+    temp_gradient_c_per_m: f64,
+    wind_speed_ms: f64,
+    wind_from_deg: f64,
+    z0: f64,
+) -> Result<WeatherComponents, GisError> {
+    for (v, what) in [
+        (temperature_c, "friendly temperature_c"),
+        (temp_gradient_c_per_m, "friendly temp_gradient_c_per_m"),
+        (wind_speed_ms, "friendly wind_speed_ms"),
+        (wind_from_deg, "friendly wind_from_deg"),
+        (z0, "friendly z0"),
+    ] {
+        if !v.is_finite() {
+            return Err(GisError::NonFinite {
+                what: what.to_string(),
+            });
+        }
+    }
+    // Physical-range gate (T-11-08-01): a what-if slider can only be dragged into a
+    // physical band; anything outside is a typed rejection, not a garbage fit.
+    let ranges = [
+        (temperature_c, FRIENDLY_TEMP_C, "temperature_c"),
+        (
+            temp_gradient_c_per_m,
+            FRIENDLY_GRADIENT_C_PER_M,
+            "temp_gradient_c_per_m",
+        ),
+        (wind_speed_ms, FRIENDLY_WIND_MS, "wind_speed_ms"),
+    ];
+    for (v, (lo, hi), what) in ranges {
+        if v < lo || v > hi {
+            return Err(GisError::WeatherFit {
+                message: format!(
+                    "friendly {what} = {v} is outside the physical range [{lo}, {hi}]"
+                ),
+            });
+        }
+    }
+    let z0 = z0.max(Z0_MIN_M);
+    let z_ref = NEAR_SURFACE_HEIGHT_M;
+    let log_ref = (z_ref / z0 + 1.0).ln();
+    let levels: Vec<Level> = FRIENDLY_HEIGHTS_M
+        .iter()
+        .map(|&z| {
+            // Neutral log wind profile normalised to `wind_speed_ms` at z_ref.
+            let wind = if log_ref > 0.0 {
+                wind_speed_ms * (z / z0 + 1.0).ln() / log_ref
+            } else {
+                wind_speed_ms
+            };
+            Level {
+                height_agl_m: z,
+                temperature_c: temperature_c + temp_gradient_c_per_m * z,
+                wind_speed_ms: wind,
+                wind_direction_deg: wind_from_deg,
+            }
+        })
+        .collect();
+    // The downwind reference bearing is +180° from the meteorological FROM-direction.
+    components_from_levels(&levels, wind_from_deg + 180.0, z0)
+}
+
 /// One sub-path CalcEqSSP collapse `(ξ, c₀)` — the equivalent relative gradient
 /// and ground sound speed for a single reflection sub-path leg.
 pub type SubPathCollapse = (f64, f64);
@@ -884,6 +984,58 @@ mod tests {
         let ok = wind_shear_levels();
         assert!(matches!(
             components_from_levels(&ok, f64::INFINITY, 0.03),
+            Err(GisError::NonFinite { .. })
+        ));
+    }
+
+    // ----- components_from_friendly: friendly what-if → A/B/C (METX-03/04) -----
+
+    // A wind blowing FROM the west (270°) that strengthens with height ⇒ a_wind > 0,
+    // so downwind (bearing 90°, east) A exceeds upwind A. Reuses the SAME projection
+    // the Open-Meteo path uses (no forked met math).
+    #[test]
+    fn friendly_wind_gives_downwind_over_upwind() {
+        let comp = components_from_friendly(15.0, 0.0, 8.0, 270.0, 0.05).unwrap();
+        assert!(comp.a_wind > 0.0, "a wind profile must give a_wind > 0");
+        let phi = 90.0; // downwind bearing = wind_from + 180
+        let downwind = profile_for_bearing(&comp, phi, phi);
+        let upwind = profile_for_bearing(&comp, phi + 180.0, phi);
+        assert!(downwind.a > upwind.a);
+    }
+
+    // A positive temperature gradient (inversion) ⇒ B > 0 (downward-refracting),
+    // exactly as components_from_levels fits an Open-Meteo inversion.
+    #[test]
+    fn friendly_inversion_gives_positive_b() {
+        let comp = components_from_friendly(10.0, 0.01, 3.0, 0.0, 0.05).unwrap();
+        assert!(
+            comp.b > 0.0,
+            "inversion (dT/dz > 0) must give B > 0, got {}",
+            comp.b
+        );
+        // A calm, isothermal case is neutral: a_wind and B both vanish.
+        let calm = components_from_friendly(15.0, 0.0, 0.0, 0.0, 0.05).unwrap();
+        assert!(calm.a_wind.abs() < 1e-9, "calm ⇒ a_wind ≈ 0");
+        assert!(calm.b.abs() < 1e-9, "isothermal ⇒ B ≈ 0");
+    }
+
+    // Out-of-range knobs are a typed error, never a garbage fit (T-11-08-01).
+    #[test]
+    fn friendly_rejects_out_of_range_and_non_finite() {
+        assert!(matches!(
+            components_from_friendly(200.0, 0.0, 3.0, 0.0, 0.05),
+            Err(GisError::WeatherFit { .. })
+        ));
+        assert!(matches!(
+            components_from_friendly(15.0, 5.0, 3.0, 0.0, 0.05),
+            Err(GisError::WeatherFit { .. })
+        ));
+        assert!(matches!(
+            components_from_friendly(15.0, 0.0, -1.0, 0.0, 0.05),
+            Err(GisError::WeatherFit { .. })
+        ));
+        assert!(matches!(
+            components_from_friendly(f64::NAN, 0.0, 3.0, 0.0, 0.05),
             Err(GisError::NonFinite { .. })
         ));
     }

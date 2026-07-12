@@ -28,6 +28,8 @@ import init, {
   inject_screen_edges as wasmInjectScreenEdges,
   build_receiver_grid as wasmBuildReceiverGrid,
   derive_weather as wasmDeriveWeather,
+  derive_weather_friendly as wasmDeriveWeatherFriendly,
+  difference_dba as wasmDifferenceDba,
 } from "../generated/wasm/envi_gis_wasm";
 import type {
   BaseElevationReq,
@@ -48,6 +50,7 @@ import type {
   PlanTilesResult,
   ReceiverGridReq,
   ReceiverGridResult,
+  FriendlyWeatherReq,
   ReprojectRingReq,
   ReprojectRingResult,
   SegmentGroundReq,
@@ -192,4 +195,35 @@ export function buildReceiverGrid(req: ReceiverGridReq): Promise<ReceiverGridRes
  */
 export function deriveWeather(req: WeatherDeriveReq): Promise<WeatherDeriveResult> {
   return call<WeatherDeriveReq, WeatherDeriveResult>(wasmDeriveWeather, req);
+}
+
+/**
+ * Derive the per-azimuth sound-speed profiles from FRIENDLY what-if met knobs (METX-03/04, D-14): a surface
+ * temperature + gradient, a wind speed + direction, a roughness length, and the downwind-worst-case toggle
+ * (D-15) — or a raw per-azimuth `(A, B, C, z₀)` advanced override. ALL of the A/B/C math runs here in WASM
+ * (`envi_gis::weather`, the SAME derivation the Open-Meteo path uses); TypeScript never does acoustic
+ * arithmetic (D-01, the wire contract).
+ */
+export function deriveWeatherFriendly(req: FriendlyWeatherReq): Promise<WeatherDeriveResult> {
+  return call<FriendlyWeatherReq, WeatherDeriveResult>(wasmDeriveWeatherFriendly, req);
+}
+
+/**
+ * The per-receiver signed dB(A) difference `A − B` between two scenarios' cached readouts (METX-04 / D-16,
+ * D-01). Both inputs are WASM-produced weighted totals; the subtraction runs in WASM so `store/difference.ts`
+ * performs ZERO acoustic arithmetic — it only marshals the two number arrays here and renders the returned
+ * deltas. A length mismatch / non-finite total throws.
+ */
+export async function differenceDba(
+  aDba: readonly number[],
+  bDba: readonly number[],
+): Promise<number[]> {
+  await ensureWasm();
+  try {
+    const out = wasmDifferenceDba(Float64Array.from(aDba), Float64Array.from(bDba)) as Float64Array;
+    return Array.from(out);
+  } catch (err) {
+    onWasmError(err);
+    throw err;
+  }
 }
