@@ -20,10 +20,17 @@ import { useImportStore, type LayerKey, type LayerStatus } from "./store/import"
 import { runImport, retryLayer } from "./import/importJob";
 import { getTile, removeTile } from "./import/opfs";
 import { writeChunkFile } from "./compute/opfs";
-import { useResultsStore } from "./store/results";
+import { useResultsStore, createWasmReadoutClient } from "./store/results";
+import {
+  createWasmConditioningClient,
+  useConditioningStore,
+  type ConditioningState,
+} from "./store/conditioning";
+import { createWasmIdentityClient, useStaleStore } from "./store/stale";
+import { useCalcStore, type CalcJobState } from "./store/calc";
 import { useColorScaleStore, type LevelGridInput } from "./store/colorScale";
 import { isophoneTelemetry } from "./map/isophoneLayer";
-import type { ExportCrsDto } from "./generated/wire";
+import type { ConditioningDto, ExportCrsDto } from "./generated/wire";
 import type { GroundZoneOutcome } from "./validate/groundZone";
 import type { AuthoredSpectrumDto, BboxDto, PrepareSolveReq } from "./generated/wire";
 
@@ -68,6 +75,53 @@ function buildResultsFixtureBytes(receiverCount: number): {
       hi += 16;
       pv.setFloat64(pi, 1e-6 * (r + 1) * (f + 1), true);
       pi += 8;
+    }
+  }
+  return { tensor, pincoh };
+}
+
+// A multi-source conditioning scene (11-07 UAT): `nSub` sub-sources + `receiverCount`
+// receivers over the flat corridor. The ONLY use here is the tensor identity + the MAC
+// hash gate — the recondition does NOT re-solve it.
+function buildConditioningScene(nSub: number, receiverCount: number): PrepareSolveReq {
+  return {
+    tensor_hash: "",
+    n_sub: nSub,
+    terrain: { points: [[2.5, 0], [400, 0]], segments: [{ flow_resistivity: 200, roughness: 0 }] },
+    atmosphere: { temperature_c: 15, humidity_pct: 70, pressure_kpa: 101.325 },
+    coherence: { cv2: 0, ct2: 0, t_air_c: 15, c0: 340.348, roughness_r: 0, f_delta_nu: 1, d_m: 97.5 },
+    sub_sources: Array.from({ length: nSub }, (_, i) => ({ position: [2.5, 0, 0.5 + 0.3 * i] })),
+    receivers: Array.from({ length: receiverCount }, (_, i) => ({
+      global_index: i,
+      position: [100 + 10 * i, 0, 1.5],
+    })),
+  } as unknown as PrepareSolveReq;
+}
+
+// Deterministic fixture tensor bytes for `nSub` sub-sources × `receiverCount` receivers in
+// the frozen `[s][r][f]` freq-fastest layout `read_chunk` decodes (16 B/cell interleaved
+// re,im f64-LE H_coh; 8 B/cell f64-LE P_incoh). All finite + P > 0 so the two-channel
+// readout is live and a gain change genuinely moves the reconditioned totals.
+function buildConditioningFixtureBytes(
+  nSub: number,
+  receiverCount: number,
+): { tensor: Uint8Array; pincoh: Uint8Array } {
+  const cells = nSub * receiverCount * RESULTS_N_BANDS;
+  const tensor = new Uint8Array(cells * 16);
+  const pincoh = new Uint8Array(cells * 8);
+  const tv = new DataView(tensor.buffer);
+  const pv = new DataView(pincoh.buffer);
+  let hi = 0;
+  let pi = 0;
+  for (let s = 0; s < nSub; s += 1) {
+    for (let r = 0; r < receiverCount; r += 1) {
+      for (let f = 0; f < RESULTS_N_BANDS; f += 1) {
+        tv.setFloat64(hi, 0.02 * (s + 1) * (r + 1) * (1 + 0.001 * f), true);
+        tv.setFloat64(hi + 8, (0.01 * (f + 1)) / RESULTS_N_BANDS, true);
+        hi += 16;
+        pv.setFloat64(pi, 1e-6 * (s + 1) * (r + 1) * (f + 1), true);
+        pi += 8;
+      }
     }
   }
   return { tensor, pincoh };
@@ -195,6 +249,32 @@ export interface EnviTestBridge {
   // The current colour-scale source of truth (preset + breaks + colors) so the UAT
   // can assert legend ≡ contour ≡ class colours.
   colorScaleState(): { preset: string; breaks: number[]; colors: string[] };
+
+  // --- Conditioning fast-recalc (WEB-05/SVC-06 offline UAT, 11-07) ---
+  // Seed a `nSub`-source × `receiverCount`-receiver results manifest keyed by the REAL
+  // wasm-minted tensor identity (OPFS chunk + manifest) AND a square isophone grid whose
+  // cell count == `receiverCount` (so a conditioning recalc re-feeds the map 1:1). Attaches
+  // the real recondition / readout / identity clients. `receiverCount` must be a perfect
+  // square. Returns the source ids (sub-source index strings) + the receiver UUIDs.
+  seedConditioning(nSub: number, receiverCount: number): Promise<{ sourceIds: string[]; receiverIds: string[] }>;
+  // Simulate a SCENE edit since the solve: replace the manifest's scene with a mutated one
+  // (a moved receiver) — its re-minted identity now diverges from the cached tensor hash, so
+  // the stale badge flips (WASM re-mint) AND a subsequent MAC is refused (SVC-06 409). The
+  // cached tensor key is left intact (the honest "result no longer matches the scene" state).
+  divergeScene(): Promise<void>;
+  // A JSON-safe snapshot of the conditioning drive + honest-state flags (assertions).
+  conditioningState(): {
+    perSource: Record<string, ConditioningDto>;
+    order: string[];
+    refuse: boolean;
+    pending: boolean;
+    recalcEpoch: number;
+  };
+  // The results-stale badge state (D-12).
+  staleState(): { isStale: boolean };
+  // The calc job lifecycle state — asserted `idle` to prove a conditioning recalc runs the
+  // tensor MAC with NO propagation re-run (no solve-worker submit).
+  calcJobState(): CalcJobState;
 }
 
 export function installTestBridge(): void {
@@ -394,6 +474,93 @@ export function installTestBridge(): void {
     colorScaleState() {
       const s = useColorScaleStore.getState();
       return { preset: s.preset, breaks: [...s.breaks], colors: [...s.colors] };
+    },
+    async seedConditioning(nSub, receiverCount) {
+      let projectId = useSceneStore.getState().projectId;
+      if (!projectId) {
+        projectId = "conditioning-uat-project";
+        useSceneStore.getState().setProject(projectId, "Conditioning UAT");
+      }
+      const scene = buildConditioningScene(nSub, receiverCount);
+      // Mint the identity with the REAL wasm (crossOriginIsolated holds — dev COOP/COEP),
+      // so both the readout hash gate AND the stale re-mint compare exactly.
+      const glue = await import("./generated/wasm-compute/envi_compute_wasm");
+      await glue.default();
+      const tensorHash = glue.tensor_hash(scene);
+      const { tensor, pincoh } = buildConditioningFixtureBytes(nSub, receiverCount);
+      await writeChunkFile(projectId, tensorHash, "tensor", 0, tensor);
+      await writeChunkFile(projectId, tensorHash, "pincoh", 0, pincoh);
+      const ids = Array.from({ length: receiverCount }, () => crypto.randomUUID());
+      const perSourceConditioning: ConditioningDto[] = Array.from({ length: nSub }, () => ({
+        gain_db: 0,
+        delay_ms: 0,
+        filter_band_db: null,
+        muted: false,
+      }));
+      useResultsStore.getState().setManifest({
+        projectId,
+        tensorHash,
+        scene,
+        perSourceConditioning,
+        receivers: ids.map((id, i) => ({
+          id,
+          globalIndex: i,
+          position: [100 + 10 * i, 0],
+          chunkIndex: 0,
+          rLocal: i,
+        })),
+        spans: [{ chunkIndex: 0, receiverIds: ids }],
+      });
+      // Attach the real clients (idempotent with the panels' guarded attach) so a
+      // bridge-driven diverge/recalc never races the React mount effects.
+      useResultsStore.getState().attachReadoutClient(createWasmReadoutClient());
+      useConditioningStore.getState().attachConditioningClient(createWasmConditioningClient());
+      useConditioningStore.getState().seedFromManifest(perSourceConditioning);
+      useStaleStore.getState().attachIdentityClient(createWasmIdentityClient());
+      // A square isophone grid whose cell count == receiverCount → the recondition recalc
+      // re-feeds it 1:1 from the WASM-reconditioned lattice totals (map updates live).
+      const side = Math.round(Math.sqrt(receiverCount));
+      const grid: LevelGridInput = {
+        rows: side,
+        cols: side,
+        origin: [500_000, 5_800_000],
+        spacing_m: 10,
+        values: Array.from({ length: side * side }, () => 50),
+      };
+      useColorScaleStore.getState().setIsophoneInput(grid, { utm_zone: 31, south: false }, "dB(A)");
+      return { sourceIds: Array.from({ length: nSub }, (_, i) => String(i)), receiverIds: ids };
+    },
+    async divergeScene() {
+      const m = useResultsStore.getState().manifest;
+      if (!m) {
+        return;
+      }
+      const mutated = JSON.parse(JSON.stringify(m.scene)) as PrepareSolveReq;
+      // Move a receiver 5 m down-range — a genuine scene edit that re-mints a NEW identity.
+      mutated.receivers[0].position[0] += 5;
+      // The manifest scene is now the CURRENT (edited) scene; the cached tensor is still
+      // keyed by the OLD hash, so a subsequent MAC against it is refused (SVC-06 409).
+      useResultsStore.setState({ manifest: { ...m, scene: mutated } });
+      if (!useStaleStore.getState().client) {
+        useStaleStore.getState().attachIdentityClient(createWasmIdentityClient());
+      }
+      await useStaleStore.getState().checkStale(mutated, m.tensorHash);
+    },
+    conditioningState() {
+      const s: ConditioningState = useConditioningStore.getState();
+      return {
+        perSource: { ...s.perSource },
+        order: [...s.order],
+        refuse: s.refuse,
+        pending: s.pending,
+        recalcEpoch: s.recalcEpoch,
+      };
+    },
+    staleState() {
+      return { isStale: useStaleStore.getState().isStale };
+    },
+    calcJobState() {
+      return useCalcStore.getState().jobState;
     },
   };
   (window as unknown as { __enviTest?: EnviTestBridge }).__enviTest = bridge;
