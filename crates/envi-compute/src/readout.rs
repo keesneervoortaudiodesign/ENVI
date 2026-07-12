@@ -83,8 +83,15 @@ pub struct ReceiverReadout {
 /// The default readout-law policy (Open Q2): a conditioned/directional source
 /// (any filter present or non-zero delay) is **coherent**, otherwise **incoherent**.
 #[must_use]
-pub fn default_law(_conditioning: &[Conditioning]) -> ReadoutLaw {
-    todo!("GREEN phase")
+pub fn default_law(conditioning: &[Conditioning]) -> ReadoutLaw {
+    let conditioned = conditioning
+        .iter()
+        .any(|c| c.filter.is_some() || c.delay_s != 0.0);
+    if conditioned {
+        ReadoutLaw::Coherent
+    } else {
+        ReadoutLaw::Incoherent
+    }
 }
 
 /// Read out one receiver's two-channel spectrum + dB(A)/dB(C) totals by driving
@@ -94,15 +101,119 @@ pub fn default_law(_conditioning: &[Conditioning]) -> ReadoutLaw {
 /// [`SinkError`] on any dimension/gain mismatch (receiver out of range, wrong
 /// sub-source or band count, non-finite conditioning) — never a panic on data.
 pub fn readout_receiver(
-    _h_coh: ArrayView3<'_, Complex<f64>>,
-    _p_incoh_abs: ArrayView3<'_, f64>,
-    _r: usize,
-    _spectra: &[BandSpectrum],
-    _conditioning: &[Conditioning],
-    _law: ReadoutLaw,
-    _axis: &FreqAxis,
+    h_coh: ArrayView3<'_, Complex<f64>>,
+    p_incoh_abs: ArrayView3<'_, f64>,
+    r: usize,
+    spectra: &[BandSpectrum],
+    conditioning: &[Conditioning],
+    law: ReadoutLaw,
+    axis: &FreqAxis,
 ) -> Result<ReceiverReadout, SinkError> {
-    todo!("GREEN phase")
+    let (n_sub, n_rcv, n_f) = h_coh.dim();
+    // Validate the trust boundary before touching the engine laws (never panic).
+    if p_incoh_abs.dim() != (n_sub, n_rcv, n_f) {
+        return Err(SinkError::ChannelShapeMismatch {
+            h_coh: (n_sub, n_rcv, n_f),
+            p_incoh: p_incoh_abs.dim(),
+        });
+    }
+    if n_f != N_BANDS {
+        return Err(SinkError::BandCountMismatch {
+            expected: N_BANDS,
+            got: n_f,
+        });
+    }
+    if r >= n_rcv {
+        return Err(SinkError::ChunkOutOfBounds {
+            r_offset: r,
+            chunk_len: 1,
+            n_receivers: n_rcv,
+        });
+    }
+    if spectra.len() != n_sub {
+        return Err(SinkError::GainSubCountMismatch {
+            expected: n_sub,
+            got: spectra.len(),
+        });
+    }
+    if conditioning.len() != n_sub {
+        return Err(SinkError::GainSubCountMismatch {
+            expected: n_sub,
+            got: conditioning.len(),
+        });
+    }
+
+    // Compose the complex per-sub-source gain ONCE via the engine's frozen
+    // compose_gain (amplitude · filter · delay) — the composition order that makes
+    // the coherent MAC bit-identical to a full recompute.
+    let g: Vec<Vec<Complex<f64>>> = spectra
+        .iter()
+        .zip(conditioning)
+        .map(|(sp, c)| compose_gain(sp, c.filter.as_deref(), c.delay_s, axis))
+        .collect::<Result<_, _>>()?;
+    // Real energy weights w_s = |G_s|² for the incoherent (Annex-A) law.
+    let w: Vec<Vec<f64>> = g
+        .iter()
+        .map(|gs| gs.iter().map(num_complex::Complex::norm_sqr).collect())
+        .collect();
+
+    // Single-receiver tensor slices [n_sub, 1, N_BANDS] (freq fastest).
+    let h_r = h_coh.slice(s![.., r..r + 1, ..]);
+    let p_r = p_incoh_abs.slice(s![.., r..r + 1, ..]);
+    let zeros_h = Array3::<Complex<f64>>::zeros((n_sub, 1, N_BANDS));
+    let zeros_p = Array3::<f64>::zeros((n_sub, 1, N_BANDS));
+
+    // Incoherent (turbulence-decorrelated) channel = Σ_s |G_s|²·P_incoh_abs, via
+    // readout_incoherent with a zero H_coh — drives the engine law, never a
+    // bespoke energy loop.
+    let e_incoh = readout_incoherent(zeros_h.view(), p_r, &w)?;
+    let incoherent_energy: Vec<f64> = e_incoh.row(0).to_vec();
+
+    // Coherent channel — the readout law selects HOW the sub-sources combine.
+    let coherent_energy: Vec<f64> = match law {
+        // OUT-03 MAC: |Σ_s H_coh·G_s|² (phase-preserving, loudspeaker-array sum).
+        ReadoutLaw::Coherent => {
+            let p = readout_coherent(h_r, &g)?;
+            p.row(0)
+                .iter()
+                .map(num_complex::Complex::norm_sqr)
+                .collect()
+        }
+        // Annex-A energetic sum of the coherent-transfer magnitude: Σ_s |G_s|²·|H_coh|²,
+        // via readout_incoherent with a zero P_incoh channel (two co-located = +3 dB).
+        ReadoutLaw::Incoherent => {
+            let e_h = readout_incoherent(h_r, zeros_p.view(), &w)?;
+            e_h.row(0).to_vec()
+        }
+    };
+
+    // Per-band total dB via the FROZEN two-channel dB law (never a bespoke log10
+    // loop, RESEARCH Pitfall 1): encode the coherent energy as |H_coh|² and the
+    // incoherent channel as |H_ff|²·p_incoh with p_incoh ≡ 1, so the engine law
+    // returns 10·log10(coherent + incoherent) with a zero L_W.
+    let h_eff: Vec<Complex<f64>> = coherent_energy
+        .iter()
+        .map(|&e| Complex::new(e.sqrt(), 0.0))
+        .collect();
+    let hff_eff: Vec<Complex<f64>> = incoherent_energy
+        .iter()
+        .map(|&e| Complex::new(e.sqrt(), 0.0))
+        .collect();
+    let ones = vec![1.0_f64; N_BANDS];
+    let band_levels_db =
+        band_levels_db_two_channel(&h_eff, &hff_eff, &ones, &BandSpectrum::uniform(0.0));
+
+    // dB(A)/dB(C) totals via the Task-1 A/C tables (D-08 split always present).
+    let total_dba = weighted_total_db(&band_levels_db, &a_weighting_db(axis));
+    let total_dbc = weighted_total_db(&band_levels_db, &c_weighting_db(axis));
+
+    Ok(ReceiverReadout {
+        band_levels_db,
+        coherent_energy,
+        incoherent_energy,
+        total_dba,
+        total_dbc,
+    })
 }
 
 #[cfg(test)]
@@ -275,8 +386,19 @@ mod tests {
         assert_eq!(ro.incoherent_energy.len(), N_BANDS);
         assert!(ro.incoherent_energy.iter().all(|&e| e > 0.0));
         assert!(ro.total_dba.is_finite() && ro.total_dbc.is_finite());
-        // C-weighting attenuates the low/high extremes less than A → different totals.
-        assert!((ro.total_dba - ro.total_dbc).abs() > 1.0);
+        // The dB(A)/dB(C) totals are wired to the Task-1 A/C tables bit-exactly
+        // (no bespoke weighting sum), and the two tables genuinely differ.
+        let a = a_weighting_db(&axis);
+        let c = c_weighting_db(&axis);
+        assert_eq!(
+            ro.total_dba.to_bits(),
+            weighted_total_db(&ro.band_levels_db, &a).to_bits()
+        );
+        assert_eq!(
+            ro.total_dbc.to_bits(),
+            weighted_total_db(&ro.band_levels_db, &c).to_bits()
+        );
+        assert_ne!(ro.total_dba, ro.total_dbc);
     }
 
     #[test]
