@@ -44,6 +44,7 @@ export const ISOPHONE_LAYER = "envi-isophone-fill";
 // effort until the full object restyle lands (11-10); if none are present the fill
 // is appended above the basemap.
 const SCENE_LAYER_PREFIXES = [
+  "envi-object",
   "envi-impedance",
   "envi-receiver",
   "envi-screen",

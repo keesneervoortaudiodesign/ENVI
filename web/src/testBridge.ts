@@ -31,6 +31,7 @@ import { useCalcStore, type CalcJobState } from "./store/calc";
 import { useColorScaleStore, type LevelGridInput } from "./store/colorScale";
 import { isophoneTelemetry } from "./map/isophoneLayer";
 import { differenceTelemetry } from "./map/differenceLayer";
+import { objectLayerTelemetry } from "./map/objectStyles";
 import {
   createWasmDifferenceClient,
   useDifferenceStore,
@@ -320,6 +321,13 @@ export interface EnviTestBridge {
   // can assert legend ≡ contour ≡ class colours.
   colorScaleState(): { preset: string; breaks: number[]; colors: string[] };
 
+  // --- Scene-object display styling (D-17/D-18/D-19 offline UAT, 11-10) ---
+  // The object-layer telemetry (registered fill/line/symbol layer ids + hatch/marker
+  // image ids + full style layer order + whether every object layer sits ABOVE the
+  // isophone fill). Proves the D-18 draw order + hatch registration without
+  // reimplementing the app.
+  objectLayerTelemetry(): ReturnType<typeof objectLayerTelemetry>;
+
   // --- Conditioning fast-recalc (WEB-05/SVC-06 offline UAT, 11-07) ---
   // Seed a `nSub`-source × `receiverCount`-receiver results manifest keyed by the REAL
   // wasm-minted tensor identity (OPFS chunk + manifest) AND a square isophone grid whose
@@ -565,6 +573,9 @@ export function installTestBridge(): void {
     colorScaleState() {
       const s = useColorScaleStore.getState();
       return { preset: s.preset, breaks: [...s.breaks], colors: [...s.colors] };
+    },
+    objectLayerTelemetry() {
+      return objectLayerTelemetry();
     },
     async seedConditioning(nSub, receiverCount) {
       let projectId = useSceneStore.getState().projectId;

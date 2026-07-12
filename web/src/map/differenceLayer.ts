@@ -52,6 +52,7 @@ const ARMS = 3;
 // Insert the difference fill BELOW the styled scene objects, mirroring the isophone
 // overlay discipline (D-18).
 const SCENE_LAYER_PREFIXES = [
+  "envi-object",
   "envi-impedance",
   "envi-receiver",
   "envi-screen",

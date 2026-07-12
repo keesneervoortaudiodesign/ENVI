@@ -11,9 +11,14 @@
 //   readouts are removed once real drawing/inspector UI lands in 07-07+.
 // - Valid input range: the basemap network fetch is Playwright-intercepted so tests run fully offline.
 
-import { useEffect, type ReactElement } from "react";
+import { useEffect, useRef, type ReactElement } from "react";
 import { Map, useMap } from "react-map-gl/maplibre";
-import type { LngLatBoundsLike, Map as MapLibreMap } from "maplibre-gl";
+import type {
+  ExpressionSpecification,
+  GeoJSONSource,
+  LngLatBoundsLike,
+  Map as MapLibreMap,
+} from "maplibre-gl";
 import type { GeoJSONStoreFeatures } from "terra-draw";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -21,8 +26,20 @@ import { DARK_BASEMAP_STYLE } from "./basemap";
 import { useTerraDraw } from "./useTerraDraw";
 import { DgmOverlay } from "./DgmOverlay";
 import { ImpedanceOverlay } from "./impedanceOverlay";
-import { IsophoneLayer, MapLegend } from "./isophoneLayer";
+import { IsophoneLayer, ISOPHONE_LAYER, MapLegend } from "./isophoneLayer";
 import { DifferenceLayer, DifferenceLegend } from "./differenceLayer";
+import {
+  hatchImageId,
+  objectStyles,
+  pointIconId,
+  setObjectLayerTelemetry,
+  type AreaStyle,
+  type KindDisplayStyle,
+  type LineStyle,
+  type PointStyle,
+} from "./objectStyles";
+import { hatchPattern, pointMarker } from "./hatchPatterns";
+import { KINDS, type Kind } from "../draw/kinds";
 import {
   ReceiverGridOverlay,
   ImpedanceSegOverlay,
@@ -236,6 +253,247 @@ function ResizeOnMount(): null {
   return null;
 }
 
+// --- Scene-object DISPLAY layers (D-17/D-18/D-19) -------------------------------------------------------
+//
+// The NoizCalc §4.6.3 display styling for the scene objects, rendered as MapLibre fill/line/symbol layers
+// driven by `objectStyles.ts` and sitting ABOVE the 11-06 isophone fill (D-18). This is the DISPLAY system
+// only — it reads the canonical store FeatureCollection and NEVER touches Terra Draw's draw-time
+// styling/validation (`useTerraDraw.ts` is untouched by this plan — D-19 / Pitfall 8). Draw order within the
+// group: areas (translucent fill → hatch → border) → lines → point markers (top).
+
+const SCENE_OBJECT_SOURCE = "envi-scene-objects";
+// Every object display layer id starts with this prefix so the isophone + difference fills insert BELOW
+// them (their `SCENE_LAYER_PREFIXES` include `envi-object`), keeping objects on top (D-18).
+const OBJ_AREA_FILL = "envi-object-area-fill";
+const OBJ_AREA_HATCH = "envi-object-area-hatch";
+const OBJ_AREA_BORDER = "envi-object-area-border";
+const OBJ_AREA_BORDER_DASHED = "envi-object-area-border-dashed";
+const OBJ_LINE = "envi-object-line";
+const OBJ_LINE_DASHED = "envi-object-line-dashed";
+const OBJ_POINT = "envi-object-point";
+const OBJ_LAYER_IDS = [
+  OBJ_AREA_FILL,
+  OBJ_AREA_HATCH,
+  OBJ_AREA_BORDER,
+  OBJ_AREA_BORDER_DASHED,
+  OBJ_LINE,
+  OBJ_LINE_DASHED,
+  OBJ_POINT,
+];
+
+const areaKinds = KINDS.filter((k): k is Kind => objectStyles[k].geometry === "area");
+const lineKinds = KINDS.filter((k): k is Kind => objectStyles[k].geometry === "line");
+const pointKinds = KINDS.filter((k): k is Kind => objectStyles[k].geometry === "point");
+
+// A MapLibre `match` expression on `properties.kind`, one arm per kind in `kinds`, with `fallback` for any
+// feature whose kind is absent/unknown. `value(style, kind)` extracts the per-kind paint value from
+// `objectStyles` (the style subtype `S` is inferred from the extractor's annotated parameter).
+function kindMatch<S extends KindDisplayStyle, T>(
+  kinds: Kind[],
+  value: (style: S, kind: Kind) => T,
+  fallback: T,
+): ExpressionSpecification {
+  const arms: (string | T)[] = [];
+  for (const kind of kinds) {
+    arms.push(kind, value(objectStyles[kind] as S, kind));
+  }
+  return ["match", ["get", "kind"], ...arms, fallback] as unknown as ExpressionSpecification;
+}
+
+// Register (idempotently) the runtime hatch + point-marker rasters as MapLibre images. `map.addImage`
+// accepts the `{ width, height, data }` raster shape directly — no DOM canvas needed (offline-safe).
+function ensureObjectImages(map: MapLibreMap): string[] {
+  const ids: string[] = [];
+  for (const kind of areaKinds) {
+    const id = hatchImageId(kind);
+    if (!map.hasImage(id)) {
+      map.addImage(id, hatchPattern(kind), { pixelRatio: 2 });
+    }
+    ids.push(id);
+  }
+  for (const kind of pointKinds) {
+    const id = pointIconId(kind);
+    if (!map.hasImage(id)) {
+      map.addImage(id, pointMarker(kind), { pixelRatio: 2 });
+    }
+    ids.push(id);
+  }
+  return ids;
+}
+
+// Add the object source + the fill/line/symbol layers in the D-18 draw order (all ABOVE the isophone fill,
+// appended to the top of the style so they sit over every data fill). Idempotent: skips layers already
+// present (a basemap `style.load` rebuild re-adds after `setStyle` destroyed them).
+function ensureObjectLayers(map: MapLibreMap, data: GeoJSON.FeatureCollection): void {
+  if (!map.getSource(SCENE_OBJECT_SOURCE)) {
+    map.addSource(SCENE_OBJECT_SOURCE, { type: "geojson", data });
+  }
+  const dashedLineKinds = lineKinds.filter((k) => (objectStyles[k] as LineStyle).dash !== null);
+  const solidLineKinds = lineKinds.filter((k) => (objectStyles[k] as LineStyle).dash === null);
+
+  if (!map.getLayer(OBJ_AREA_FILL)) {
+    map.addLayer({
+      id: OBJ_AREA_FILL,
+      type: "fill",
+      source: SCENE_OBJECT_SOURCE,
+      filter: ["==", ["geometry-type"], "Polygon"],
+      paint: {
+        "fill-color": kindMatch(areaKinds, (s: AreaStyle) => s.color, "rgba(0,0,0,0)"),
+        "fill-opacity": kindMatch(areaKinds, (s: AreaStyle) => s.fillOpacity, 0),
+      },
+    });
+  }
+  if (!map.getLayer(OBJ_AREA_HATCH)) {
+    map.addLayer({
+      id: OBJ_AREA_HATCH,
+      type: "fill",
+      source: SCENE_OBJECT_SOURCE,
+      filter: ["==", ["geometry-type"], "Polygon"],
+      paint: { "fill-pattern": kindMatch(areaKinds, (_s: AreaStyle, kind) => hatchImageId(kind), "") },
+    });
+  }
+  if (!map.getLayer(OBJ_AREA_BORDER)) {
+    map.addLayer({
+      id: OBJ_AREA_BORDER,
+      type: "line",
+      source: SCENE_OBJECT_SOURCE,
+      filter: ["all", ["==", ["geometry-type"], "Polygon"], ["!=", ["get", "kind"], "calc_area"]],
+      paint: {
+        "line-color": kindMatch(areaKinds, (s: AreaStyle) => s.border, "rgba(0,0,0,0)"),
+        "line-width": kindMatch(areaKinds, (s: AreaStyle) => s.borderWidth, 1),
+      },
+    });
+  }
+  // calc_area's DASHED frame (§4.6.3 "dashed border") — its own layer (line-dasharray is not data-driven).
+  if (!map.getLayer(OBJ_AREA_BORDER_DASHED)) {
+    const ca = objectStyles.calc_area as AreaStyle;
+    map.addLayer({
+      id: OBJ_AREA_BORDER_DASHED,
+      type: "line",
+      source: SCENE_OBJECT_SOURCE,
+      filter: ["all", ["==", ["geometry-type"], "Polygon"], ["==", ["get", "kind"], "calc_area"]],
+      paint: {
+        "line-color": ca.border,
+        "line-width": ca.borderWidth,
+        "line-dasharray": [...(ca.borderDash ?? [3, 2])],
+      },
+    });
+  }
+  if (!map.getLayer(OBJ_LINE)) {
+    map.addLayer({
+      id: OBJ_LINE,
+      type: "line",
+      source: SCENE_OBJECT_SOURCE,
+      filter: [
+        "all",
+        ["==", ["geometry-type"], "LineString"],
+        ["in", ["get", "kind"], ["literal", solidLineKinds]],
+      ],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": kindMatch(lineKinds, (s: LineStyle) => s.color, "rgba(0,0,0,0)"),
+        "line-width": kindMatch(lineKinds, (s: LineStyle) => s.width, 2),
+      },
+    });
+  }
+  // Dashed lines (elevation_line) — a dedicated layer for the same non-data-driven-dasharray reason.
+  if (!map.getLayer(OBJ_LINE_DASHED) && dashedLineKinds.length > 0) {
+    const el = objectStyles.elevation_line as LineStyle;
+    map.addLayer({
+      id: OBJ_LINE_DASHED,
+      type: "line",
+      source: SCENE_OBJECT_SOURCE,
+      filter: [
+        "all",
+        ["==", ["geometry-type"], "LineString"],
+        ["in", ["get", "kind"], ["literal", dashedLineKinds]],
+      ],
+      paint: {
+        "line-color": kindMatch(lineKinds, (s: LineStyle) => s.color, "rgba(0,0,0,0)"),
+        "line-width": kindMatch(lineKinds, (s: LineStyle) => s.width, 2),
+        "line-dasharray": [...(el.dash ?? [2, 2])],
+      },
+    });
+  }
+  if (!map.getLayer(OBJ_POINT)) {
+    map.addLayer({
+      id: OBJ_POINT,
+      type: "symbol",
+      source: SCENE_OBJECT_SOURCE,
+      filter: ["==", ["geometry-type"], "Point"],
+      layout: {
+        "icon-image": kindMatch(pointKinds, (_s: PointStyle, kind) => pointIconId(kind), ""),
+        // The generated marker raster is 24 px at pixelRatio 2 → 12 CSS px; scale to the style `size`.
+        "icon-size": kindMatch(pointKinds, (s: PointStyle) => s.size / 12, 1),
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+      },
+    });
+  }
+}
+
+// Refresh the object-layer telemetry snapshot (the offline UAT reads it to prove the layers exist + sit
+// ABOVE the isophone fill in the style draw order — D-18).
+function refreshObjectTelemetry(map: MapLibreMap, featureCount: number, imageIds: string[]): void {
+  const order = (map.getStyle()?.layers ?? []).map((l) => l.id);
+  const registered = OBJ_LAYER_IDS.filter((id) => map.getLayer(id));
+  const isoIdx = order.indexOf(ISOPHONE_LAYER);
+  const aboveIsophone =
+    isoIdx < 0 ? null : registered.every((id) => order.indexOf(id) > isoIdx);
+  setObjectLayerTelemetry({
+    registeredLayers: registered,
+    registeredImages: imageIds,
+    featureCount,
+    layerOrder: order,
+    aboveIsophone,
+  });
+}
+
+// The imperative scene-object display-layer controller — a child of <Map>. Subscribes to the canonical
+// store FeatureCollection and (re-)registers the images + fill/line/symbol layers on load + after a basemap
+// `style.load` (setStyle destroys sources/layers). NEVER edits Terra Draw (D-19). Returns null.
+function SceneObjectLayers(): null {
+  const map = useMap();
+  const features = useSceneStore((s) => s.features);
+  // Keep the latest FeatureCollection available to the style.load handler without re-registering it.
+  const fcRef = useRef<GeoJSON.FeatureCollection>({ type: "FeatureCollection", features: [] });
+  fcRef.current = {
+    type: "FeatureCollection",
+    features: Object.values(features) as unknown as GeoJSON.Feature[],
+  };
+
+  useEffect(() => {
+    const instance = map.current?.getMap() as unknown as MapLibreMap | undefined;
+    if (!instance) {
+      return;
+    }
+    const apply = (): void => {
+      try {
+        const imageIds = ensureObjectImages(instance);
+        ensureObjectLayers(instance, fcRef.current);
+        const src = instance.getSource(SCENE_OBJECT_SOURCE) as GeoJSONSource | undefined;
+        src?.setData(fcRef.current);
+        refreshObjectTelemetry(instance, fcRef.current.features.length, imageIds);
+      } catch {
+        /* style momentarily torn down (mid basemap switch) — style.load re-applies */
+      }
+    };
+    const onStyleLoad = (): void => apply();
+    if (instance.isStyleLoaded()) {
+      apply();
+    } else {
+      instance.once("load", apply);
+    }
+    instance.on("style.load", onStyleLoad);
+    return () => {
+      instance.off("style.load", onStyleLoad);
+      instance.off("load", apply);
+    };
+  }, [map, features]);
+
+  return null;
+}
+
 export function MapCanvas(): ReactElement {
   return (
     <Map
@@ -255,6 +513,8 @@ export function MapCanvas(): ReactElement {
       {/* Scenario DIFFERENCE fill layer (diverging A − B, D-16) + its signed-dB legend. */}
       <DifferenceLayer />
       <DifferenceLegend />
+      {/* Scene objects at FULL styling ON TOP of the isophone/difference fills (D-17/D-18). */}
+      <SceneObjectLayers />
       <DgmOverlay />
       <ImpedanceOverlay />
       <ReceiverGridOverlay />
