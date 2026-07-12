@@ -24,11 +24,13 @@
 // as `band_fills`; the fill layer paints by the traced `fill` property; the legend
 // derives its rows from the SAME `breaks`/`colors`. One array pair, three consumers.
 
-import { createElement, useEffect, useRef, type ReactElement } from "react";
+import { createElement, useEffect, useMemo, useRef, type ReactElement } from "react";
 import { useMap } from "react-map-gl/maplibre";
-import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
+import type { Map as MapLibreMap } from "maplibre-gl";
 
 import type { TraceIsophonesReq } from "../generated/wire";
+import { traceIsophones } from "../compute/wasm";
+import { removeGeoJsonFillLayer, upsertGeoJsonFillLayer } from "./fillOverlay";
 import {
   contourBreaks,
   useColorScaleStore,
@@ -38,21 +40,6 @@ import {
 
 const ISOPHONE_SOURCE = "envi-isophone";
 export const ISOPHONE_LAYER = "envi-isophone-fill";
-
-// Scene-object display-layer id prefixes (D-18): the isophone fill is inserted
-// BELOW the first of these so the styled scene objects always draw on top. Best-
-// effort until the full object restyle lands (11-10); if none are present the fill
-// is appended above the basemap.
-const SCENE_LAYER_PREFIXES = [
-  "envi-object",
-  "envi-impedance",
-  "envi-receiver",
-  "envi-screen",
-  "envi-weather",
-  "dgm-",
-  "gl-draw",
-  "td-",
-];
 
 // --- Telemetry (offline UAT observability) --------------------------------
 
@@ -88,27 +75,12 @@ export interface IsophoneTraceClient {
   trace(req: TraceIsophonesReq): Promise<string>;
 }
 
-// The real client: lazily instantiates the compute wasm module on the MAIN THREAD
-// (the same module CalcPanel/results use — COOP/COEP holds `crossOriginIsolated`)
-// and calls the `trace_isophones` export. A dynamic import inside the factory keeps
-// the wasm/OPFS graph out of the Node unit-test module load.
+// The real client: calls the shared compute facade's `traceIsophones` (the same lazily
+// initialised module CalcPanel/results use — COOP/COEP holds `crossOriginIsolated`). The
+// facade's dynamic import keeps the wasm/OPFS graph out of the Node unit-test module load.
+// Returns a GeoJSON FeatureCollection string a `geojson` source consumes.
 export function createWasmTraceClient(): IsophoneTraceClient {
-  let glue: Promise<typeof import("../generated/wasm-compute/envi_compute_wasm")> | null = null;
-  const ensureGlue = (): Promise<typeof import("../generated/wasm-compute/envi_compute_wasm")> => {
-    glue ??= (async () => {
-      const g = await import("../generated/wasm-compute/envi_compute_wasm");
-      await g.default();
-      return g;
-    })();
-    return glue;
-  };
-  return {
-    async trace(req) {
-      const g = await ensureGlue();
-      // Returns a GeoJSON FeatureCollection string a `geojson` source consumes.
-      return g.trace_isophones(req) as string;
-    },
-  };
+  return { trace: traceIsophones };
 }
 
 // The single-writer trace client (module-level, browser-only). Kept out of the
@@ -173,57 +145,17 @@ export function legendClasses(breaks: number[], colors: string[]): LegendClass[]
 
 // --- Imperative layer management ------------------------------------------
 
-// Find the id of the first scene-object display layer, so the isophone fill can be
-// inserted BELOW it (D-18). Returns undefined when none is present (→ append).
-function sceneInsertBeforeId(map: MapLibreMap): string | undefined {
-  const layers = map.getStyle()?.layers ?? [];
-  for (const layer of layers) {
-    if (SCENE_LAYER_PREFIXES.some((p) => layer.id.startsWith(p))) {
-      return layer.id;
-    }
-  }
-  return undefined;
-}
-
-// Add (or update) the isophone fill source + layer from a GeoJSON FeatureCollection.
-// The fill paints by the per-band `fill` property (legend ≡ contour ≡ class colour)
-// and sits below the scene objects (D-18).
+// Add (or update) the isophone fill source + layer from a GeoJSON FeatureCollection via the
+// shared fill-overlay primitive (D-18 insert order), then record the telemetry.
 function applyIsophoneGeoJson(map: MapLibreMap, geojson: GeoJSON.FeatureCollection): void {
-  const existing = map.getSource(ISOPHONE_SOURCE) as GeoJSONSource | undefined;
-  if (existing) {
-    existing.setData(geojson);
-  } else {
-    map.addSource(ISOPHONE_SOURCE, { type: "geojson", data: geojson });
-    map.addLayer(
-      {
-        id: ISOPHONE_LAYER,
-        type: "fill",
-        source: ISOPHONE_SOURCE,
-        paint: {
-          "fill-color": ["get", "fill"],
-          "fill-opacity": 0.5,
-          "fill-outline-color": "#0b0d10",
-        },
-      },
-      sceneInsertBeforeId(map),
-    );
-  }
+  upsertGeoJsonFillLayer(map, ISOPHONE_SOURCE, ISOPHONE_LAYER, 0.5, geojson);
   TELEMETRY.featureCount = geojson.features.length;
   TELEMETRY.layerType = map.getLayer(ISOPHONE_LAYER)?.type ?? null;
 }
 
 // Remove the isophone source + layer (teardown / no-grid).
 function removeIsophoneLayer(map: MapLibreMap): void {
-  try {
-    if (map.getLayer(ISOPHONE_LAYER)) {
-      map.removeLayer(ISOPHONE_LAYER);
-    }
-    if (map.getSource(ISOPHONE_SOURCE)) {
-      map.removeSource(ISOPHONE_SOURCE);
-    }
-  } catch {
-    /* style already torn down */
-  }
+  removeGeoJsonFillLayer(map, ISOPHONE_SOURCE, ISOPHONE_LAYER);
   TELEMETRY.featureCount = 0;
   TELEMETRY.layerType = null;
 }
@@ -320,11 +252,13 @@ export function MapLegend(): ReactElement | null {
   const colors = useColorScaleStore((s) => s.colors);
   const grid = useColorScaleStore((s) => s.grid);
   const weightingLabel = useColorScaleStore((s) => s.weightingLabel);
+  // Legend ≡ contour ≡ class: derive the rows from the SAME breaks/colors, recomputed only
+  // when they change (not on every unrelated re-render).
+  const classes = useMemo(() => legendClasses(breaks, colors), [breaks, colors]);
 
   if (!grid) {
     return null;
   }
-  const classes = legendClasses(breaks, colors);
 
   return createElement(
     "div",

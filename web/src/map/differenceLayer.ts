@@ -23,13 +23,14 @@
 // difference), blue for A quieter (Δ < 0), red for A louder (Δ > 0). The band count is
 // odd so the midpoint band is EXACTLY the gray stop, never an interpolated hue.
 
-import { createElement, useEffect, useRef, type ReactElement } from "react";
+import { createElement, useEffect, useMemo, useRef, type ReactElement } from "react";
 import { useMap } from "react-map-gl/maplibre";
-import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
+import type { Map as MapLibreMap } from "maplibre-gl";
 
 import type { ExportCrsDto, ExportGridDto, TraceIsophonesReq } from "../generated/wire";
 import { contourBreaks, samplePalette } from "../store/colorScale";
 import { createWasmTraceClient, type IsophoneTraceClient } from "./isophoneLayer";
+import { removeGeoJsonFillLayer, upsertGeoJsonFillLayer } from "./fillOverlay";
 import { useDifferenceStore } from "../store/difference";
 
 const DIFFERENCE_SOURCE = "envi-difference";
@@ -48,19 +49,6 @@ const DEAD_ZONE_DB = 0.5;
 // Steps per arm — an ODD total band count (2·ARMS+3) so the midpoint band is EXACTLY
 // the gray stop, never an interpolated hue.
 const ARMS = 3;
-
-// Insert the difference fill BELOW the styled scene objects, mirroring the isophone
-// overlay discipline (D-18).
-const SCENE_LAYER_PREFIXES = [
-  "envi-object",
-  "envi-impedance",
-  "envi-receiver",
-  "envi-screen",
-  "envi-weather",
-  "dgm-",
-  "gl-draw",
-  "td-",
-];
 
 // --- Telemetry (offline UAT observability) --------------------------------
 
@@ -185,51 +173,14 @@ function ensureClient(): IsophoneTraceClient {
   return traceClient;
 }
 
-function sceneInsertBeforeId(map: MapLibreMap): string | undefined {
-  const layers = map.getStyle()?.layers ?? [];
-  for (const layer of layers) {
-    if (SCENE_LAYER_PREFIXES.some((p) => layer.id.startsWith(p))) {
-      return layer.id;
-    }
-  }
-  return undefined;
-}
-
 function applyDifferenceGeoJson(map: MapLibreMap, geojson: GeoJSON.FeatureCollection): void {
-  const existing = map.getSource(DIFFERENCE_SOURCE) as GeoJSONSource | undefined;
-  if (existing) {
-    existing.setData(geojson);
-  } else {
-    map.addSource(DIFFERENCE_SOURCE, { type: "geojson", data: geojson });
-    map.addLayer(
-      {
-        id: DIFFERENCE_LAYER,
-        type: "fill",
-        source: DIFFERENCE_SOURCE,
-        paint: {
-          "fill-color": ["get", "fill"],
-          "fill-opacity": 0.6,
-          "fill-outline-color": "#0b0d10",
-        },
-      },
-      sceneInsertBeforeId(map),
-    );
-  }
+  upsertGeoJsonFillLayer(map, DIFFERENCE_SOURCE, DIFFERENCE_LAYER, 0.6, geojson);
   TELEMETRY.featureCount = geojson.features.length;
   TELEMETRY.layerType = map.getLayer(DIFFERENCE_LAYER)?.type ?? null;
 }
 
 function removeDifferenceLayer(map: MapLibreMap): void {
-  try {
-    if (map.getLayer(DIFFERENCE_LAYER)) {
-      map.removeLayer(DIFFERENCE_LAYER);
-    }
-    if (map.getSource(DIFFERENCE_SOURCE)) {
-      map.removeSource(DIFFERENCE_SOURCE);
-    }
-  } catch {
-    /* style already torn down */
-  }
+  removeGeoJsonFillLayer(map, DIFFERENCE_SOURCE, DIFFERENCE_LAYER);
   TELEMETRY.featureCount = 0;
   TELEMETRY.layerType = null;
 }
@@ -318,12 +269,14 @@ export function DifferenceLegend(): ReactElement | null {
   const delta = useDifferenceStore((s) => s.delta);
   const labelA = useDifferenceStore((s) => s.labelA);
   const labelB = useDifferenceStore((s) => s.labelB);
+  // Rebuild the diverging scale + its legend rows only when the delta field changes, not on
+  // every unrelated re-render.
+  const scale = useMemo(() => (delta ? buildDivergingScale(delta) : null), [delta]);
+  const classes = useMemo(() => (scale ? diffLegendClasses(scale) : []), [scale]);
 
-  if (!delta) {
+  if (!delta || !scale) {
     return null;
   }
-  const scale = buildDivergingScale(delta);
-  const classes = diffLegendClasses(scale);
 
   return createElement(
     "div",
