@@ -99,7 +99,7 @@
 - [x] **GRID-01**: Generate a building-aware receiver grid via constrained Delaunay (spade); plus discrete receiver points
 - [x] **GRID-02**: Batch-compute the transfer tensor over the grid, parallelized (rayon), receiver-axis chunked
 - [x] **GRID-04**: Contour results into isophone fill polygons (pure-Rust `contour`; `gdal-sys` escape hatch)
-- [ ] **GRID-05**: Export results (GeoTIFF / GeoJSON) and spectra (CSV)
+- [x] **GRID-05**: Export results (GeoTIFF / GeoJSON) and spectra (CSV)
 
 ### Web frontend (WEB)
 
@@ -215,7 +215,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | GRID-01 | Phase 9 | Complete |
 | GRID-02 | Phase 10 | Complete |
 | GRID-04 | Phase 11 | Complete |
-| GRID-05 | Phase 11 | In Progress (11-04 WASM encoders: GeoTIFF/GeoJSON/CSV + attribution; export UI download is 11-09) |
+| GRID-05 | Phase 11 | Complete (11-04 WASM encoders: GeoTIFF/GeoJSON/CSV + attribution; 11-09 Export… menu + Blob/objectURL download + D-22 footer, offline Playwright UAT) |
 | WEB-01 | Phase 7 | Complete |
 | WEB-02 | Phase 7 | Complete |
 | WEB-03 | Phase 7 | Complete |

@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 11
 current_phase_name: results-fast-recalc
 status: executing
-stopped_at: Completed 11-08-PLAN.md
-last_updated: "2026-07-12T15:33:32.333Z"
+stopped_at: Completed 11-09-PLAN.md
+last_updated: "2026-07-12T15:49:00.000Z"
 last_activity: 2026-07-12
-last_activity_desc: "11-07 interactive conditioning fast-recalc (WEB-05/SVC-06): per-source Gain/Delay + reused SpectrumEditor Filter (D-11) drives a ~150 ms debounced recondition MAC (D-10) over the cached tensor — spectra + isophone map update live with NO re-propagation (calc idle, map re-contours the cached grid SC3); the D-12 stale badge appears on identity divergence (conditioning never stales, D-07); a mismatched-hash MAC is refused with the honest 409 reject banner (SVC-06); offline Playwright UAT on the real bundle + real WASM MAC green"
+last_activity_desc: "11-09 results Export menu (GRID-05, D-20/21/22): the Export… .menu downloads the level grid (GeoTIFF), isophone polygons (GeoJSON), and receiver spectra (CSV) — every byte generated in WASM by the 11-04 encoders and saved via a Blob/objectURL (nothing leaves the device, D-20), every file carrying the full CRS + dB-weighting + engine/scene-identity + open-data-attribution footer (D-22); export runs main-thread via an injectable client seam (mirrors readout/trace/identity, worker.ts untouched); CSV gathers every receiver via the results ReadoutClient (D-01 zero TS acoustic math); menu disabled until a result exists + while stale; offline Playwright UAT on the real bundle + real WASM captures all 3 downloads with attribution, zero network egress; web/dist rebuilt"
 progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 64
-  completed_plans: 61
-  percent: 91
+  completed_plans: 62
+  percent: 97
 ---
 
 # Project State
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 11 (results-fast-recalc) — EXECUTING
-Plan: 8 of 11 complete
+Plan: 9 of 11 complete
 Status: Ready to execute
-Last activity: 2026-07-12 — 11-07 interactive conditioning fast-recalc (WEB-05/SVC-06): per-source Gain/Delay + reused SpectrumEditor Filter (D-11) drives a ~150 ms debounced recondition MAC (D-10) over the cached tensor — spectra + isophone map update live with NO re-propagation (calc idle, map re-contours the cached grid SC3); the D-12 stale badge appears on identity divergence (conditioning never stales, D-07); a mismatched-hash MAC is refused with the honest 409 reject banner (SVC-06); offline Playwright UAT on the real bundle + real WASM MAC green
+Last activity: 2026-07-12 — 11-09 results Export menu (GRID-05, D-20/21/22): the Export… .menu downloads the level grid (GeoTIFF), isophone polygons (GeoJSON), and receiver spectra (CSV) — every byte generated in WASM by the 11-04 encoders and saved via a Blob/objectURL (nothing leaves the device, D-20), every file carrying the full CRS + dB-weighting + engine/scene-identity + open-data-attribution footer (D-22); export runs main-thread via an injectable client seam (worker.ts untouched); CSV gathers every receiver via the results ReadoutClient (D-01 zero TS acoustic math); menu disabled until a result exists + while stale; offline Playwright UAT captures all 3 downloads with attribution, zero network egress; web/dist rebuilt
 
 Progress: [██████████] Phase 10 — 6/6 plans complete (10-01 compute core · 10-02 COOP/COEP · 10-03 wasm boundary+OPFS sink · 10-04 pool+worker · 10-05 CalcPanel+Playwright · 10-06 real solve seam closed)
 
@@ -109,6 +109,7 @@ Progress: [██████████] Phase 10 — 6/6 plans complete (10-0
 | Phase 11 P06 | 18 min | 3 tasks | 14 files |
 | Phase 11 P07 | 17 min | 3 tasks | 12 files |
 | Phase 11 P08 | 28 | 3 tasks | 16 files |
+| Phase 11 P09 | ~30 min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -226,6 +227,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-12T15:33:32.090Z
-Stopped at: Completed 11-08-PLAN.md
+Last session: 2026-07-12T15:49:00.000Z
+Stopped at: Completed 11-09-PLAN.md
 Resume file: None
