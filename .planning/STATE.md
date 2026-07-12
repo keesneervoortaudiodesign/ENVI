@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 10
-current_phase_name: calculation-service
+current_phase: 11
+current_phase_name: results-fast-recalc
 status: executing
-stopped_at: Phase 10 complete — all 5 completion gates green
-last_updated: "2026-07-12T11:29:44.560Z"
+stopped_at: Completed 11-01-PLAN.md
+last_updated: "2026-07-12T12:00:00.000Z"
 last_activity: 2026-07-12
-last_activity_desc: "Phase 10 closed: 6/6 plans + 5 gates green (offline Playwright 21 passed)"
+last_activity_desc: 11-01 readout foundation complete (A/C weighting + OPFS reader + MAC≡engine readout)
 progress:
   total_phases: 11
   completed_phases: 10
-  total_plans: 53
-  completed_plans: 53
-  percent: 91
+  total_plans: 64
+  completed_plans: 54
+  percent: 84
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** A numerically faithful Nord2000 engine — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain.
-**Current focus:** Phase 10 — calculation-service (COMPLETE); Phase 11 — results-fast-recalc (next)
+**Current focus:** Phase 11 — results-fast-recalc
 
 ## Current Position
 
-Phase: 10 (calculation-service) — COMPLETE
-Plan: 6 of 6 complete (10-01 … 10-06)
-Status: Ready to execute
-Last activity: 2026-07-12 — Phase 10 closed: 6/6 plans + 5 gates green (offline Playwright 21 passed)
+Phase: 11 (results-fast-recalc) — EXECUTING
+Plan: 2 of 11
+Status: Executing Phase 11 — 11-01 complete (readout foundation), 11-02/11-03 (wave 2) ready
+Last activity: 2026-07-12 — 11-01 readout foundation complete
 
 Progress: [██████████] Phase 10 — 6/6 plans complete (10-01 compute core · 10-02 COOP/COEP · 10-03 wasm boundary+OPFS sink · 10-04 pool+worker · 10-05 CalcPanel+Playwright · 10-06 real solve seam closed)
 

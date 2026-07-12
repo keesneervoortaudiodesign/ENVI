@@ -412,7 +412,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 11-01-PLAN.md — A/C weighting tables + OPFS tensor reader + readout orchestration + MAC≡engine equivalence (WEB-11) [wave 1]
+- [x] 11-01-PLAN.md — A/C weighting tables + OPFS tensor reader + readout orchestration + MAC≡engine equivalence (WEB-11) [wave 1]
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -480,7 +480,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 8. GIS Ingestion & DGM | 8/8 | Complete (all 5 completion gates closed) | 2026-07-11 |
 | 9. Path Extraction & Weather | 6/6 | Complete (all 5 completion gates closed) | 2026-07-11 |
 | 10. Calculation Service | 6/6 | Complete (all 5 completion gates closed) | 2026-07-12 |
-| 11. Results & Fast Recalc | 0/? | Not started | - |
+| 11. Results & Fast Recalc | 1/11 | In Progress | - |
 
 ---
 *Roadmap created: 2026-07-07 — Milestone 1 (validated core Nord2000 engine)*
