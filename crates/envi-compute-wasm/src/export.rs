@@ -37,7 +37,9 @@ use envi_engine::freq::FreqAxis;
 use envi_geo::{ProjectCrs, SceneXY};
 use wasm_bindgen::prelude::*;
 
-use crate::dto::{ExportFormat, ExportGridDto, ExportReq, ReceiverReadoutDto};
+use crate::dto::{
+    ExportCrsDto, ExportFormat, ExportGridDto, ExportReq, ReceiverReadoutDto, TraceIsophonesReq,
+};
 use crate::{ComputeError, compute_err, from_js};
 
 /// The UTM EPSG code for a zone + hemisphere (`326zz` north / `327zz` south).
@@ -102,30 +104,8 @@ pub fn run_export(req: &ExportReq) -> Result<Vec<u8>, ComputeError> {
             let breaks = req.breaks.as_deref().ok_or_else(|| {
                 ComputeError::Export("GeoJSON export requires a `breaks` scale".to_string())
             })?;
-            let bands = trace_isobands(&grid, breaks)
-                .map_err(|e| ComputeError::Export(format!("iso-band tracing failed: {e}")))?;
-            // Reproject each band's fill polygons SceneXY→LonLat at the one CRS seam.
-            let crs = ProjectCrs::from_zone(req.crs.utm_zone as u8, req.crs.south)
-                .map_err(|e| ComputeError::Export(format!("bad project CRS: {e}")))?;
-            let mut lonlat = Vec::with_capacity(bands.len());
-            for (i, band) in bands.iter().enumerate() {
-                let mut polygons = Vec::new();
-                for (exterior, holes) in band.fill_polygons() {
-                    polygons.push(PolygonLonLat {
-                        exterior: reproject_ring(&crs, &exterior)?,
-                        holes: holes
-                            .iter()
-                            .map(|h| reproject_ring(&crs, h))
-                            .collect::<Result<_, _>>()?,
-                    });
-                }
-                lonlat.push(IsoBandLonLat {
-                    lower: band.lower,
-                    upper: band.upper,
-                    fill: req.band_fills.get(i).cloned(),
-                    polygons,
-                });
-            }
+            let crs = project_crs(&req.crs)?;
+            let lonlat = trace_bands_lonlat(&grid, breaks, &req.band_fills, &crs)?;
             Ok(encode_isophone_geojson(&lonlat, &meta).into_bytes())
         }
         ExportFormat::Csv => {
@@ -144,6 +124,73 @@ fn require_grid(req: &ExportReq) -> Result<&ExportGridDto, ComputeError> {
     req.grid
         .as_ref()
         .ok_or_else(|| ComputeError::Export(format!("{:?} export requires a `grid`", req.format)))
+}
+
+/// Rebuild the project [`ProjectCrs`] from its wire DTO (the ONE reprojection seam,
+/// GEOX-04). Shared by the GeoJSON export arm and the live iso-band tracer.
+fn project_crs(crs: &ExportCrsDto) -> Result<ProjectCrs, ComputeError> {
+    ProjectCrs::from_zone(crs.utm_zone as u8, crs.south)
+        .map_err(|e| ComputeError::Export(format!("bad project CRS: {e}")))
+}
+
+/// Trace a level grid into WGS84 iso-band fill polygons — the shared core of the
+/// GeoJSON export arm and the live [`run_trace_isophones`] layer. Contours the grid
+/// with [`trace_isobands`] (V5-validated breaks), classifies each band's fill
+/// polygons, reprojects every ring SceneXY→LonLat at the one CRS seam, and stamps
+/// the per-band fill colour so the layer/export paints by band. `band_fills` aligns
+/// to `breaks.len() - 1` bands; a missing entry leaves that band's `fill` `None`.
+fn trace_bands_lonlat(
+    grid: &LevelGrid,
+    breaks: &[f64],
+    band_fills: &[String],
+    crs: &ProjectCrs,
+) -> Result<Vec<IsoBandLonLat>, ComputeError> {
+    let bands = trace_isobands(grid, breaks)
+        .map_err(|e| ComputeError::Export(format!("iso-band tracing failed: {e}")))?;
+    let mut lonlat = Vec::with_capacity(bands.len());
+    for (i, band) in bands.iter().enumerate() {
+        let mut polygons = Vec::new();
+        for (exterior, holes) in band.fill_polygons() {
+            polygons.push(PolygonLonLat {
+                exterior: reproject_ring(crs, &exterior)?,
+                holes: holes
+                    .iter()
+                    .map(|h| reproject_ring(crs, h))
+                    .collect::<Result<_, _>>()?,
+            });
+        }
+        lonlat.push(IsoBandLonLat {
+            lower: band.lower,
+            upper: band.upper,
+            fill: band_fills.get(i).cloned(),
+            polygons,
+        });
+    }
+    Ok(lonlat)
+}
+
+/// The typed, natively-testable core of [`trace_isophones`]: re-contour the cached
+/// level grid into a WGS84 GeoJSON `FeatureCollection` string for the live isophone
+/// fill layer (WEB-06 / GRID-04, SC3 — NO re-solve). One `MultiPolygon` feature per
+/// band carries its `[lower, upper)` range + `fill` colour + weighting label, so a
+/// single fill layer paints by `["get","fill"]` and the legend reads the same scale.
+///
+/// # Errors
+/// [`ComputeError::Export`] on an invalid break scale (V5) or a reprojection failure.
+pub fn run_trace_isophones(req: &TraceIsophonesReq) -> Result<String, ComputeError> {
+    let grid = grid_of(&req.grid);
+    let crs = project_crs(&req.crs)?;
+    let bands = trace_bands_lonlat(&grid, &req.breaks, &req.band_fills, &crs)?;
+    // A live-layer meta: only the weighting label is meaningful on screen (the
+    // export footer identity fields are for downloadable artifacts, not the map).
+    let meta = ExportMeta {
+        epsg: utm_epsg(req.crs.utm_zone, req.crs.south),
+        weighting_label: req.weighting_label.clone(),
+        engine_version: String::new(),
+        tensor_hash: String::new(),
+        attribution: String::new(),
+    };
+    Ok(encode_isophone_geojson(&bands, &meta))
 }
 
 /// Reproject a SceneXY `[x, y]` ring to WGS84 `[lon, lat]` through the ONE CRS seam.
@@ -216,6 +263,21 @@ pub fn export(req: JsValue) -> Result<Vec<u8>, JsValue> {
 pub fn export_filename(base: &str, format: JsValue) -> Result<String, JsValue> {
     let format: ExportFormat = from_js(format)?;
     Ok(sanitize_export_filename(base, format))
+}
+
+/// Re-contour the cached level grid into a WGS84 GeoJSON iso-band `FeatureCollection`
+/// for the LIVE isophone fill layer (WEB-06 / GRID-04, 11-06). Editing the colour
+/// scale calls this over the cached grid — the tracer re-runs, propagation does NOT
+/// (SC3 / D-04). Returns the FeatureCollection string a MapLibre `geojson` source
+/// consumes directly.
+///
+/// # Errors
+/// A shape error in the request DTO, or a [`ComputeError::Export`] on an invalid
+/// break scale (V5) or a reprojection failure at the CRS seam.
+#[wasm_bindgen]
+pub fn trace_isophones(req: JsValue) -> Result<String, JsValue> {
+    let req: TraceIsophonesReq = from_js(req)?;
+    run_trace_isophones(&req).map_err(|e| compute_err(&e))
 }
 
 #[cfg(test)]
@@ -352,6 +414,56 @@ mod tests {
         let mut gj = base_req(ExportFormat::GeoJson);
         gj.grid = Some(ramp_grid());
         assert!(matches!(run_export(&gj), Err(ComputeError::Export(_))));
+    }
+
+    #[test]
+    fn trace_isophones_returns_wgs84_bands_with_fills_for_the_live_layer() {
+        // The live layer re-contours the CACHED grid: same tracer + reprojection as
+        // the GeoJSON export, returning a FeatureCollection string (no export footer
+        // identity needed on screen).
+        let req = TraceIsophonesReq {
+            grid: ramp_grid(),
+            crs: crate::dto::ExportCrsDto {
+                utm_zone: 31,
+                south: false,
+            },
+            // Cap-extended edges: <50, 50–60, 60–70, ≥70 → 3 bands.
+            breaks: vec![50.0, 60.0, 70.0],
+            band_fills: vec!["#111111".to_string(), "#222222".to_string()],
+            weighting_label: "dB(A)".to_string(),
+        };
+        let s = run_trace_isophones(&req).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&s).expect("valid JSON");
+        assert_eq!(v["type"], "FeatureCollection");
+        let features = v["features"].as_array().unwrap();
+        assert_eq!(features.len(), 2, "breaks.len() - 1 bands");
+        assert_eq!(features[0]["geometry"]["type"], "MultiPolygon");
+        // Coordinates are WGS84 (reprojected at the one CRS seam), near NL.
+        let p = &features[0]["geometry"]["coordinates"][0][0][0];
+        let (lon, lat) = (p[0].as_f64().unwrap(), p[1].as_f64().unwrap());
+        assert!((2.5..3.5).contains(&lon), "lon in WGS84 range, got {lon}");
+        assert!((51.5..53.0).contains(&lat), "lat in WGS84 range, got {lat}");
+        // The per-band class colour is stamped so the fill layer paints by `fill`.
+        assert_eq!(features[0]["properties"]["fill"], "#111111");
+        assert_eq!(features[0]["properties"]["weighting"], "dB(A)");
+    }
+
+    #[test]
+    fn trace_isophones_rejects_an_invalid_break_scale_without_panicking() {
+        let bad = TraceIsophonesReq {
+            grid: ramp_grid(),
+            crs: crate::dto::ExportCrsDto {
+                utm_zone: 31,
+                south: false,
+            },
+            breaks: vec![60.0, 50.0], // non-monotonic
+            band_fills: Vec::new(),
+            weighting_label: "dB(A)".to_string(),
+        };
+        assert!(matches!(
+            run_trace_isophones(&bad),
+            Err(ComputeError::Export(_))
+        ));
     }
 
     #[test]

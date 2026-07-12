@@ -580,6 +580,39 @@ pub struct ExportReq {
     pub receivers: Option<Vec<ReceiverReadoutDto>>,
 }
 
+// --- trace_isophones request (WEB-06 / GRID-04, live isophone fill layer) -----
+
+/// `trace_isophones` request (WEB-06 / GRID-04, 11-06): re-contour the CACHED level
+/// grid into iso-band fill polygons (WGS84) for the LIVE MapLibre fill layer —
+/// editing the colour scale re-runs ONLY the tracer over this grid, never a re-solve
+/// (SC3 / D-04). This is the display-time sibling of the [`ExportReq`] GeoJSON arm:
+/// same tracer + same SceneXY→LonLat reprojection at the one CRS seam (GEOX-04), but
+/// it returns the FeatureCollection string a `geojson` source consumes rather than a
+/// downloadable file with the export footer.
+///
+/// `breaks` are the CAP-EXTENDED contour edges (the colour scale's N editable edges
+/// bracketed by finite below-lowest/above-highest caps → N+1 closed bands, V5:
+/// strictly increasing, finite, ≥ 2), and `band_fills` the per-band class colours the
+/// single `breaks[]`/`colors[]` source of truth assigns (legend ≡ contour ≡ class
+/// colour). Request-facing (`deny_unknown_fields`).
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct TraceIsophonesReq {
+    /// The cached level grid to contour (SceneXY meters).
+    pub grid: ExportGridDto,
+    /// The project's pinned CRS (the SceneXY→LonLat reprojection seam).
+    pub crs: ExportCrsDto,
+    /// The cap-extended contour break edges (V5: strictly increasing, finite, ≥ 2).
+    pub breaks: Vec<f64>,
+    /// Per-band fill colours (aligned to `breaks.len() - 1` bands), stamped into
+    /// each band feature's `fill` property so the fill layer paints by `["get","fill"]`.
+    #[serde(default)]
+    pub band_fills: Vec<String>,
+    /// The dB weighting label from result metadata (stamped into the band props).
+    pub weighting_label: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

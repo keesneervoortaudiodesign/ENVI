@@ -87,7 +87,7 @@ use envi_compute_wasm::dto::{
     GuardrailLevelDto, PlanTiersReq, PrepareSolveReq, RangeProgressDto, ReadoutResult,
     ReceiverPlacementDto, ReceiverReadoutDto, ReconditionReq, ReconditionResult, RotationDto,
     SolveChunkRangeReq, SubSourcePlacementDto, TierComplete, TierDto, TierKindDto, TierPlanResult,
-    TierReceiverDto,
+    TierReceiverDto, TraceIsophonesReq,
 };
 
 /// Provenance banner prepended to the committed `wire.ts` (mirrors the oracle
@@ -248,6 +248,9 @@ fn export_all_wire_types(cfg: &Config) {
     ExportCrsDto::export_all(cfg).unwrap();
     ExportGridDto::export_all(cfg).unwrap();
     ExportReq::export_all(cfg).unwrap();
+    // Live isophone fill-layer tracer request (WEB-06 / GRID-04, 11-06). Reuses
+    // ExportGridDto/ExportCrsDto (registered just above) — one wire type each.
+    TraceIsophonesReq::export_all(cfg).unwrap();
 }
 
 /// Deterministically regenerate the full `wire.ts` contents (banner + ts-rs
