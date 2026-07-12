@@ -34,6 +34,7 @@ import { create } from "zustand";
 import type {
   ConditioningDto,
   ReadoutResult,
+  ReconditionReq,
   ReceiverReadoutDto,
 } from "../generated/wire";
 import { readChunk } from "../compute/opfs";
@@ -107,6 +108,13 @@ export interface ConditioningState {
 // The debounce timer lives at module scope (a single coalescing window across all
 // per-source edits) so a burst of Gain+Delay+Filter edits collapses to ONE dispatch.
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+// A monotonic dispatch generation (module scope). Each `runRecondition` stamps the
+// generation it fired under; a result is applied ONLY if it is still the newest
+// dispatch (CR-01: the real client awaits per-span OPFS reads and can resolve out of
+// order — a superseded MAC must not overwrite a newer readout/epoch). `reset()` and a
+// manifest swap bump it so any in-flight dispatch is discarded on completion (WR-03).
+let reconditionGen = 0;
 
 // Re-feed the isophone map from the reconditioned lattice totals (WASM-produced dB
 // per lattice point — NO TS acoustic math). Only when a grid is cached AND its cell
@@ -203,6 +211,9 @@ export const useConditioningStore = create<ConditioningState>((set, get) => ({
       clearTimeout(debounceTimer);
       debounceTimer = null;
     }
+    // Invalidate any in-flight dispatch so a MAC that already fired cannot resurrect
+    // the epoch or re-apply stale readouts after the reset (WR-03).
+    reconditionGen += 1;
     set({ perSource: {}, order: [], refuse: false, pending: false, recalcEpoch: 0 });
   },
 }));
@@ -215,6 +226,7 @@ async function runRecondition(
   get: () => ConditioningState,
   set: (partial: Partial<ConditioningState>) => void,
 ): Promise<void> {
+  const gen = (reconditionGen += 1);
   const { client, order, perSource } = get();
   const manifest = useResultsStore.getState().manifest;
   if (!client || !manifest) {
@@ -224,10 +236,21 @@ async function runRecondition(
   const perSourceConditioning = order.map((id) => perSource[id] ?? defaultConditioning());
   try {
     const { readouts } = await client.recondition({ manifest, perSourceConditioning });
+    // Drop a superseded or resurrected result: a newer dispatch (or a reset/new-solve
+    // that bumped the generation) has taken over, or the manifest was swapped under us
+    // by a fresh solve — applying now would serve a stale spectrum/map as current and
+    // double-bump the honest-state epoch (CR-01 / WR-03).
+    if (gen !== reconditionGen || useResultsStore.getState().manifest !== manifest) {
+      return;
+    }
     useResultsStore.getState().applyConditioning(perSourceConditioning, readouts);
     feedIsophoneFromReadouts(manifest, readouts);
     set({ pending: false, refuse: false, recalcEpoch: get().recalcEpoch + 1 });
   } catch (err) {
+    // A late failure from a superseded dispatch must not clobber the current flags.
+    if (gen !== reconditionGen) {
+      return;
+    }
     if (isHashMismatch(err)) {
       // The honest client-side 409 (SVC-06 / D-12): refuse, never serve stale spectra.
       set({ pending: false, refuse: true });
@@ -262,10 +285,12 @@ export function createWasmConditioningClient(): ConditioningClient {
           manifest.tensorHash,
           span.chunkIndex,
         );
-        const request = {
+        // Annotate against the generated DTO so a Rust-side field rename is a `tsc`
+        // error, not a silent `deny_unknown_fields` failure in the browser (WR-02 / D-10).
+        const request: ReconditionReq = {
           tensor_hash: manifest.tensorHash,
-          per_source_conditioning: perSourceConditioning,
-          receiver_ids: span.receiverIds,
+          per_source_conditioning: [...perSourceConditioning],
+          receiver_ids: [...span.receiverIds],
         };
         // readout_receivers re-mints the identity of `manifest.scene` and refuses a
         // mismatch by THROWING (the message the store detects as the 409). On a match

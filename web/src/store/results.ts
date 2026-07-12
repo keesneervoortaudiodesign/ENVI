@@ -30,6 +30,7 @@ import type {
   ConditioningDto,
   PrepareSolveReq,
   ReadoutResult,
+  ReconditionReq,
   ReceiverReadoutDto,
 } from "../generated/wire";
 import { readChunk } from "../compute/opfs";
@@ -236,10 +237,12 @@ export function createWasmReadoutClient(): ReadoutClient {
     async readout(req) {
       const g = await ensureGlue();
       const { tensor, pincoh } = await readChunk(req.projectId, req.tensorHash, req.chunkIndex);
-      const request = {
+      // Annotate against the generated DTO so a Rust-side field rename is a `tsc` error,
+      // not a silent `deny_unknown_fields` failure in the browser (WR-02 / D-10).
+      const request: ReconditionReq = {
         tensor_hash: req.tensorHash,
-        per_source_conditioning: req.perSourceConditioning,
-        receiver_ids: req.chunkReceiverIds,
+        per_source_conditioning: [...req.perSourceConditioning],
+        receiver_ids: [...req.chunkReceiverIds],
       };
       const result = g.readout_receivers(req.scene, request, tensor, pincoh) as ReadoutResult;
       const readout = result.receivers[req.rLocal];
