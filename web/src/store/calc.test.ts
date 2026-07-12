@@ -95,7 +95,7 @@ describe("calc store slice", () => {
 
     // run() must be a no-op while blocked (defence-in-depth beside the panel gate).
     const submit = vi.fn();
-    useCalcStore.getState().attachClient({ submit, cancel: vi.fn() });
+    useCalcStore.getState().attachClient({ submit, cancel: vi.fn(), dispose: vi.fn() });
     useCalcStore.getState().run({
       projectId: "p",
       tensorHash: "deadbeef",
@@ -120,7 +120,7 @@ describe("calc store slice", () => {
     useCalcStore.getState().setCostEstimate(costWith("warn"));
     expect(useCalcStore.getState().guardrail?.blocked).toBe(false);
     const submit = vi.fn();
-    useCalcStore.getState().attachClient({ submit, cancel: vi.fn() });
+    useCalcStore.getState().attachClient({ submit, cancel: vi.fn(), dispose: vi.fn() });
     useCalcStore.getState().run({
       projectId: "p",
       tensorHash: "deadbeef",
@@ -167,7 +167,7 @@ describe("calc store slice", () => {
 
   it("a cancel delegates to the client (cooperative abort, D-11)", () => {
     const cancel = vi.fn();
-    useCalcStore.getState().attachClient({ submit: vi.fn(), cancel });
+    useCalcStore.getState().attachClient({ submit: vi.fn(), cancel, dispose: vi.fn() });
     useCalcStore.getState().abort();
     expect(cancel).toHaveBeenCalledOnce();
   });

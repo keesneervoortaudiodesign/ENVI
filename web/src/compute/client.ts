@@ -62,4 +62,18 @@ export class CalcClient {
     const msg: WorkerInbound = { type: "cancel" };
     this.#worker.postMessage(msg);
   }
+
+  // Tear down the client: terminate the dedicated worker (releasing its rayon pool /
+  // SharedArrayBuffer memory) and drop all subscribers (WR-05). Called on panel
+  // unmount and when the store replaces this client, so repeated mounts (HMR, route
+  // change, conditional render) do not leak workers. This is TEARDOWN of the whole
+  // client — distinct from the D-11 rule that a RUNNING solve is aborted
+  // cooperatively via `cancel()`, never by terminating a live job. Idempotent.
+  dispose(): void {
+    if (this.#worker !== null) {
+      this.#worker.terminate();
+      this.#worker = null;
+    }
+    this.#subscribers.clear();
+  }
 }

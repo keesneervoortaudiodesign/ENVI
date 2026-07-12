@@ -59,6 +59,10 @@ export type TierCounts = Readonly<Record<TierKindDto, number>>;
 export interface CalcClient {
   submit(spec: CalcJobSpec): void;
   cancel(): void;
+  // Tear down the client + its dedicated worker (WR-05). Called by `attachClient`
+  // when this client is replaced, and by the panel on unmount, so workers are never
+  // leaked across remounts.
+  dispose(): void;
 }
 
 function emptyTierCounts(): TierCounts {
@@ -121,7 +125,14 @@ export const useCalcStore = create<CalcState>((set, get) => ({
   crossOriginIsolated: false,
   client: null,
 
-  attachClient: (client) => set({ client }),
+  attachClient: (client) =>
+    set((s) => {
+      // Dispose any prior client so its dedicated worker is not orphaned (WR-05).
+      if (s.client && s.client !== client) {
+        s.client.dispose();
+      }
+      return { client };
+    }),
 
   setSpacing: (spacing_fine_m) =>
     set({

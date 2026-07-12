@@ -331,7 +331,10 @@ export function CalcPanel(): ReactElement {
     const isolated = self.crossOriginIsolated === true && typeof SharedArrayBuffer !== "undefined";
     store.setCapability(isolated);
     return () => {
+      // Tear down the worker on unmount/remount so repeated mounts don't leak
+      // dedicated workers + their rayon pools (WR-05).
       unsubscribe();
+      client.dispose();
     };
   }, []);
 
