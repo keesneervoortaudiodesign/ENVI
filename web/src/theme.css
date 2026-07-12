@@ -70,6 +70,23 @@
   /* Layout knobs */
   --row-h:  28px;
   --row-h-lg: 36px;
+
+  /* Scene-object CATEGORICAL palette (D-17/D-18/D-19) — the dataviz-validated dark 8-slot set
+     (11-UI-SPEC §Palettes #3, validated against surface #14171c 2026-07-12). Data colour is a separate
+     system from the UI accent (--color-primary is NEVER a data colour). These MIRROR the literal hex in
+     web/src/map/objectStyles.ts, which is the MapLibre-paint source of truth (MapLibre GL cannot read CSS
+     custom properties); the tokens exist for any DOM legend/swatch usage + the D-11 "extend, don't invent"
+     rule. Colour repeats ACROSS geometry types but is unique WITHIN a geometry type; hatch/symbol is the
+     load-bearing secondary channel for the CVD floor band. */
+  --obj-source:          #3987e5;  /* point — blue */
+  --obj-receiver:        #199e70;  /* point — aqua */
+  --obj-elevation-point: #c98500;  /* point — yellow */
+  --obj-wall:            #e66767;  /* line  — red */
+  --obj-elevation-line:  #c98500;  /* line  — yellow */
+  --obj-building:        #9085e9;  /* area  — violet + hatch: solid-diagonal 45° */
+  --obj-forest:          #008300;  /* area  — green  + hatch: dotted / stipple */
+  --obj-ground-zone:     #d95926;  /* area  — orange + hatch: cross-hatch */
+  --obj-calc-area:       #d55181;  /* area  — magenta + hatch: sparse 135° (low fill, dashed border) */
 }
 
 * { box-sizing: border-box; }
