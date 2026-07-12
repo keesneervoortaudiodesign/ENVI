@@ -19,8 +19,56 @@ import { reopenLast } from "./store/projectActions";
 import { useImportStore, type LayerKey, type LayerStatus } from "./store/import";
 import { runImport, retryLayer } from "./import/importJob";
 import { getTile, removeTile } from "./import/opfs";
+import { writeChunkFile } from "./compute/opfs";
+import { useResultsStore } from "./store/results";
 import type { GroundZoneOutcome } from "./validate/groundZone";
-import type { AuthoredSpectrumDto, BboxDto } from "./generated/wire";
+import type { AuthoredSpectrumDto, BboxDto, PrepareSolveReq } from "./generated/wire";
+
+const RESULTS_N_BANDS = 105;
+
+// A minimal valid PrepareSolveReq (deny_unknown_fields) whose ONLY use here is the
+// tensor-identity hash + the readout hash gate — the readout does NOT re-solve it.
+function buildResultsScene(receiverCount: number): PrepareSolveReq {
+  return {
+    tensor_hash: "",
+    n_sub: 1,
+    terrain: { points: [[2.5, 0], [400, 0]], segments: [{ flow_resistivity: 200, roughness: 0 }] },
+    atmosphere: { temperature_c: 15, humidity_pct: 70, pressure_kpa: 101.325 },
+    coherence: { cv2: 0, ct2: 0, t_air_c: 15, c0: 340.348, roughness_r: 0, f_delta_nu: 1, d_m: 97.5 },
+    sub_sources: [{ position: [2.5, 0, 0.5] }],
+    receivers: Array.from({ length: receiverCount }, (_, i) => ({
+      global_index: i,
+      position: [100 + 10 * i, 0, 1.5],
+    })),
+  } as unknown as PrepareSolveReq;
+}
+
+// Deterministic fixture tensor bytes in the frozen `[s][r][f]` freq-fastest layout
+// the OPFS sink writes (16 B/cell interleaved re,im f64-LE H_coh; 8 B/cell f64-LE
+// P_incoh). All values finite + P > 0 so the readout's coherent/incoherent split
+// is live. This is the SAME byte contract `read_chunk` (opfs_reader.rs) decodes.
+function buildResultsFixtureBytes(receiverCount: number): {
+  tensor: Uint8Array;
+  pincoh: Uint8Array;
+} {
+  const cells = receiverCount * RESULTS_N_BANDS;
+  const tensor = new Uint8Array(cells * 16);
+  const pincoh = new Uint8Array(cells * 8);
+  const tv = new DataView(tensor.buffer);
+  const pv = new DataView(pincoh.buffer);
+  let hi = 0;
+  let pi = 0;
+  for (let r = 0; r < receiverCount; r += 1) {
+    for (let f = 0; f < RESULTS_N_BANDS; f += 1) {
+      tv.setFloat64(hi, 0.02 * (r + 1) * (1 + 0.001 * f), true);
+      tv.setFloat64(hi + 8, (0.01 * (f + 1)) / RESULTS_N_BANDS, true);
+      hi += 16;
+      pv.setFloat64(pi, 1e-6 * (r + 1) * (f + 1), true);
+      pi += 8;
+    }
+  }
+  return { tensor, pincoh };
+}
 
 // A JSON-safe per-layer import status snapshot (the 08-08 offline E2E asserts on these).
 export interface ImportLayerSnapshot {
@@ -124,6 +172,13 @@ export interface EnviTestBridge {
   cachedTile(source: string, tile: string): Promise<boolean>;
   // Evict a cached source tile — the DATA-04 negative guard (removed entry ⇒ the compute read fails).
   evictTile(source: string, tile: string): Promise<void>;
+
+  // --- Results (WEB-11 spectrum-panel offline UAT, 11-05) ---
+  // Seed a deterministic fixture tensor into OPFS (one chunk) + set the results
+  // manifest keyed by the REAL wasm-minted tensor identity, so the panel's readout
+  // hash gate matches. Returns the receiver UUIDs in order. Opens a test project if
+  // none is open.
+  seedResults(receiverCount: number): Promise<string[]>;
 }
 
 export function installTestBridge(): void {
@@ -262,6 +317,38 @@ export function installTestBridge(): void {
       if (projectId) {
         await removeTile(projectId, source, tile);
       }
+    },
+    async seedResults(receiverCount) {
+      let projectId = useSceneStore.getState().projectId;
+      if (!projectId) {
+        projectId = "results-uat-project";
+        useSceneStore.getState().setProject(projectId, "Results UAT");
+      }
+      const scene = buildResultsScene(receiverCount);
+      // Mint the tensor identity with the REAL wasm (crossOriginIsolated holds — the
+      // dev server sends COOP/COEP), so the readout's re-mint gate matches exactly.
+      const glue = await import("./generated/wasm-compute/envi_compute_wasm");
+      await glue.default();
+      const tensorHash = glue.tensor_hash(scene);
+      const { tensor, pincoh } = buildResultsFixtureBytes(receiverCount);
+      await writeChunkFile(projectId, tensorHash, "tensor", 0, tensor);
+      await writeChunkFile(projectId, tensorHash, "pincoh", 0, pincoh);
+      const ids = Array.from({ length: receiverCount }, () => crypto.randomUUID());
+      useResultsStore.getState().setManifest({
+        projectId,
+        tensorHash,
+        scene,
+        perSourceConditioning: [{ gain_db: 80, delay_ms: 0, filter_band_db: null, muted: false }],
+        receivers: ids.map((id, i) => ({
+          id,
+          globalIndex: i,
+          position: [100 + 10 * i, 0],
+          chunkIndex: 0,
+          rLocal: i,
+        })),
+        spans: [{ chunkIndex: 0, receiverIds: ids }],
+      });
+      return ids;
     },
   };
   (window as unknown as { __enviTest?: EnviTestBridge }).__enviTest = bridge;

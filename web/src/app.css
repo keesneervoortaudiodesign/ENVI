@@ -522,6 +522,114 @@ select.input.dense {
   color: var(--color-text-dim);
 }
 
+/* Results panel (WEB-11) — the right-rail results shell + receiver spectrum. Tokens only. */
+.results-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.spectrum-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.spectrum-picker {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+.spectrum-map {
+  width: 220px;
+  height: 90px;
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+}
+.spectrum-receiver-list {
+  flex: 1;
+  min-width: 0;
+  max-height: 90px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.spectrum-receiver-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--row-h);
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: var(--text-xxs);
+  text-align: left;
+  cursor: pointer;
+}
+.spectrum-receiver-row:hover {
+  background: var(--color-surface-2);
+}
+.spectrum-receiver-row.selected {
+  color: var(--color-primary);
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.spectrum-receiver-pos {
+  color: var(--color-text-dim);
+}
+.spectrum-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.spectrum-totals {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.spectrum-total {
+  font-size: var(--text-md);
+  color: var(--color-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+.spectrum-split-totals {
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--text-xxs);
+  font-variant-numeric: tabular-nums;
+}
+.spectrum-chart {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+}
+.spectrum-db {
+  color: var(--color-text-strong);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.spectrum-table-toggle {
+  align-self: flex-start;
+}
+.empty-state.loading {
+  opacity: 0.55;
+}
+
 /* Per-façade assignment list (WEB-09) — one dense row per edge UUID. */
 .facade-panel {
   gap: var(--space-1);

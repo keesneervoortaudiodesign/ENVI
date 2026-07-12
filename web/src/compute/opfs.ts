@@ -225,3 +225,79 @@ export function closeChunk(handle: SyncAccessHandle): void {
     }
   }
 }
+
+// --- Chunk READ glue (11-05 — the spectrum-panel readout path) ----------------
+//
+// Phase 10 only WROTE chunk files (the worker-only sync-handle write path above).
+// The results readout READS them back and hands the raw bytes straight to the
+// `readout_receivers` WASM export (`crates/envi-compute-wasm/src/opfs_reader.rs`);
+// JS moves bytes, it never decodes or does acoustic math (D-01). Reads use the
+// async File API, so — unlike the write path's worker-only `createSyncAccessHandle`
+// (Pitfall 4) — they run on the main thread too (the compute wasm is already used
+// main-thread for cost/plan, so the readout composes there). The SAME
+// `safeSeg`/`assertHex` V12 path guards apply: only the project UUID + hex tensor
+// hash + the two fixed channel literals + an integer chunk index ever reach the
+// OPFS walk, so no `/`, `\`, `..`, or NUL can escape the fixed layout.
+
+// Walk to `projects/<id>/calc/<hash>/<channel>/` WITHOUT creating anything — a
+// missing directory throws (surfaced as the honest "result data unavailable"
+// state, T-11-05-03) rather than fabricating an empty tree.
+async function channelDirReadonly(
+  projectId: string,
+  tensorHash: string,
+  channel: ChunkChannel,
+): Promise<FileSystemDirectoryHandle> {
+  let dir = await navigator.storage.getDirectory();
+  for (const seg of ["projects", safeSeg(projectId), "calc", assertHex(tensorHash), channel]) {
+    dir = await dir.getDirectoryHandle(seg, { create: false });
+  }
+  return dir;
+}
+
+// Read one channel's chunk-file bytes via the async File API.
+async function readChannelBytes(
+  projectId: string,
+  tensorHash: string,
+  channel: ChunkChannel,
+  chunkIndex: number,
+): Promise<Uint8Array> {
+  const dir = await channelDirReadonly(projectId, tensorHash, channel);
+  const file = await dir.getFileHandle(chunkFileName(chunkIndex), { create: false });
+  const blob = await file.getFile();
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+// Read a chunk's `H_coh` (tensor/) + `P_incoh_abs` (pincoh/) byte pair — exactly
+// the two `&[u8]` inputs the `readout_receivers` WASM reader decodes back into the
+// `[s][r_local][f]` arrays. The caller passes these straight to the export.
+export async function readChunk(
+  projectId: string,
+  tensorHash: string,
+  chunkIndex: number,
+): Promise<{ tensor: Uint8Array; pincoh: Uint8Array }> {
+  const [tensor, pincoh] = await Promise.all([
+    readChannelBytes(projectId, tensorHash, "tensor", chunkIndex),
+    readChannelBytes(projectId, tensorHash, "pincoh", chunkIndex),
+  ]);
+  return { tensor, pincoh };
+}
+
+// Write a chunk file's raw bytes via the async File API (main-thread capable) —
+// the read path's inverse, used to seed a fixture tensor into OPFS for the offline
+// results UAT (and any future non-worker cache-write path). Same V12 path guards.
+export async function writeChunkFile(
+  projectId: string,
+  tensorHash: string,
+  channel: ChunkChannel,
+  chunkIndex: number,
+  bytes: Uint8Array,
+): Promise<void> {
+  let dir = await navigator.storage.getDirectory();
+  for (const seg of ["projects", safeSeg(projectId), "calc", assertHex(tensorHash), channel]) {
+    dir = await dir.getDirectoryHandle(seg, { create: true });
+  }
+  const file = await dir.getFileHandle(chunkFileName(chunkIndex), { create: true });
+  const writable = await file.createWritable();
+  await writable.write(bytes as unknown as BufferSource);
+  await writable.close();
+}
