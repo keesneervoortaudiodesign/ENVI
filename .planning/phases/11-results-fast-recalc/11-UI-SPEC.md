@@ -1,10 +1,11 @@
 ---
 phase: 11
 slug: results-fast-recalc
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-07-12
+reviewed_at: 2026-07-12
 ---
 
 # Phase 11 — UI Design Contract

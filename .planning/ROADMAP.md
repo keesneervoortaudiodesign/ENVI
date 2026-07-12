@@ -407,7 +407,38 @@ Plans:
   4. Weather what-if works end-to-end: manual overrides (T/RH/p, Beaufort wind + direction, downwind worst-case toggle, temperature gradient, per-azimuth A/B/C) recompute as a scenario; named scenarios switch instantly via per-scenario cached tensors; difference maps render between two scenarios
   5. Results export as GeoTIFF/GeoJSON and spectra as CSV, carrying band index + exact frequency columns and data attribution metadata
 
-**Plans**: TBD
+**Plans**: 11 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 11-01-PLAN.md — A/C weighting tables + OPFS tensor reader + readout orchestration + MAC≡engine equivalence (WEB-11) [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 11-02-PLAN.md — Level-grid reconstruction + hand-rolled interpolated marching-squares iso-band tracer (GRID-04/WEB-06) [wave 2]
+- [ ] 11-03-PLAN.md — Recondition MAC boundary + client-side 409/HashMismatch + stale-hash identity (SVC-06/WEB-05) [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 11-04-PLAN.md — Export encoders (hand-rolled GeoTIFF + GeoJSON + CSV) + WASM export boundary (GRID-05) [wave 3]
+- [ ] 11-05-PLAN.md — Spectrum panel + results shell + OPFS read glue + dB(A)/dB(C) + coherent/incoherent + Playwright (WEB-11) [wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 11-06-PLAN.md — Isophone fill layer + color-scale editor (END + viridis/turbo, re-contour no re-solve) + Playwright (WEB-06/GRID-04) [wave 4]
+- [ ] 11-07-PLAN.md — Conditioning fast-recalc MAC + stale badge + 409 refusal + Playwright (WEB-05/SVC-06) [wave 4]
+- [ ] 11-09-PLAN.md — Export UI menu + browser download + attribution + Playwright (GRID-05) [wave 4]
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 11-08-PLAN.md — Weather scenarios (clone-then-edit, friendly+advanced A/B/C) + diverging difference map + Playwright (WEB-12/METX-03/04) [wave 5]
+- [ ] 11-10-PLAN.md — Scene-object color+hatch styling sweep over the isophone fill + draw-time regression guard (D-17/18/19) [wave 5]
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 11-11-PLAN.md — App-wide info-button help system + structured catalog + coverage check + panel retrofit (D-23/24/25) [wave 6]
+
 **UI hint**: yes
 
 ## Requirement Coverage

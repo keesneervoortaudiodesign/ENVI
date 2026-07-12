@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 10
 current_phase_name: calculation-service
-status: complete
+status: executing
 stopped_at: Phase 10 complete — all 5 completion gates green
-last_updated: "2026-07-12T03:00:00.000Z"
+last_updated: "2026-07-12T11:29:44.560Z"
 last_activity: 2026-07-12
-last_activity_desc: "Phase 10 CLOSED: 6/6 plans + 5 completion gates green (10-REVIEW HI-01 + WR-01..06 fixed + re-review clean, simplify clean, 10-SECURITY SECURED 31/31, 10-VERIFICATION passed 4/4, doc-consistency). Client-side threaded-WASM Nord2000 compute: envi-compute pure core (factored tensor identity + cost/guardrail + hierarchical tiers + SolveJob directional-phase seam) + envi-compute-wasm threaded cdylib (OPFS chunked TensorSink, wasm-bindgen-rayon pool, blake3 tensor identity) + COOP/COEP credentialless + CalcPanel UI + real solve_chunk_range bit-equal to a direct engine solve. Shared-memory build fixed (1099b24) — in-browser threaded solve runs; offline Playwright 21 passed"
+last_activity_desc: "Phase 10 closed: 6/6 plans + 5 gates green (offline Playwright 21 passed)"
 progress:
   total_phases: 11
   completed_phases: 10
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 10 (calculation-service) — COMPLETE
 Plan: 6 of 6 complete (10-01 … 10-06)
-Status: Phase 10 COMPLETE — all 5 completion gates closed (code-review HI-01 + WR-01..06 fixed + re-review clean · simplify clean · secure SECURED 31/31 · verify passed 4/4 · doc-consistency). SVC-02/GRID-02/WEB-07 delivered: a user runs a REAL Nord2000 calculation CLIENT-SIDE as threaded WebAssembly — `envi-compute` (pure-Rust WASM-safe core: tensor identity factored byte-for-byte out of `envi-store` + SC1 cost model/Ok/Warn/Block guardrail + hierarchical points⊂coarse⊂fine tiers + `SolveJob` assembly with the directional-phase seam, SRC-03) + `envi-compute-wasm` (threaded cdylib: OPFS-backed chunked `TensorSink`, `wasm-bindgen-rayon` pool driver, blake3 marshalled tensor identity, HI-01) + COOP/COEP credentialless cross-origin isolation + CalcPanel UI (pre-run cost estimate + guardrail, tiered progress, cooperative abort) + the real `solve_chunk_range` (`prepare_solve` marshals the scene once into a `static RwLock<PreparedScene>` keyed by `tensor_hash`; the range-solve is `f64::to_bits`-equal to a direct engine solve, ENG-09/10 + directional phase; two-shard == single-range; hash-mismatch is a typed error). The shared-memory `WebAssembly.Memory` build was fixed (1099b24) — the in-browser threaded rayon solve now runs, not just native `cargo test` bit-equivalence; offline Playwright 21 passed. Engine byte-identical. Next: Phase 11 (Results & Fast Recalc).
+Status: Ready to execute
 Last activity: 2026-07-12 — Phase 10 closed: 6/6 plans + 5 gates green (offline Playwright 21 passed)
 
 Progress: [██████████] Phase 10 — 6/6 plans complete (10-01 compute core · 10-02 COOP/COEP · 10-03 wasm boundary+OPFS sink · 10-04 pool+worker · 10-05 CalcPanel+Playwright · 10-06 real solve seam closed)
