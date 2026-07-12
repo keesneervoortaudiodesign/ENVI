@@ -791,3 +791,51 @@ select.input.dense {
 .isophone-legend-label {
   color: var(--color-text);
 }
+
+/* Conditioning panel (WEB-05 / SVC-06) — per-source Gain/Delay/Filter/Mute live-recalc
+   controls + the honest stale badge & 409 reject banner. Tokens only. */
+.conditioning-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.conditioning-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.conditioning-source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+}
+.conditioning-source-head {
+  color: var(--color-text-strong);
+  font-size: var(--text-xs);
+}
+.conditioning-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.conditioning-mute {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--text-xxs);
+  cursor: pointer;
+}
+/* The 409 reject banner reuses the crit reject-banner idiom, docked in the panel flow
+   (not map-anchored) so it sits with the conditioning controls it refuses. */
+.conditioning-reject {
+  position: static;
+  transform: none;
+  max-width: none;
+  box-shadow: none;
+}
