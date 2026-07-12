@@ -439,7 +439,8 @@ Plans:
 
 - [x] 11-11-PLAN.md — App-wide info-button help system + structured catalog + coverage check + panel retrofit (D-23/24/25) [wave 6]
 
-**Deferred follow-up (open):** the production live-calc→render data feed — a `reconstruct_level_grid` `#[wasm_bindgen]` boundary + wiring `calc.ts::applyTierComplete` to `setManifest`/`setIsophoneInput` so a real solve populates the results surfaces (today driven via the DEV testBridge + fixtures). All SC1–SC5 capabilities + honest states are shipped and tested against seeded data; only this last-mile plumbing remains. See `11-VERIFICATION.md`.
+**Production calc→render feed — partially closed (11-12):** the `reconstruct_level_grid` `#[wasm_bindgen]` boundary now exists (returns `ExportGridDto`; native-tested) and the `applyTierComplete → setManifest` link is wired (`compute/resultsFeed.ts` `applyResultsFeed`, unit-tested; driven end-to-end through the real feed by `results-flow.spec.ts` + the `feedFromSolve` bridge). The spectrum (SC1) + conditioning (SC2) surfaces now light up from a solve-shaped feed against real WASM.
+**Remaining upstream blockers (open, larger than last-mile):** the *live* production path needs two deliberately-deferred pieces before a real Run renders results: (1) the **Phase-10 `10-03` threaded-WASM build gap** — `build:wasm:compute` ships a non-shared `WebAssembly.Memory`, so `initThreadPool` cannot start and a real solve never reaches the fine tier (`calc.spec.ts` Test 2 skips honestly); and (2) **2-D CRS-exact scene marshalling** — `marshalScene.ts` places receivers on a 1-D corridor (`y=0`), so there is no 2-D field to reconstruct into an isophone map yet (feeding the degenerate grid is intentionally guarded off). See `11-VERIFICATION.md`.
 
 **UI hint**: yes
 

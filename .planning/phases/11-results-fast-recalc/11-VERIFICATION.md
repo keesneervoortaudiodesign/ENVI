@@ -94,5 +94,21 @@ No blocking gaps. All five success criteria are delivered as genuine, tested cap
 
 ---
 
+## Update (11-12) — production feed partially closed
+
+The carried follow-up was partially closed after verification:
+
+- **`reconstruct_level_grid` WASM boundary** — added in `envi-compute-wasm` (returns the existing `ExportGridDto`; `ExportGridDto` gained `Serialize`, no wire drift). Two native tests cover the typed body (`reconstruct_level_grid_typed`).
+- **`applyTierComplete → setManifest` link** — `web/src/compute/resultsFeed.ts` (`buildResultsManifest` + `applyResultsFeed`) assembles the results manifest from the submitted `CalcJobSpec` + the fine `TierComplete` and pushes it into the results store (attaching the real readout/conditioning/stale clients). Wired into `CalcPanel` on the fine tier. Unit-tested (`resultsFeed.test.ts`, 3 tests) and exercised end-to-end through the REAL feed by the new `feedFromSolve` DEV bridge + `tests/e2e/results-flow.spec.ts` (a single offline session that walks feed → spectrum → info-button → isophone re-contour → object styling against real WASM, zero egress). Spectrum (SC1) + conditioning (SC2) now light up from a solve-shaped feed, not just `setManifest`.
+
+**Two upstream blockers remain (larger than last-mile, deliberately deferred):**
+
+1. **Phase-10 `10-03` threaded-WASM build gap** — `build:wasm:compute` ships a non-shared `WebAssembly.Memory`, so `initThreadPool` cannot start; a real threaded solve never reaches the fine tier (`calc.spec.ts` Test 2 skips honestly for this exact reason). Until fixed, the `applyResultsFeed` link is correct-but-dormant against a real Run (it is proven via the bridge/unit tests).
+2. **2-D CRS-exact scene marshalling** — `marshalScene.ts` places all receivers on a 1-D corridor (`y=0`), so there is no 2-D field to reconstruct into a meaningful isophone map; the isophone/scenario *production* map feed is intentionally NOT wired to a degenerate grid (which would render a false noise map). The plan already exposes 2-D `TierReceiverDto.position`; wiring it requires engine-validated 2-D receiver-lattice geometry + per-path terrain.
+
+_Updated: 2026-07-12_
+
+---
+
 _Verified: 2026-07-12T18:14:27Z_
 _Verifier: Claude (gsd-verifier)_
