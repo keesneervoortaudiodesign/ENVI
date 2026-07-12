@@ -112,7 +112,15 @@ fn put_atmosphere(h: &mut Hasher, a: &AtmosphereDto) {
 }
 
 fn put_coherence(h: &mut Hasher, c: &CoherenceInputsDto) {
-    for v in [c.cv2, c.ct2, c.t_air_c, c.c0, c.roughness_r, c.f_delta_nu, c.d_m] {
+    for v in [
+        c.cv2,
+        c.ct2,
+        c.t_air_c,
+        c.c0,
+        c.roughness_r,
+        c.f_delta_nu,
+        c.d_m,
+    ] {
         put_f64(h, v);
     }
 }
@@ -293,7 +301,8 @@ mod tests {
         let a = marshalled_tensor_hash(&req);
         assert_eq!(a.len(), 64, "blake3 hex is 64 chars");
         assert!(
-            a.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+            a.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
             "lowercase hex only (accepted by the OPFS assertHex guard)"
         );
         assert_eq!(a, marshalled_tensor_hash(&req), "deterministic");
@@ -305,7 +314,11 @@ mod tests {
         let mut req = base_req();
         let a = marshalled_tensor_hash(&req);
         req.tensor_hash = "placeholder".to_string();
-        assert_eq!(a, marshalled_tensor_hash(&req), "tensor_hash field is excluded");
+        assert_eq!(
+            a,
+            marshalled_tensor_hash(&req),
+            "tensor_hash field is excluded"
+        );
     }
 
     #[test]
@@ -313,7 +326,11 @@ mod tests {
         let mut req = base_req();
         let a = marshalled_tensor_hash(&req);
         req.receivers.reverse();
-        assert_eq!(a, marshalled_tensor_hash(&req), "receiver order is irrelevant");
+        assert_eq!(
+            a,
+            marshalled_tensor_hash(&req),
+            "receiver order is irrelevant"
+        );
     }
 
     #[test]
