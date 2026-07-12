@@ -46,6 +46,15 @@ export interface StaleState {
   reset(): void;
 }
 
+// A monotonic re-mint generation (module scope). `checkStale` awaits an async WASM
+// blake3 re-mint; two rapid scene edits can leave two re-mints in flight and the last
+// to RESOLVE would otherwise win regardless of which scene is current — a slow older
+// re-mint could overwrite a newer "stale" verdict with a false-green and ungate a stale
+// export (the D-12 honest-state failure, CR-02). Stamp each request and let only the
+// newest write `isStale`; `clear`/`reset` bump it so a late re-mint cannot resurrect a
+// verdict after the badge was cleared.
+let staleGen = 0;
+
 export const useStaleStore = create<StaleState>((set, get) => ({
   isStale: false,
   client: null,
@@ -57,13 +66,26 @@ export const useStaleStore = create<StaleState>((set, get) => ({
     if (!client) {
       return;
     }
+    const gen = (staleGen += 1);
     const current = await client.remint(scene);
+    // Superseded by a newer scene edit (or a clear/reset): discard. Failing toward the
+    // newest request keeps the badge honest — never a stale-green from an out-of-order
+    // re-mint.
+    if (gen !== staleGen) {
+      return;
+    }
     set({ isStale: current !== cachedHash });
   },
 
-  clear: () => set({ isStale: false }),
+  clear: () => {
+    staleGen += 1;
+    set({ isStale: false });
+  },
 
-  reset: () => set({ isStale: false }),
+  reset: () => {
+    staleGen += 1;
+    set({ isStale: false });
+  },
 }));
 
 // The REAL identity client: lazily instantiates the compute wasm module on the main
