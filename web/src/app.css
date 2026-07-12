@@ -533,6 +533,19 @@ select.input.dense {
   flex-direction: column;
   gap: var(--space-2);
 }
+/* Export menu (GRID-05) — the "Export…" CTA popover of GeoTIFF / GeoJSON / CSV items. */
+.export-menu-list {
+  min-width: 220px;
+}
+.export-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+}
+.export-menu-hint {
+  font-size: var(--text-xxs);
+  color: var(--color-text-dim);
+}
 .spectrum-controls {
   display: flex;
   flex-wrap: wrap;
