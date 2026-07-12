@@ -439,6 +439,8 @@ Plans:
 
 - [x] 11-11-PLAN.md — App-wide info-button help system + structured catalog + coverage check + panel retrofit (D-23/24/25) [wave 6]
 
+**Deferred follow-up (open):** the production live-calc→render data feed — a `reconstruct_level_grid` `#[wasm_bindgen]` boundary + wiring `calc.ts::applyTierComplete` to `setManifest`/`setIsophoneInput` so a real solve populates the results surfaces (today driven via the DEV testBridge + fixtures). All SC1–SC5 capabilities + honest states are shipped and tested against seeded data; only this last-mile plumbing remains. See `11-VERIFICATION.md`.
+
 **UI hint**: yes
 
 ## Requirement Coverage
