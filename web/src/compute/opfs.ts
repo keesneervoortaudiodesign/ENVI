@@ -117,7 +117,14 @@ export async function openChunkHandle(
   const file = (await dir.getFileHandle(chunkFileName(chunkIndex), {
     create: true,
   })) as SyncCapableFileHandle;
-  return file.createSyncAccessHandle();
+  const handle = await file.createSyncAccessHandle();
+  // Truncate to 0 BEFORE any write (WR-03). The sink writes each chunk contiguously
+  // from offset 0, but on the D-09 reuse path the file is reopened `create:true`, so
+  // a shorter re-run (fewer bytes than a prior run) would otherwise leave stale
+  // trailing bytes from the previous write. Truncating on open guarantees the file
+  // holds exactly this run's bytes.
+  handle.truncate(0);
+  return handle;
 }
 
 // --- Hoisted async-open registry (D-08/D-09) ----------------------------------
