@@ -33,11 +33,11 @@ import { create } from "zustand";
 
 import type {
   ConditioningDto,
-  ReadoutResult,
   ReconditionReq,
   ReceiverReadoutDto,
 } from "../generated/wire";
 import { readChunk } from "../compute/opfs";
+import { readoutReceivers } from "../compute/wasm";
 import { useResultsStore, type ResultsManifest } from "./results";
 import { useColorScaleStore } from "./colorScale";
 
@@ -148,6 +148,22 @@ function feedIsophoneFromReadouts(
   );
 }
 
+// Patch one field of a source's conditioning drive (seeding a default when the source is
+// not yet in the drive), then fire the debounced recalc — the shared body of the four
+// per-source setters (the identical `current ?? default` → spread → schedule dance). A
+// synchronous `get().perSource` read is equivalent to the functional-updater form here
+// (no concurrent `set` runs between within a single edit).
+function patchSource(
+  get: () => ConditioningState,
+  set: (partial: Partial<ConditioningState>) => void,
+  sourceId: string,
+  patch: Partial<ConditioningDto>,
+): void {
+  const current = get().perSource[sourceId] ?? defaultConditioning();
+  set({ perSource: { ...get().perSource, [sourceId]: { ...current, ...patch } } });
+  get().scheduleRecondition();
+}
+
 export const useConditioningStore = create<ConditioningState>((set, get) => ({
   perSource: {},
   order: [],
@@ -169,31 +185,14 @@ export const useConditioningStore = create<ConditioningState>((set, get) => ({
     set({ perSource, order, refuse: false });
   },
 
-  setGain: (sourceId, gainDb) => {
-    const current = get().perSource[sourceId] ?? defaultConditioning();
-    set((s) => ({ perSource: { ...s.perSource, [sourceId]: { ...current, gain_db: gainDb } } }));
-    get().scheduleRecondition();
-  },
+  setGain: (sourceId, gainDb) => patchSource(get, set, sourceId, { gain_db: gainDb }),
 
-  setDelay: (sourceId, delayMs) => {
-    const current = get().perSource[sourceId] ?? defaultConditioning();
-    set((s) => ({ perSource: { ...s.perSource, [sourceId]: { ...current, delay_ms: delayMs } } }));
-    get().scheduleRecondition();
-  },
+  setDelay: (sourceId, delayMs) => patchSource(get, set, sourceId, { delay_ms: delayMs }),
 
-  setMuted: (sourceId, muted) => {
-    const current = get().perSource[sourceId] ?? defaultConditioning();
-    set((s) => ({ perSource: { ...s.perSource, [sourceId]: { ...current, muted } } }));
-    get().scheduleRecondition();
-  },
+  setMuted: (sourceId, muted) => patchSource(get, set, sourceId, { muted }),
 
-  setFilter: (sourceId, filterBandDb) => {
-    const current = get().perSource[sourceId] ?? defaultConditioning();
-    set((s) => ({
-      perSource: { ...s.perSource, [sourceId]: { ...current, filter_band_db: filterBandDb } },
-    }));
-    get().scheduleRecondition();
-  },
+  setFilter: (sourceId, filterBandDb) =>
+    patchSource(get, set, sourceId, { filter_band_db: filterBandDb }),
 
   scheduleRecondition: () => {
     if (debounceTimer !== null) {
@@ -260,24 +259,13 @@ async function runRecondition(
   }
 }
 
-// The REAL recondition client: lazily instantiates the compute wasm module on the main
-// thread (the same module results/cost use — COOP/COEP holds `crossOriginIsolated`),
-// reads each covering OPFS chunk, and drives the `readout_receivers` MAC (hash-gated).
-// A dynamic import inside the factory keeps the wasm/OPFS graph out of the Node unit
-// test module load (mirrors the results `createWasmReadoutClient` seam).
+// The REAL recondition client: reads each covering OPFS chunk and drives the shared
+// compute facade's `readout_receivers` MAC (hash-gated; the same module results/cost use —
+// COOP/COEP holds `crossOriginIsolated`). The facade's dynamic import keeps the wasm/OPFS
+// graph out of the Node unit-test module load (mirrors the results `createWasmReadoutClient`).
 export function createWasmConditioningClient(): ConditioningClient {
-  let glue: Promise<typeof import("../generated/wasm-compute/envi_compute_wasm")> | null = null;
-  const ensureGlue = (): Promise<typeof import("../generated/wasm-compute/envi_compute_wasm")> => {
-    glue ??= (async () => {
-      const g = await import("../generated/wasm-compute/envi_compute_wasm");
-      await g.default();
-      return g;
-    })();
-    return glue;
-  };
   return {
     async recondition({ manifest, perSourceConditioning }) {
-      const g = await ensureGlue();
       const readouts: Record<string, ReceiverReadoutDto> = {};
       for (const span of manifest.spans) {
         const { tensor, pincoh } = await readChunk(
@@ -295,7 +283,7 @@ export function createWasmConditioningClient(): ConditioningClient {
         // readout_receivers re-mints the identity of `manifest.scene` and refuses a
         // mismatch by THROWING (the message the store detects as the 409). On a match
         // it returns the full two-channel readout per receiver — every dB is WASM.
-        const result = g.readout_receivers(manifest.scene, request, tensor, pincoh) as ReadoutResult;
+        const result = await readoutReceivers(manifest.scene, request, tensor, pincoh);
         span.receiverIds.forEach((id, i) => {
           const rd = result.receivers[i];
           if (rd) {
