@@ -45,6 +45,11 @@ pub mod dto;
 // `PrepareSolveReq`. Exposed to the client via the `tensor_hash` boundary export so
 // the browser never invents its own key.
 pub mod identity;
+// The OPFS tensor READER (11-01) — the exact inverse of `opfs_sink::put_chunk`,
+// decoding the frozen `[s][r_local][f]` chunk bytes back into `Array3`s for the
+// client-side readout. Available on every build (pure decode; no OPFS/JS glue —
+// the worker-side pre-open-read handles land in 11-05).
+pub mod opfs_reader;
 pub mod opfs_sink;
 // The caller-side rayon sharding driver (GRID-02). Compiled for every NATIVE build
 // (so `cargo test pool` exercises it) and for the THREADED wasm build; excluded
