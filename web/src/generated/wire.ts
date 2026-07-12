@@ -233,13 +233,19 @@ d_m: number, };
 
 /**
  * Per-source conditioning: a **READOUT** parameter (gain/delay/filter/mute)
- * applied at level readout via `envi_engine::tensor::compose_gain`.
+ * applied at level readout via [`compose_gain`].
  *
  * It is structurally **excluded from tensor identity** (D-07): conditioning
  * appears nowhere in `envi_engine::solver::SolveJob`, only at readout, so
  * hashing it would make Tier-1 recondition requests self-invalidating. See
- * [`crate::hash::tensor_hash`] — its signature cannot accept this type.
+ * [`crate::identity::tensor_hash`] — its signature cannot accept this type.
  * Extensible via `#[serde(default)]`.
+ *
+ * Lives in `envi-compute` (not `envi-store`) so the WASM recondition boundary
+ * can consume it without dragging `std::fs`/`tempfile` into wasm — the same
+ * relocation discipline the Phase-10 `MetDto`/`ReceiverDto`/scene DTOs follow.
+ * Re-exported at `envi_store::dto::ConditioningDto` so that path stays
+ * source-compatible and keeps generating into the committed `wire.ts`.
  */
 export type ConditioningDto = { 
 /**
@@ -1276,6 +1282,33 @@ job_id: string,
 tensor_hash: string, };
 
 /**
+ * `recondition` request (SVC-06 / D-01): the claimed tensor identity, the
+ * per-source conditioning drive, and the target receiver ids. Request-facing
+ * (`deny_unknown_fields`).
+ *
+ * `tensor_hash` is the identity the client believes it is reconditioning; the
+ * boundary re-mints the CURRENT tensor identity and refuses a mismatch with a
+ * typed `HashMismatch` (D-12, the honest client-side 409). `per_source_conditioning`
+ * reuses [`ConditioningDto`] (never a forked shape) and must carry exactly one
+ * entry per tensor sub-source; `receiver_ids` are the TS-minted UUIDs of the
+ * chunk's receivers in receiver-major order (index = position), aligned 1:1 with
+ * [`ReconditionResult::spectra`].
+ */
+export type ReconditionReq = { 
+/**
+ * The tensor identity the client believes it is reconditioning (the 409 gate).
+ */
+tensor_hash: string, 
+/**
+ * Per-source conditioning (gain/delay/filter/mute), one entry per sub-source.
+ */
+per_source_conditioning: Array<ConditioningDto>, 
+/**
+ * The chunk's receiver UUIDs in receiver-major order (index = tensor column).
+ */
+receiver_ids: Array<string>, };
+
+/**
  * `POST /calculations/{cid}/recondition` body. Strict (`deny_unknown_fields`).
  *
  * `conditioning` is a per-source **readout** map — it is deserialized and
@@ -1309,6 +1342,27 @@ tensor_hash: string,
  * Honest-stub provenance — these are synthetic, not validated acoustics.
  */
 stub: boolean, };
+
+/**
+ * `recondition` result: per-receiver dense `[105]` band-index level spectra (dB),
+ * aligned 1:1 with the request's `receiver_ids`, plus a `stale` flag. Result-facing.
+ *
+ * `stale` is ALWAYS `false` on this path: a hash mismatch is refused outright as a
+ * typed `HashMismatch` (D-12 honest state), never served as a stale-flagged
+ * readout, and conditioning is excluded from tensor identity (D-07) so a
+ * conditioning edit can never stale a matched tensor. The field documents that
+ * invariant on the wire.
+ */
+export type ReconditionResult = { 
+/**
+ * One dense `[105]` band-index level spectrum (dB) per receiver, in
+ * `receiver_ids` order.
+ */
+spectra: Array<Array<number>>, 
+/**
+ * Always `false` — a mismatched hash is refused, never served stale (D-12/D-07).
+ */
+stale: boolean, };
 
 /**
  * `reproject_ring` request: a WGS84 `[lon, lat]` footprint ring to reproject into

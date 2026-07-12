@@ -84,8 +84,9 @@ use envi_gis_wasm::dto::{
 use envi_compute_wasm::dto::{
     AtmosphereDto, ChunkSpanDto, CoherenceInputsDto, CostEstimateResult, DirectionalDto,
     DirectivityBalloonDto, EstimateCostReq, GuardrailLevelDto, PlanTiersReq, PrepareSolveReq,
-    RangeProgressDto, ReceiverPlacementDto, RotationDto, SolveChunkRangeReq, SubSourcePlacementDto,
-    TierComplete, TierDto, TierKindDto, TierPlanResult, TierReceiverDto,
+    RangeProgressDto, ReceiverPlacementDto, ReconditionReq, ReconditionResult, RotationDto,
+    SolveChunkRangeReq, SubSourcePlacementDto, TierComplete, TierDto, TierKindDto, TierPlanResult,
+    TierReceiverDto,
 };
 
 /// Provenance banner prepended to the committed `wire.ts` (mirrors the oracle
@@ -231,6 +232,10 @@ fn export_all_wire_types(cfg: &Config) {
     // Tier-complete event payload (D-07).
     ChunkSpanDto::export_all(cfg).unwrap();
     TierComplete::export_all(cfg).unwrap();
+    // Recondition MAC request/result (SVC-06 / D-01, 11-03). ConditioningDto (which
+    // ReconditionReq reuses) is registered above via envi-store — one wire type.
+    ReconditionReq::export_all(cfg).unwrap();
+    ReconditionResult::export_all(cfg).unwrap();
 }
 
 /// Deterministically regenerate the full `wire.ts` contents (banner + ts-rs

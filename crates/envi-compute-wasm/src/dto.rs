@@ -33,6 +33,10 @@ use ts_rs::TS;
 use envi_compute::scene_dto::{
     ForestParamsDto, IsolationSpectrumDto, SoundSpeedProfileDto, TerrainProfileDto,
 };
+// The per-source conditioning readout DTO (WEB-05) — reused verbatim from the
+// pure core, never forked. It is structurally excluded from tensor identity
+// (Phase-6 D-07), so a conditioning edit never stales the reused tensor.
+use envi_compute::readout::ConditioningDto;
 
 // --- Cost estimate + guardrail (SC1) --------------------------------------
 
@@ -393,6 +397,49 @@ pub struct RangeProgressDto {
     pub chunk_index: u32,
     /// Receivers written for this range.
     pub receivers: u32,
+}
+
+// --- recondition MAC request/result (SVC-06 / D-01, client-side 409) ---------
+
+/// `recondition` request (SVC-06 / D-01): the claimed tensor identity, the
+/// per-source conditioning drive, and the target receiver ids. Request-facing
+/// (`deny_unknown_fields`).
+///
+/// `tensor_hash` is the identity the client believes it is reconditioning; the
+/// boundary re-mints the CURRENT tensor identity and refuses a mismatch with a
+/// typed `HashMismatch` (D-12, the honest client-side 409). `per_source_conditioning`
+/// reuses [`ConditioningDto`] (never a forked shape) and must carry exactly one
+/// entry per tensor sub-source; `receiver_ids` are the TS-minted UUIDs of the
+/// chunk's receivers in receiver-major order (index = position), aligned 1:1 with
+/// [`ReconditionResult::spectra`].
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct ReconditionReq {
+    /// The tensor identity the client believes it is reconditioning (the 409 gate).
+    pub tensor_hash: String,
+    /// Per-source conditioning (gain/delay/filter/mute), one entry per sub-source.
+    pub per_source_conditioning: Vec<ConditioningDto>,
+    /// The chunk's receiver UUIDs in receiver-major order (index = tensor column).
+    pub receiver_ids: Vec<String>,
+}
+
+/// `recondition` result: per-receiver dense `[105]` band-index level spectra (dB),
+/// aligned 1:1 with the request's `receiver_ids`, plus a `stale` flag. Result-facing.
+///
+/// `stale` is ALWAYS `false` on this path: a hash mismatch is refused outright as a
+/// typed `HashMismatch` (D-12 honest state), never served as a stale-flagged
+/// readout, and conditioning is excluded from tensor identity (D-07) so a
+/// conditioning edit can never stale a matched tensor. The field documents that
+/// invariant on the wire.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct ReconditionResult {
+    /// One dense `[105]` band-index level spectrum (dB) per receiver, in
+    /// `receiver_ids` order.
+    pub spectra: Vec<Vec<f64>>,
+    /// Always `false` — a mismatched hash is refused, never served stale (D-12/D-07).
+    pub stale: bool,
 }
 
 #[cfg(test)]

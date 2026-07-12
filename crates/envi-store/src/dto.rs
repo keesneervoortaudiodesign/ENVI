@@ -42,6 +42,12 @@ pub use envi_compute::identity::{MetDto, ReceiverDto};
 pub use envi_compute::scene_dto::{
     AuthoredSpectrumDto, ForestParamsDto, GroundSegmentDto, IsolationSpectrumDto, TerrainProfileDto,
 };
+// The per-source conditioning readout DTO moved into `envi_compute::readout`
+// (Phase 11, 11-03) so the WASM recondition boundary can consume it without
+// dragging `std::fs`/`tempfile` into wasm. Re-exported here at its original path
+// so `envi_store::dto::ConditioningDto` stays source-compatible and keeps
+// generating into the committed `web/src/generated/wire.ts`.
+pub use envi_compute::readout::ConditioningDto;
 
 /// Dense per-band sound-power spectrum, keyed by band **INDEX** `0..=104` — never
 /// nominal Hz (the SVC-07 wire contract; the 1/12-octave axis is served once at
@@ -289,42 +295,6 @@ pub struct ProjectMetaDto {
     pub crs: CrsDto,
     /// Project settings.
     pub settings: SettingsDto,
-}
-
-/// Per-source conditioning: a **READOUT** parameter (gain/delay/filter/mute)
-/// applied at level readout via `envi_engine::tensor::compose_gain`.
-///
-/// It is structurally **excluded from tensor identity** (D-07): conditioning
-/// appears nowhere in `envi_engine::solver::SolveJob`, only at readout, so
-/// hashing it would make Tier-1 recondition requests self-invalidating. See
-/// [`crate::hash::tensor_hash`] — its signature cannot accept this type.
-/// Extensible via `#[serde(default)]`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export_to = "wire.ts")]
-pub struct ConditioningDto {
-    /// Broadband gain, dB (default 0.0).
-    #[serde(default)]
-    pub gain_db: f64,
-    /// Delay, milliseconds (default 0.0).
-    #[serde(default)]
-    pub delay_ms: f64,
-    /// Optional per-band filter, dB (dense [105] when present).
-    #[serde(default)]
-    pub filter_band_db: Option<Vec<f64>>,
-    /// Mute flag (default false).
-    #[serde(default)]
-    pub muted: bool,
-}
-
-impl Default for ConditioningDto {
-    fn default() -> Self {
-        Self {
-            gain_db: 0.0,
-            delay_ms: 0.0,
-            filter_band_db: None,
-            muted: false,
-        }
-    }
 }
 
 /// Reject any NaN/∞ component in a 3-vector before it reaches engine space.

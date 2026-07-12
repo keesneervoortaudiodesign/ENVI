@@ -121,19 +121,19 @@ pub fn is_cancel_requested() -> bool {
 // --- Marshalling helpers (the ONLY glue; no domain logic) -----------------
 
 /// Deserialize a JS value into a request DTO, mapping a shape error to `JsValue`.
-fn from_js<T: DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
+pub(crate) fn from_js<T: DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
     serde_wasm_bindgen::from_value(v).map_err(|e| js_err(&e.to_string()))
 }
 
 /// Serialize a result DTO back to a JS value (plain objects, not JS `Map`s — the
 /// TS import path reads result DTOs as plain objects).
-fn to_js<T: Serialize>(v: &T) -> Result<JsValue, JsValue> {
+pub(crate) fn to_js<T: Serialize>(v: &T) -> Result<JsValue, JsValue> {
     let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
     v.serialize(&serializer).map_err(|e| js_err(&e.to_string()))
 }
 
 /// Build a `JsValue` error carrying `msg` (an `Error` on the JS side).
-fn js_err(msg: &str) -> JsValue {
+pub(crate) fn js_err(msg: &str) -> JsValue {
     JsError::new(msg).into()
 }
 
@@ -159,10 +159,19 @@ pub enum ComputeError {
     /// `solve_chunk_range` was called before any scene was prepared (T-10-06-04).
     #[error("no prepared scene — call prepare_solve first")]
     NotPrepared,
-    /// The range's `tensor_hash` does not match the prepared scene's — never solve
-    /// a stale/mismatched scene (T-10-06-04).
-    #[error("tensor_hash mismatch — the prepared scene is for a different tensor")]
-    HashMismatch,
+    /// The request's `tensor_hash` does not match the current/prepared tensor
+    /// identity — never solve or read out a stale/mismatched tensor (T-10-06-04;
+    /// the client-side SVC-06 409, 11-03). The `{expected, got}` fields mirror the
+    /// server 409 body (`envi-service::api::calc`'s `tensor_hash_mismatch`
+    /// `{expected, got, hint}`) so the client realization of the honest state is
+    /// faithful (Open Q1 / D-12).
+    #[error("tensor_hash mismatch: expected {expected}, got {got}")]
+    HashMismatch {
+        /// The freshly re-minted (current) tensor identity.
+        expected: String,
+        /// The identity the request claimed to be operating on.
+        got: String,
+    },
     /// The requested receiver range `[r_offset, r_offset + len)` is not densely
     /// covered by the prepared scene's receivers (`local_receivers` selected fewer
     /// than `len`) — a malformed range that would otherwise slice out of bounds and
@@ -182,7 +191,7 @@ pub enum ComputeError {
 }
 
 /// Map a [`ComputeError`] to a `JsValue` error (mirrors `gis_err`).
-fn compute_err(e: &ComputeError) -> JsValue {
+pub(crate) fn compute_err(e: &ComputeError) -> JsValue {
     js_err(&e.to_string())
 }
 
@@ -331,7 +340,10 @@ fn run_chunk_range(req: &SolveChunkRangeReq) -> Result<RangeProgressDto, Compute
     let scene = guard.as_ref().ok_or(ComputeError::NotPrepared)?;
     // Never solve a stale/mismatched scene (T-10-06-04).
     if scene.tensor_hash() != req.tensor_hash {
-        return Err(ComputeError::HashMismatch);
+        return Err(ComputeError::HashMismatch {
+            expected: scene.tensor_hash().to_string(),
+            got: req.tensor_hash.clone(),
+        });
     }
 
     let r_offset = req.r_offset as usize;
@@ -501,7 +513,7 @@ mod tests {
         };
         assert!(matches!(
             run_chunk_range(&req_bad),
-            Err(ComputeError::HashMismatch)
+            Err(ComputeError::HashMismatch { .. })
         ));
 
         // Clean up so no other test observes a stale scene.

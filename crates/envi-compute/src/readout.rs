@@ -38,8 +38,52 @@ use envi_engine::tensor::{SinkError, compose_gain, readout_coherent, readout_inc
 use envi_engine::transfer::band_levels_db_two_channel;
 use ndarray::{Array3, ArrayView3, s};
 use num_complex::Complex;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::weighting::{a_weighting_db, c_weighting_db, weighted_total_db};
+
+/// Per-source conditioning: a **READOUT** parameter (gain/delay/filter/mute)
+/// applied at level readout via [`compose_gain`].
+///
+/// It is structurally **excluded from tensor identity** (D-07): conditioning
+/// appears nowhere in `envi_engine::solver::SolveJob`, only at readout, so
+/// hashing it would make Tier-1 recondition requests self-invalidating. See
+/// [`crate::identity::tensor_hash`] — its signature cannot accept this type.
+/// Extensible via `#[serde(default)]`.
+///
+/// Lives in `envi-compute` (not `envi-store`) so the WASM recondition boundary
+/// can consume it without dragging `std::fs`/`tempfile` into wasm — the same
+/// relocation discipline the Phase-10 `MetDto`/`ReceiverDto`/scene DTOs follow.
+/// Re-exported at `envi_store::dto::ConditioningDto` so that path stays
+/// source-compatible and keeps generating into the committed `wire.ts`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct ConditioningDto {
+    /// Broadband gain, dB (default 0.0).
+    #[serde(default)]
+    pub gain_db: f64,
+    /// Delay, milliseconds (default 0.0).
+    #[serde(default)]
+    pub delay_ms: f64,
+    /// Optional per-band filter, dB (dense [105] when present).
+    #[serde(default)]
+    pub filter_band_db: Option<Vec<f64>>,
+    /// Mute flag (default false).
+    #[serde(default)]
+    pub muted: bool,
+}
+
+impl Default for ConditioningDto {
+    fn default() -> Self {
+        Self {
+            gain_db: 0.0,
+            delay_ms: 0.0,
+            filter_band_db: None,
+            muted: false,
+        }
+    }
+}
 
 /// Per-sub-source readout conditioning (the WEB-05 gain/filter/delay param).
 ///
