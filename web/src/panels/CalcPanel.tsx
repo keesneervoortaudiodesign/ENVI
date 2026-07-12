@@ -22,18 +22,11 @@
 
 import { useEffect, useMemo, type ReactElement } from "react";
 
-import init, { plan_tiers, tensor_hash } from "../generated/wasm-compute/envi_compute_wasm";
-import type {
-  PlanTiersReq,
-  PrepareSolveReq,
-  ReceiverPlacementDto,
-  SubSourcePlacementDto,
-  TierKindDto,
-  TierPlanResult,
-} from "../generated/wire";
+import type { TierKindDto } from "../generated/wire";
 import type { CalcJobSpec } from "../compute/worker";
 import { CalcClient } from "../compute/client";
 import { estimateCost } from "../compute/cost";
+import { buildPrepareScene, deriveSceneInputs, plannedReceiverCount } from "../compute/marshalScene";
 import { useCalcStore, type CalcJobState } from "../store/calc";
 import { useSceneStore } from "../store/sceneStore";
 
@@ -47,76 +40,12 @@ const CAPABILITY_MESSAGE =
 // `estimate_cost`; this is only the ceiling passed in). 2 GiB is a generous working ceiling.
 const BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 
-// Receiver height + the corridor's first-receiver down-range x (SceneXY meters) for the marshalled scene.
-const RECEIVER_Z_M = 1.5;
-const CORRIDOR_X0_M = 100;
-
 // The three tier rows rendered in solve order (UI-SPEC §3). `points` may introduce zero receivers.
 const TIER_ROWS: readonly { readonly kind: TierKindDto; readonly index: number; readonly label: string }[] = [
   { kind: "points", index: 0, label: "Receiver points" },
   { kind: "coarse", index: 1, label: "Coarse grid" },
   { kind: "fine", index: 2, label: "Fine grid" },
 ];
-
-// Init the (threaded) compute wasm module once on the main thread — only `plan_tiers` (a pure fn) is called
-// here; the rayon pool is the worker's job. Idempotent: wasm-bindgen caches the instance.
-let computeReady: Promise<void> | null = null;
-function ensureCompute(): Promise<void> {
-  computeReady ??= init().then(() => undefined);
-  return computeReady;
-}
-
-// Projected polygon area (m²) via a local equirectangular shoelace around the ring's mean latitude. The ring
-// is WGS84 `[lng, lat]`; a valid enough metric for the receiver-count + cost estimate (Phase-11 replaces it
-// with the CRS-exact footprint). Handles an open or closed ring.
-function polygonAreaM2(ring: readonly (readonly number[])[]): number {
-  if (ring.length < 3) {
-    return 0;
-  }
-  const latMean = ring.reduce((s, p) => s + p[1], 0) / ring.length;
-  const mPerDegLat = 110540;
-  const mPerDegLon = 111320 * Math.cos((latMean * Math.PI) / 180);
-  let acc = 0;
-  for (let i = 0; i < ring.length; i += 1) {
-    const a = ring[i];
-    const b = ring[(i + 1) % ring.length];
-    acc += a[0] * mPerDegLon * (b[1] * mPerDegLat) - b[0] * mPerDegLon * (a[1] * mPerDegLat);
-  }
-  return Math.abs(acc) / 2;
-}
-
-// The drawn-scene inputs the panel derives its estimate + spec from: the calc-area footprint (m²), the
-// source count, and the calc-area ring (null when absent).
-interface SceneInputs {
-  readonly areaM2: number;
-  readonly sourceCount: number;
-  readonly hasCalcArea: boolean;
-}
-
-function deriveSceneInputs(
-  features: Readonly<Record<string, unknown>>,
-  kindOf: (id: string) => string | null,
-): SceneInputs {
-  let areaM2 = 0;
-  let hasCalcArea = false;
-  let sourceCount = 0;
-  for (const id of Object.keys(features)) {
-    const kind = kindOf(id);
-    if (kind === "source") {
-      sourceCount += 1;
-    } else if (kind === "calc_area") {
-      const geometry = (features[id] as { geometry?: { type?: string; coordinates?: unknown } }).geometry;
-      if (geometry?.type === "Polygon" && Array.isArray(geometry.coordinates)) {
-        const ring = geometry.coordinates[0];
-        if (Array.isArray(ring)) {
-          hasCalcArea = true;
-          areaM2 = Math.max(areaM2, polygonAreaM2(ring as number[][]));
-        }
-      }
-    }
-  }
-  return { areaM2, sourceCount, hasCalcArea };
-}
 
 // The chip severity word for the overall job state (mirrors ImportPanel/WeatherPanel `statusSeverity`).
 function statusSeverity(state: CalcJobState): "" | "ok" | "warn" | "crit" | "off" {
@@ -187,110 +116,22 @@ function formatTime(ms: number): string {
   return `${Math.round(ms)} ms`;
 }
 
-// The square-lattice `plan_tiers` request that BOTH the pre-run cost estimate and the
-// submitted job derive from — a single source for the receiver set so the estimate
-// matches the grid actually solved (WR-04). Side = sqrt(area) (the marshalled
-// corridor's square footprint).
-function buildPlanReq(spacingM: number, coarseMultiples: readonly number[], areaM2: number): PlanTiersReq {
-  const side = Math.max(1, Math.sqrt(areaM2));
-  return {
-    fine_spacing_m: spacingM,
-    lattice_origin: [0, 0],
-    area_min: [0, 0],
-    area_max: [side, side],
-    discrete_points: [],
-    coarse_multiples: [...coarseMultiples],
-  };
-}
-
-// The receiver count the ACTUAL job will solve — the union of the tier plan's tiers
-// (coarse ⊂ fine, so the total is the full unique lattice, invariant to the coarse
-// split, D-05). Used by the cost estimate so its receiver/tensor/time numbers match
-// the solved grid rather than the `floor(area/spacing²)` approximation (WR-04).
-async function plannedReceiverCount(
-  spacingM: number,
-  coarseMultiples: readonly number[],
-  areaM2: number,
-): Promise<number> {
-  await ensureCompute();
-  const plan = plan_tiers(buildPlanReq(spacingM, coarseMultiples, areaM2)) as TierPlanResult;
-  return plan.tiers.reduce((n, t) => n + t.receivers.length, 0);
-}
-
-// Marshal a valid flat-ground `CalcJobSpec` from the drawn scene + the wasm tier plan (see the module header
-// "Scene marshalling boundary"). Returns null when the scene is incomplete.
+// Marshal a valid flat-ground `CalcJobSpec` from the drawn scene + the wasm tier plan. The scene
+// marshalling + blake3 identity live in `compute/marshalScene` (the SINGLE source of truth shared
+// with the 11-07 results-stale re-mint); this only gates on an open project and packages the
+// worker's chunk size. Returns null when the scene is incomplete.
 async function buildJobSpec(spacingM: number, coarseMultiples: readonly number[]): Promise<CalcJobSpec | null> {
-  const scene = useSceneStore.getState();
-  const projectId = scene.projectId;
+  const projectId = useSceneStore.getState().projectId;
   if (!projectId) {
     return null;
   }
-  const inputs = deriveSceneInputs(scene.features, (id) => scene.kindOf(id));
-  if (!inputs.hasCalcArea || inputs.sourceCount < 1 || inputs.areaM2 <= 0) {
+  const marshalled = await buildPrepareScene(spacingM, coarseMultiples);
+  if (!marshalled) {
     return null;
   }
-
-  const planReq = buildPlanReq(spacingM, coarseMultiples, inputs.areaM2);
-
-  await ensureCompute();
-  const plan = plan_tiers(planReq) as TierPlanResult;
-
-  // The union of the tiers' receivers, keyed by global index (contiguous 0..N-1 in emission order). Each
-  // global index gets a TS-minted UUID (the wasm mints none) and a valid down-range placement.
-  const total = plan.tiers.reduce((n, t) => n + t.receivers.length, 0);
-  const receivers: ReceiverPlacementDto[] = [];
-  const receiverIds: string[] = new Array<string>(total);
-  for (const tier of plan.tiers) {
-    for (const r of tier.receivers) {
-      receivers.push({ global_index: r.global_index, position: [CORRIDOR_X0_M + r.global_index, 0, RECEIVER_Z_M] });
-      receiverIds[r.global_index] = crypto.randomUUID();
-    }
-  }
-  for (let i = 0; i < total; i += 1) {
-    receiverIds[i] ??= crypto.randomUUID();
-  }
-
-  const nSub = inputs.sourceCount;
-  const subSources: SubSourcePlacementDto[] = Array.from(
-    { length: nSub },
-    (_v, i): SubSourcePlacementDto => ({ position: [2.5, 0, 0.5 + 0.3 * i], directivity: null }),
-  );
-
-  const xMax = Math.max(400, CORRIDOR_X0_M + total + 10);
-  const prepareScene: PrepareSolveReq = {
-    // Placeholder — replaced below by the TRUE blake3 tensor identity. The Rust
-    // hasher EXCLUDES this field, so the placeholder does not affect the digest.
-    tensor_hash: "",
-    n_sub: nSub,
-    terrain: {
-      points: [
-        [2.5, 0],
-        [xMax, 0],
-      ],
-      segments: [{ flow_resistivity: 200, roughness: 0 }],
-    },
-    atmosphere: { temperature_c: 15, humidity_pct: 70, pressure_kpa: 101.325 },
-    coherence: { cv2: 0, ct2: 0, t_air_c: 15, c0: 340.348, roughness_r: 0, f_delta_nu: 1, d_m: 97.5 },
-    weather: null,
-    sub_sources: subSources,
-    receivers,
-    forest: null,
-    forest_path_length_m: null,
-    isolation: null,
-  };
-
-  // Derive the OPFS/manifest key from the REAL tensor identity (HI-01 / D-09): the
-  // blake3 digest the wasm boundary computes over every tensor-affecting field of the
-  // marshalled scene (terrain, atmosphere, coherence, weather, sub-sources, receiver
-  // positions, forest, isolation, n_sub). This is the single source of truth for the
-  // key — the client no longer invents its own hash, so two distinct scenes cannot
-  // collide onto the same `calc/<hash>/` directory. The wasm module is already
-  // initialised (ensureCompute above).
-  const tensorHash = tensor_hash(prepareScene);
-  prepareScene.tensor_hash = tensorHash;
-
+  const { scene, receiverIds, nSub, planReq } = marshalled;
   const chunkReceivers = 32;
-  return { projectId, tensorHash, planReq, scene: prepareScene, receiverIds, nSub, chunkReceivers };
+  return { projectId, tensorHash: scene.tensor_hash, planReq, scene, receiverIds, nSub, chunkReceivers };
 }
 
 // One per-tier row body: the label, a state-word chip (status conveyed by text, not colour alone), and the
