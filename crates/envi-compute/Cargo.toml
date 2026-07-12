@@ -27,6 +27,16 @@ num-complex = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 geojson = "1"
+# geo (WEB-06/GRID-04): the hand-rolled interpolated marching-squares iso-band
+# tracer (`isoband.rs`) reuses the `envi-gis/landcover.rs` machinery — signed-area
+# ring classification, `Simplify` (Douglas–Peucker), `Contains` containment
+# nesting, `BooleanOps::difference` for the annular band partition, and the
+# `Relate` non-crossing property test. `geo` is already a workspace dependency
+# (envi-gis pins the same 0.30) and is a pure-Rust georust crate — WASM-safe, no
+# new-to-the-repo crate, and the engine's 3-dep quarantine is untouched (the edge
+# never reaches envi-engine; verify `cargo tree -p envi-engine`). The two
+# `contour*` crates stay DECLINED (SUS; RESEARCH Package Legitimacy) — hand-rolled.
+geo = "0.30"
 # serde-only (NOT `v4`): the identity closure parses/compares/serializes uuids
 # but NEVER generates them — ids are minted in TS via `crypto.randomUUID()`
 # (10-RESEARCH Pitfall 9). Enabling `v4` would pull `getrandom` and break the

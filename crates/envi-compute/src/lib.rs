@@ -45,6 +45,7 @@ pub mod cost;
 pub mod grid;
 pub mod identity;
 pub mod interpolate;
+pub mod isoband;
 pub mod job_assembly;
 pub mod readout;
 pub mod scene_dto;
