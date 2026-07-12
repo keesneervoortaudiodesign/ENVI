@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 11
 current_phase_name: results-fast-recalc
 status: executing
-stopped_at: Completed 11-07-PLAN.md
-last_updated: "2026-07-12T14:53:14Z"
+stopped_at: Completed 11-08-PLAN.md
+last_updated: "2026-07-12T15:33:32.333Z"
 last_activity: 2026-07-12
-last_activity_desc: "11-07 interactive conditioning fast-recalc (WEB-05/SVC-06) complete: per-source Gain/Delay + reused SpectrumEditor Filter (D-11) drives a ~150 ms debounced recondition MAC (D-10) over the cached tensor — spectra + isophone map update live with NO re-propagation (calc idle, map re-contours the cached grid SC3); the D-12 results-stale badge appears the moment the re-minted blake3 identity diverges (conditioning never stales, D-07); a mismatched-hash MAC is refused with the honest 409 reject banner (SVC-06), never silently served; offline Playwright UAT on the real bundle + real WASM MAC green"
+last_activity_desc: "11-07 interactive conditioning fast-recalc (WEB-05/SVC-06): per-source Gain/Delay + reused SpectrumEditor Filter (D-11) drives a ~150 ms debounced recondition MAC (D-10) over the cached tensor — spectra + isophone map update live with NO re-propagation (calc idle, map re-contours the cached grid SC3); the D-12 stale badge appears on identity divergence (conditioning never stales, D-07); a mismatched-hash MAC is refused with the honest 409 reject banner (SVC-06); offline Playwright UAT on the real bundle + real WASM MAC green"
 progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 64
-  completed_plans: 60
+  completed_plans: 61
   percent: 91
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 11 (results-fast-recalc) — EXECUTING
-Plan: 7 of 11 complete
-Status: Executing Phase 11 — waves 1–3 complete + wave 4 in progress: 11-06 (isophone fill layer + colour-scale editor) + 11-07 (conditioning fast-recalc, WEB-05/SVC-06) complete. Wave 4 remaining: 11-09 export UI
+Plan: 8 of 11 complete
+Status: Ready to execute
 Last activity: 2026-07-12 — 11-07 interactive conditioning fast-recalc (WEB-05/SVC-06): per-source Gain/Delay + reused SpectrumEditor Filter (D-11) drives a ~150 ms debounced recondition MAC (D-10) over the cached tensor — spectra + isophone map update live with NO re-propagation (calc idle, map re-contours the cached grid SC3); the D-12 stale badge appears on identity divergence (conditioning never stales, D-07); a mismatched-hash MAC is refused with the honest 409 reject banner (SVC-06); offline Playwright UAT on the real bundle + real WASM MAC green
 
 Progress: [██████████] Phase 10 — 6/6 plans complete (10-01 compute core · 10-02 COOP/COEP · 10-03 wasm boundary+OPFS sink · 10-04 pool+worker · 10-05 CalcPanel+Playwright · 10-06 real solve seam closed)
@@ -108,6 +108,7 @@ Progress: [██████████] Phase 10 — 6/6 plans complete (10-0
 | Phase 11 P04 | ~40min | 2 tasks | 12 files |
 | Phase 11 P06 | 18 min | 3 tasks | 14 files |
 | Phase 11 P07 | 17 min | 3 tasks | 12 files |
+| Phase 11 P08 | 28 | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -194,6 +195,8 @@ Recent decisions affecting current work:
 - [Phase 11, 11-03] SVC-06 recondition MAC realized CLIENT-SIDE (D-01/Open Q1): `envi_compute_wasm::recondition` re-mints `marshalled_tensor_hash` from the CURRENT scene, refuses a mismatched claimed hash with a typed `ComputeError::HashMismatch { expected, got }` (mirrors the server 409 body) BEFORE any MAC — the honest client 409, never a silently-served stale readout (D-12). On a match it maps each `ConditioningDto` → (`L_W` = gain_db, complex filter = 10^{dB/20}, delay_s) and drives the FORCE-validated 11-01 `readout_receiver` (compose_gain + readout_coherent) over the OPFS-read tensor — reconditioned spectra with NO re-propagation. Law derived from composition (Open Q2): a default (no-op) conditioning reads out identically to the plain 11-01 readout, so conditioning-excluded-from-identity (D-07) means a conditioning edit never stales. `ConditioningDto` MOVED envi-store→envi-compute::readout (re-exported, wire.ts byte-stable) so the wasm boundary reuses it without dragging std::fs into wasm; `ReconditionReq`/`ReconditionResult` ts-rs-generated (no-drift green). MAC ≡ recompute bit-exact (f64::to_bits). Engine 3-dep quarantine untouched.
 - [Phase 11]: trace_isophones live WASM boundary re-contours the cached grid (no re-solve, SC3); single breaks[]/colors[] source of truth drives tracer+fill+legend (legend ≡ contour ≡ class, D-02/D-04)
 - [Phase 11, 11-07] WEB-05/SVC-06 conditioning fast-recalc SHIPPED (SC2): a per-source Gain(dB)+Delay(ms)+reused-SpectrumEditor Filter (D-11) drives a ~150 ms DEBOUNCED (D-10) readout_receivers MAC over the cached OPFS tensor — the receiver spectrum AND the isophone map update live with NO re-propagation (the calc job never leaves idle; the map RE-CONTOURS the reconditioned grid, SC3). D-01 held with ZERO TS acoustic math (grep gate 0): the dB→complex filter, readout law, and blake3 identity all run in WASM; the dense [105] filter is materialised SERVER-side through the reused SpectrumEditor's own interpolation. Two honest states: store/stale.ts re-mints the tensor identity of the CURRENT scene (shared compute/marshalScene marshaller, extracted from CalcPanel — single source of truth) and flips the D-12 ".chip.warn Out of date" badge on divergence; the watcher keys on the manifest tensorHash so a conditioning recalc (swaps the drive, keeps the hash) NEVER re-mints → conditioning never stales (D-07, enforced structurally). A MAC against a mismatched hash THROWS `tensor_hash mismatch` → the store sets `refuse` → the honest 409 reject banner, never a silently-served stale readout (the SVC-06 client realization). Isophone map link = re-feed setIsophoneInput with the WASM-produced per-lattice total_dba (placed by index only); the production fine-tier lattice feed stays the documented 11-05/06 follow-up. Zero Rust/wire/Cargo changes. Offline Playwright UAT on the real bundle + real WASM MAC green.
+- [Phase ?]: 11-08: friendly what-if knobs reuse the single-source envi_gis::weather Route-2 derivation; no forked met math
+- [Phase ?]: 11-08: A-B difference computed in WASM (difference_dba in stable envi-gis-wasm); TS zero acoustic arithmetic (D-01)
 
 ### Pending Todos
 
@@ -223,6 +226,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-12T14:53:14Z
-Stopped at: Completed 11-07-PLAN.md — interactive conditioning fast-recalc (WEB-05/SVC-06): per-source Gain/Delay + reused SpectrumEditor Filter (D-11) drives a ~150 ms debounced recondition MAC (D-10) over the cached tensor (spectra + isophone map live, no re-propagation); D-12 stale badge on identity divergence (conditioning never stales, D-07); honest 409 reject banner on a mismatched-hash MAC (SVC-06)
-Resume file: None (wave 4 continuing — 11-09 export UI menu; then wave 5 — 11-08 scenarios)
+Last session: 2026-07-12T15:33:32.090Z
+Stopped at: Completed 11-08-PLAN.md
+Resume file: None

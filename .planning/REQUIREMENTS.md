@@ -91,8 +91,8 @@
 
 - [x] **METX-01**: Import runtime meteorology from Open-Meteo (multi-level winds/temps, cloud, BLH), cached per (site, window); what-if edits never call the API
 - [x] **METX-02**: Import ERA5/CDS reanalysis to derive wind×stability weather-class occurrence statistics (Obukhov length) — groundwork; full L_den statistics deferred (see GRID-03)
-- [ ] **METX-03**: **Manually override** meteorology for a scenario — T/RH/p, Beaufort wind class + direction, downwind worst-case toggle, temperature gradient, per-azimuth A/B/C — for what-if analysis
-- [ ] **METX-04**: **Named weather scenarios** with per-scenario cached tensors, instant switching, and difference maps between scenarios
+- [x] **METX-03**: **Manually override** meteorology for a scenario — T/RH/p, Beaufort wind class + direction, downwind worst-case toggle, temperature gradient, per-azimuth A/B/C — for what-if analysis
+- [x] **METX-04**: **Named weather scenarios** with per-scenario cached tensors, instant switching, and difference maps between scenarios
 
 ### Receiver grid & output (GRID)
 
@@ -114,7 +114,7 @@
 - [x] **WEB-09**: Assign **per-façade isolation spectra** on a semi-transparent building (SCN-02)
 - [x] **WEB-10**: **Isolation-spectrum editor** — enter 1/12-octave directly, or 1/1- / 1/3-octave with linear interpolation to the 1/12-octave grid (SCN-03)
 - [x] **WEB-11**: **Receiver-point spectrum readout** — per-band (1/12-oct expert + 1/3-oct display aggregated by band index), dB(A)/dB(C) totals, coherent/incoherent split, instant dB(A)⇄dB(C) toggle without recompute
-- [ ] **WEB-12**: Weather what-if panel — import, manual override, named-scenario management and difference-map view (METX-03/04)
+- [x] **WEB-12**: Weather what-if panel — import, manual override, named-scenario management and difference-map view (METX-03/04)
 
 ### Service & persistence (SVC)
 
@@ -210,8 +210,8 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | GEOX-04 | Phase 6 | Complete |
 | METX-01 | Phase 9 | Complete |
 | METX-02 | Phase 9 | Complete |
-| METX-03 | Phase 11 | Pending |
-| METX-04 | Phase 11 | Pending |
+| METX-03 | Phase 11 | Complete |
+| METX-04 | Phase 11 | Complete |
 | GRID-01 | Phase 9 | Complete |
 | GRID-02 | Phase 10 | Complete |
 | GRID-04 | Phase 11 | Complete |
@@ -227,7 +227,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | WEB-09 | Phase 7 | Complete |
 | WEB-10 | Phase 7 | Complete |
 | WEB-11 | Phase 11 | Complete |
-| WEB-12 | Phase 11 | Pending |
+| WEB-12 | Phase 11 | Complete |
 | SVC-01 | Phase 6 | Complete |
 | SVC-02 | Phase 10 | Complete |
 | SVC-03 | Phase 6 | Complete |
