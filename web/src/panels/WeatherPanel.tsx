@@ -149,7 +149,9 @@ export function WeatherPanel(): ReactElement {
             className="field-input"
             value={hour}
             data-testid="weather-hour"
-            onChange={(e) => setHour(Number(e.target.value))}
+            // Clamp in the handler (IN-03): `min`/`max` are HTML hints only — a typed 99
+            // or an empty (NaN) value must not reach the Open-Meteo lookup out of range.
+            onChange={(e) => setHour(Math.min(23, Math.max(0, Math.round(Number(e.target.value) || 0))))}
           />
         </label>
         <label className="field-label">

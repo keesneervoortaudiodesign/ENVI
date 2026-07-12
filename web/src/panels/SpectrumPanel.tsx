@@ -45,6 +45,17 @@ const PAD_R = 10;
 const PAD_T = 10;
 const PAD_B = 22;
 
+// Reduce-based min/max — layout bounds only, NOT acoustic math (D-01). Used instead of
+// `Math.min/max(...spread)` so a large receiver/band list cannot blow the call stack
+// (IN-02: the receiver picker lists only the small receiver tier today, but the reduce
+// keeps it safe if it ever receives a fine-grid-sized list). Empty input → 0.
+function minOf(xs: readonly number[]): number {
+  return xs.length === 0 ? 0 : xs.reduce((m, x) => (x < m ? x : m), xs[0]);
+}
+function maxOf(xs: readonly number[]): number {
+  return xs.length === 0 ? 0 : xs.reduce((m, x) => (x > m ? x : m), xs[0]);
+}
+
 // The band indices shown for a display mode: 1/3-oct = the 27 third-octave centre
 // indices (0, 4, …, 104); 1/12-oct = every band. Pure band-index selection.
 function displayIndices(mode: DisplayMode, thirdIndices: number[]): number[] {
@@ -215,10 +226,10 @@ function ReceiverPicker({
   }
   const xs = receivers.map((r) => r.position[0]);
   const ys = receivers.map((r) => r.position[1]);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
+  const minX = minOf(xs);
+  const maxX = maxOf(xs);
+  const minY = minOf(ys);
+  const maxY = maxOf(ys);
   const spanX = maxX - minX || 1;
   const spanY = maxY - minY || 1;
   const MAP_W = 220;
@@ -249,7 +260,19 @@ function ReceiverPicker({
             strokeWidth={selectedId === r.id ? 3 : 0}
             strokeOpacity={0.35}
             style={{ cursor: "pointer" }}
+            // Keyboard-operable equal input path (IN-01 / D-23): the marker is a real
+            // button — focusable and Enter/Space activatable, not mouse-only.
+            role="button"
+            tabIndex={0}
+            aria-label={`Receiver R${r.globalIndex}`}
+            aria-pressed={selectedId === r.id}
             onClick={() => onSelect(r.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onSelect(r.id);
+              }
+            }}
           />
         ))}
       </svg>
@@ -305,8 +328,8 @@ function SpectrumView({
     ? indices.flatMap((i) => [readout.coherent_db[i] ?? 0, readout.incoherent_db[i] ?? 0])
     : [];
   const allVals = [...shown, ...splitVals];
-  const dataMax = allVals.length > 0 ? Math.max(...allVals) : 10;
-  const dataMin = allVals.length > 0 ? Math.min(...allVals) : 0;
+  const dataMax = allVals.length > 0 ? maxOf(allVals) : 10;
+  const dataMin = allVals.length > 0 ? minOf(allVals) : 0;
   const yTop = Math.ceil(dataMax / 10) * 10;
   const yBottom = Math.min(0, Math.floor(dataMin / 10) * 10);
 
