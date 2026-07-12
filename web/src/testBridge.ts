@@ -30,6 +30,17 @@ import { createWasmIdentityClient, useStaleStore } from "./store/stale";
 import { useCalcStore, type CalcJobState } from "./store/calc";
 import { useColorScaleStore, type LevelGridInput } from "./store/colorScale";
 import { isophoneTelemetry } from "./map/isophoneLayer";
+import { differenceTelemetry } from "./map/differenceLayer";
+import {
+  createWasmDifferenceClient,
+  useDifferenceStore,
+} from "./store/difference";
+import {
+  beaufortToMs,
+  useScenarioStore,
+  type ScenarioComputeClient,
+  type ScenarioSolveResult,
+} from "./store/scenarios";
 import type { ConditioningDto, ExportCrsDto } from "./generated/wire";
 import type { GroundZoneOutcome } from "./validate/groundZone";
 import type { AuthoredSpectrumDto, BboxDto, PrepareSolveReq } from "./generated/wire";
@@ -125,6 +136,65 @@ function buildConditioningFixtureBytes(
     }
   }
   return { tensor, pincoh };
+}
+
+// The square lattice side the seeded scenarios' fixture readouts map onto (a 24×24
+// grid near the UTM 31N central meridian, so the SceneXY→LonLat reprojection lands in
+// the Netherlands — the SAME lattice the isophone UAT seeds).
+const SCENARIO_SIDE = 24;
+
+// A seeded scenario compute client for the 11-08 offline UAT: the friendly A/B/C
+// DERIVATION runs the REAL WASM (`derive_weather_friendly`, so the friendly routing is
+// genuinely exercised offline), and the full-solve is a deterministic FIXTURE readout
+// (a per-scenario tensor hash + a spatial dB(A) ramp whose amplitude scales with the
+// scenario's warmth) — the SAME fixture-seeding the results/conditioning UATs use for
+// the OPFS tensor, so a Compare produces a genuinely diverging A − B field.
+async function seededScenarioClient(): Promise<ScenarioComputeClient> {
+  const { deriveWeatherFriendly } = await import("./import/wasm");
+  return {
+    async derive(met, azimuths) {
+      return deriveWeatherFriendly({
+        temperature_c: met.temperature_c,
+        temp_gradient_c_per_m: met.tempGradientCPerM,
+        wind_speed_ms: beaufortToMs(met.beaufort),
+        wind_from_deg: met.windFromDeg,
+        z0: met.z0,
+        downwind_worst_case: met.downwindWorstCase,
+        path_azimuths_deg: [...azimuths],
+        raw_override:
+          met.mode === "advanced" && met.raw
+            ? { a: met.raw.a, b: met.raw.b, c: met.raw.c, z0: met.raw.z0 }
+            : null,
+      });
+    },
+    async solve(scenario): Promise<ScenarioSolveResult> {
+      const side = SCENARIO_SIDE;
+      const n = side * side;
+      // The fixture readout: a spatial dB(A) ramp whose amplitude scales with the
+      // scenario's warmth (the base scenario, 15 °C, is flat 65 dB(A); a warmer
+      // scenario ramps ±amp about 65). Two different scenarios thus differ spatially,
+      // so their A − B delta spans negative→positive (a genuinely diverging map).
+      const amp = scenario.met.temperature_c - 15;
+      const totalsDba = Array.from(
+        { length: n },
+        (_, i) => 65 + amp * (i / (n - 1) - 0.5) * 2,
+      );
+      const grid = {
+        rows: side,
+        cols: side,
+        origin: [500_000, 5_800_000] as [number, number],
+        spacing_m: 10,
+        values: totalsDba,
+      };
+      const crs = { utm_zone: 31, south: false };
+      // The per-scenario tensor identity (the OPFS calc/<hash>/ key): distinct met ⇒
+      // distinct hash, so clone-then-edit yields its own cached tensor.
+      const hash =
+        `scenario-${scenario.met.temperature_c}-${scenario.met.beaufort}-` +
+        `${scenario.met.windFromDeg}-${scenario.met.downwindWorstCase}`;
+      return { tensorHash: hash, totalsDba, grid, crs };
+    },
+  };
 }
 
 // A JSON-safe per-layer import status snapshot (the 08-08 offline E2E asserts on these).
@@ -275,6 +345,27 @@ export interface EnviTestBridge {
   // The calc job lifecycle state — asserted `idle` to prove a conditioning recalc runs the
   // tensor MAC with NO propagation re-run (no solve-worker submit).
   calcJobState(): CalcJobState;
+
+  // --- Weather scenarios + difference map (WEB-12/METX-03/04 offline UAT, 11-08) ---
+  // Reset the scenario registry and attach the seeded compute client (REAL WASM friendly
+  // derivation + a fixture full-solve readout) and the REAL WASM difference client, so the
+  // panel's New/Compute/Switch/Compare flow runs offline against real WASM. Opens a test
+  // project if none is open.
+  seedScenarios(): Promise<void>;
+  // A JSON-safe snapshot of the scenario registry (the panel drives clone/compute/switch).
+  scenarioState(): {
+    scenarios: { id: string; name: string; computed: boolean }[];
+    activeId: string | null;
+    compareA: string | null;
+    compareB: string | null;
+    computeEpoch: number;
+    switchEpoch: number;
+  };
+  // A JSON-safe snapshot of the difference-map state (asserted on Compare).
+  differenceState(): { hasDelta: boolean; epoch: number; labelA: string; labelB: string };
+  // The difference-layer telemetry (trace/feature counts, paint type, neutral-midpoint
+  // colour) for the diverging-map assertions (gray-at-0, fill-not-raster).
+  differenceTelemetry(): ReturnType<typeof differenceTelemetry>;
 }
 
 export function installTestBridge(): void {
@@ -561,6 +652,44 @@ export function installTestBridge(): void {
     },
     calcJobState() {
       return useCalcStore.getState().jobState;
+    },
+    async seedScenarios() {
+      let projectId = useSceneStore.getState().projectId;
+      if (!projectId) {
+        projectId = "scenario-uat-project";
+        useSceneStore.getState().setProject(projectId, "Scenario UAT");
+      }
+      useScenarioStore.getState().reset();
+      const client = await seededScenarioClient();
+      useScenarioStore.getState().attachClient(client);
+      useDifferenceStore.getState().attachClient(createWasmDifferenceClient());
+    },
+    scenarioState() {
+      const s = useScenarioStore.getState();
+      return {
+        scenarios: s.scenarios.map((sc) => ({
+          id: sc.id,
+          name: sc.name,
+          computed: sc.computed,
+        })),
+        activeId: s.activeId,
+        compareA: s.compareA,
+        compareB: s.compareB,
+        computeEpoch: s.computeEpoch,
+        switchEpoch: s.switchEpoch,
+      };
+    },
+    differenceState() {
+      const s = useDifferenceStore.getState();
+      return {
+        hasDelta: s.delta !== null,
+        epoch: s.epoch,
+        labelA: s.labelA,
+        labelB: s.labelB,
+      };
+    },
+    differenceTelemetry() {
+      return differenceTelemetry();
     },
   };
   (window as unknown as { __enviTest?: EnviTestBridge }).__enviTest = bridge;
