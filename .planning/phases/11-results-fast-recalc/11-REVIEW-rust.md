@@ -268,3 +268,28 @@ encoding.
 _Reviewed: 2026-07-12_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
+
+---
+
+## Fix pass outcome (2026-07-12)
+
+All Critical + Warning + the four Info findings were fixed. Gates re-run green
+after the changes: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+`cargo test` (workspace, all pass incl. new tests + `wire_no_drift`), and
+`cargo tree -p envi-engine` unchanged (`ndarray + num-complex + thiserror`). No
+`envi-engine` edits; the two-channel contract, band-index comparison, and ts-rs
+no-drift are preserved (no TS-exported DTO changed — `ConditioningDto`/`ExportCrsDto`
+are byte-identical on the wire).
+
+| ID | Outcome | Notes |
+|----|---------|-------|
+| CR-01 | **fixed** | Added a first-class `muted: bool` to the engine `Conditioning`; `default_law` now skips muted sub-sources so a mute is law-neutral (chooses coherent/incoherent by the surviving sources' composition, not by a filter vector's presence). `to_engine` threads `muted`. New ≥2-plain-sub-source regression test (one muted, with a stale delay) asserts the readout stays incoherent — the gap the bundled test missed. Still drives the engine laws (no bespoke dB/MAC). |
+| WR-01 | **fixed** | Primary combined `band_levels_db` now floored through the same `floor_levels` clamp; all-silent/all-muted receiver emits `SILENCE_FLOOR_DB` and finite dB(A)/dB(C) totals. Added all-silent + muted-gain tests. |
+| WR-02 | **fixed** | New `csv_field`: RFC-4180 quoting (comma/quote/CR/LF → wrap + double internal quotes) + formula-injection guard (leading `= + - @`/tab/CR → `'` prefix) applied to receiver labels; numeric columns left bare (parseable). Footer free-text (`csv_comment_lines` + `one_line`) has CR/LF collapsed so a newline can't break out of the `#` comment block / ImageDescription. Tests added. |
+| WR-03 | **fixed** | `validated_zone` rejects UTM zones outside `1..=60` with a typed `ComputeError::Export` before the `as u8` cast; the stamped EPSG is derived from the same validated `u8` used to build `ProjectCrs` (metadata ⇄ reprojection can no longer disagree). Applied to all export arms + the live tracer; test added. |
+| IN-01 | **fixed** | Extracted the duplicated hash-gate/validate/`to_engine`/readout loop into `gated_readout` returning `Vec<ReceiverReadout>`; both public entries project it. |
+| IN-02 | **fixed** | Raw-override z₀ now clamps through `envi_engine::…::profile::Z0_MIN_M` instead of the magic `0.001`. |
+| IN-03 | **fixed** | `encode_geotiff` returns `Result<_, EpsgOverflow>`; an EPSG > `u16::MAX` errors instead of silently stamping the undefined CRS 0. (WR-03 already guarantees a valid UTM EPSG upstream, so this is defense-in-depth.) Test added. |
+| IN-04 | **fixed** | `encode_isophone_geojson` returns `Result<_, GeoJsonEncodeError>`; serialization failures propagate (no silent empty FeatureCollection) and non-finite ring vertices are rejected up front (no invalid `null` positions). Test added. |
+
+_Fixed: 2026-07-12 — Claude (gsd-code-fixer)_
