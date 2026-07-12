@@ -187,6 +187,36 @@ function formatTime(ms: number): string {
   return `${Math.round(ms)} ms`;
 }
 
+// The square-lattice `plan_tiers` request that BOTH the pre-run cost estimate and the
+// submitted job derive from — a single source for the receiver set so the estimate
+// matches the grid actually solved (WR-04). Side = sqrt(area) (the marshalled
+// corridor's square footprint).
+function buildPlanReq(spacingM: number, coarseMultiples: readonly number[], areaM2: number): PlanTiersReq {
+  const side = Math.max(1, Math.sqrt(areaM2));
+  return {
+    fine_spacing_m: spacingM,
+    lattice_origin: [0, 0],
+    area_min: [0, 0],
+    area_max: [side, side],
+    discrete_points: [],
+    coarse_multiples: [...coarseMultiples],
+  };
+}
+
+// The receiver count the ACTUAL job will solve — the union of the tier plan's tiers
+// (coarse ⊂ fine, so the total is the full unique lattice, invariant to the coarse
+// split, D-05). Used by the cost estimate so its receiver/tensor/time numbers match
+// the solved grid rather than the `floor(area/spacing²)` approximation (WR-04).
+async function plannedReceiverCount(
+  spacingM: number,
+  coarseMultiples: readonly number[],
+  areaM2: number,
+): Promise<number> {
+  await ensureCompute();
+  const plan = plan_tiers(buildPlanReq(spacingM, coarseMultiples, areaM2)) as TierPlanResult;
+  return plan.tiers.reduce((n, t) => n + t.receivers.length, 0);
+}
+
 // Marshal a valid flat-ground `CalcJobSpec` from the drawn scene + the wasm tier plan (see the module header
 // "Scene marshalling boundary"). Returns null when the scene is incomplete.
 async function buildJobSpec(spacingM: number, coarseMultiples: readonly number[]): Promise<CalcJobSpec | null> {
@@ -200,15 +230,7 @@ async function buildJobSpec(spacingM: number, coarseMultiples: readonly number[]
     return null;
   }
 
-  const side = Math.max(1, Math.sqrt(inputs.areaM2));
-  const planReq: PlanTiersReq = {
-    fine_spacing_m: spacingM,
-    lattice_origin: [0, 0],
-    area_min: [0, 0],
-    area_max: [side, side],
-    discrete_points: [],
-    coarse_multiples: [...coarseMultiples],
-  };
+  const planReq = buildPlanReq(spacingM, coarseMultiples, inputs.areaM2);
 
   await ensureCompute();
   const plan = plan_tiers(planReq) as TierPlanResult;
@@ -346,14 +368,23 @@ export function CalcPanel(): ReactElement {
       return;
     }
     let cancelled = false;
-    void estimateCost({
-      area_m2: sceneInputs.areaM2,
-      spacing_fine_m: spacing,
-      discrete_points: 0,
-      n_sub: sceneInputs.sourceCount,
-      n_workers: Math.max(1, navigator.hardwareConcurrency || 4),
-      budget_bytes: BUDGET_BYTES,
-    })
+    // Estimate over the SAME receiver set the job solves (WR-04): count the tier
+    // plan's receivers, then feed that exact count to the cost model as
+    // `discrete_points` with `area_m2: 0`, so `estimate`'s internal
+    // `receiver_count = discrete_points + floor(0)` equals the solved grid — no
+    // `floor(area/spacing²)` vs `(floor(side/spacing)+1)²` boundary-term drift. All
+    // byte/time/guardrail math stays in the Rust cost model (one source of truth).
+    void plannedReceiverCount(spacing, coarseMultiples, sceneInputs.areaM2)
+      .then((count) =>
+        estimateCost({
+          area_m2: 0,
+          spacing_fine_m: spacing,
+          discrete_points: count,
+          n_sub: sceneInputs.sourceCount,
+          n_workers: Math.max(1, navigator.hardwareConcurrency || 4),
+          budget_bytes: BUDGET_BYTES,
+        }),
+      )
       .then((estimate) => {
         if (!cancelled) {
           setCostEstimate(estimate);
@@ -372,6 +403,7 @@ export function CalcPanel(): ReactElement {
     sceneInputs.hasCalcArea,
     sceneInputs.sourceCount,
     spacing,
+    coarseMultiples,
     setCostEstimate,
   ]);
 
