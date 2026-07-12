@@ -10,12 +10,12 @@
 //   `estimate_cost` pre-run readout (receiver count + tensor MiB + time, SC1), the Run gate, that clicking
 //   Run submits (the job enters `queued` and the Abort control appears), that Abort keeps the app healthy,
 //   and that NOTHING escaped to the live network across the flow.
-// - Test 2 (full tiered solve + abort→Cancelled): drives Run and then, if the wasm-bindgen-rayon thread pool
-//   fails to initialise (the `build:wasm:compute` artifact ships a NON-shared `WebAssembly.Memory`, so the
-//   pool cannot distribute it to its workers — a 10-03 threaded-BUILD gap, see 10-05-SUMMARY.md remediation),
-//   SKIPS with that exact reason rather than faking a green solve. Where the build is fixed it runs the full
-//   SC2 flow: per-tier progress → coarse `done` → single-click Abort → `cancelled` with the completed tier
-//   kept. This is future-proof: fix the build recipe and re-run `npm run test:e2e` and Test 2 executes fully.
+// - Test 2 (full tiered solve + abort→Cancelled): drives Run and runs the full SC2 flow — per-tier progress →
+//   coarse `done` → single-click Abort → `cancelled` with the completed tier kept. The `build:wasm:compute`
+//   artifact now emits a SHARED `WebAssembly.Memory`, so the wasm-bindgen-rayon pool initialises and the solve
+//   runs for real (the earlier 10-03 non-shared-memory gap was closed by the 10-05 remediation). The runtime
+//   `test.skip` guard below remains ONLY as a defensive honest-skip for any environment where the pool cannot
+//   start — it does NOT skip in the standard build.
 
 import { expect, test, type Page, type Route } from "@playwright/test";
 
@@ -128,9 +128,9 @@ test("WEB-07/SC2: a genuine threaded solve shows tiered progress and aborts to C
   await expect(page.getByTestId("calc-run")).toBeEnabled({ timeout: 30_000 });
   await page.getByTestId("calc-run").click();
 
-  // The wasm-bindgen-rayon pool must actually start solving for the tiered flow to be observable. If the job
-  // is still `queued` after a generous window, the pool never initialised (non-shared WebAssembly.Memory —
-  // the 10-03 build gap); skip HONESTLY rather than assert a solve that cannot run in this build.
+  // The wasm-bindgen-rayon pool starts in the standard shared-memory build, so the tiered solve runs. The
+  // guard below is defensive only: if some environment cannot start the pool, skip HONESTLY rather than assert
+  // a solve that cannot run there. In the standard build `started` is true and the full flow executes.
   let started = false;
   for (let i = 0; i < 20; i += 1) {
     const status = (await page.getByTestId("calc-status").textContent()) ?? "";
@@ -142,10 +142,8 @@ test("WEB-07/SC2: a genuine threaded solve shows tiered progress and aborts to C
   }
   test.skip(
     !started,
-    "wasm-bindgen-rayon thread pool did not initialise: the build:wasm:compute artifact ships a NON-shared " +
-      "WebAssembly.Memory (10-03 threaded-build gap), so initThreadPool cannot distribute it to pool workers " +
-      "('#<Memory> could not be cloned'). Fix the build recipe (shared-memory link args + __heap_base export) " +
-      "and re-run `npm run test:e2e`. See 10-05-SUMMARY.md.",
+    "wasm-bindgen-rayon thread pool did not initialise in this environment (defensive guard; the standard " +
+      "shared-memory build:wasm:compute starts the pool and runs the full solve).",
   );
 
   // The coarse tier reaches `done` (its TierComplete event) — tiered progress is genuine, not a stub.

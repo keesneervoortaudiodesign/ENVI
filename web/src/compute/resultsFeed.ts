@@ -14,13 +14,13 @@
 // - Output a `setManifest` into `useResultsStore` + the attached real clients, so the
 //   spectrum panel and conditioning fast-recalc run against the real cached tensor.
 //
-// # Activation caveat (documented, honest)
-// This fires only when a real threaded solve reaches the fine tier. In the current
-// build the `wasm-bindgen-rayon` pool cannot start (the `build:wasm:compute` artifact
-// ships a NON-shared `WebAssembly.Memory` — the Phase-10 `10-03` threaded-build gap;
-// see `calc.spec.ts` Test 2, which skips honestly), so no tier completes and this
-// seam stays dormant until that build gap is fixed. The assembly is unit-tested
-// (`resultsFeed.test.ts`) so it is correct-by-construction the moment the pool runs.
+// # Activation (live, proven end-to-end)
+// This fires when a real threaded solve reaches the fine tier. The threaded
+// `wasm-bindgen-rayon` pool DOES start in the built bundle (the `build:wasm:compute`
+// artifact emits a SHARED `WebAssembly.Memory`), so a real Run completes and this seam
+// populates the spectrum + conditioning surfaces with NO fixture seed — proven by
+// `tests/e2e/results-real-solve.spec.ts` (a genuine solve → `done` → spectrum renders).
+// The pure assembly is additionally unit-tested (`resultsFeed.test.ts`).
 
 import type { ConditioningDto, ReceiverPlacementDto, TierComplete } from "../generated/wire";
 import type { CalcJobSpec } from "./worker";
