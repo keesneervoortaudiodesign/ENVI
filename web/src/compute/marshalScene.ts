@@ -144,9 +144,16 @@ export async function buildPrepareScene(
   const receiverIds: string[] = new Array<string>(total);
   for (const tier of plan.tiers) {
     for (const r of tier.receivers) {
+      // Use the tier plan's REAL 2-D lattice position (SceneXY meters), offset
+      // down-range so every receiver sits in front of the source at a positive
+      // distance. The engine derives each path's geometry from these positions
+      // (geometry.rs `horizontal_m = √(dx²+dy²)`), so this yields a genuine 2-D
+      // solved field over the flat homogeneous ground — the field the isophone
+      // map reconstructs (11-12b). (Real terrain/impedance derivation from the
+      // drawn polygon remains a separate deferred refinement.)
       receivers.push({
         global_index: r.global_index,
-        position: [CORRIDOR_X0_M + r.global_index, 0, RECEIVER_Z_M],
+        position: [CORRIDOR_X0_M + r.position[0], r.position[1], RECEIVER_Z_M],
       });
       receiverIds[r.global_index] = crypto.randomUUID();
     }
@@ -161,7 +168,11 @@ export async function buildPrepareScene(
     (_v, i): SubSourcePlacementDto => ({ position: [2.5, 0, 0.5 + 0.3 * i], directivity: null }),
   );
 
-  const xMax = Math.max(400, CORRIDOR_X0_M + total + 10);
+  // The flat homogeneous ground profile must span at least the largest 2-D
+  // source→receiver horizontal distance (the far lattice corner), so every path's
+  // cut-plane is covered by the single homogeneous segment.
+  const latticeSide = Math.max(1, Math.sqrt(inputs.areaM2));
+  const xMax = Math.max(400, Math.ceil(Math.hypot(CORRIDOR_X0_M + latticeSide, latticeSide)) + 20);
   const prepareScene: PrepareSolveReq = {
     // Placeholder — replaced below by the TRUE blake3 tensor identity. The Rust hasher
     // EXCLUDES this field, so the placeholder does not affect the digest.

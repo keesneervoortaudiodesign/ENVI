@@ -102,6 +102,20 @@ export async function reconstructLevelGrid(
   return g.reconstruct_level_grid(planReq, Float64Array.from(dba)) as ExportGridDto;
 }
 
+/**
+ * Project a WGS84 `[lng, lat]` to the auto-selected project UTM zone (GEOX-04) — the
+ * anchor that places a reconstructed level grid at the drawn site. Returns easting +
+ * northing (meters) + the UTM zone + hemisphere. Pure geometry (no acoustic math).
+ */
+export async function projectToUtm(
+  lng: number,
+  lat: number,
+): Promise<{ easting: number; northing: number; utmZone: number; south: boolean }> {
+  const g = await ensureCompute();
+  const [easting, northing, zone, south] = g.project_to_utm(lng, lat) as Float64Array;
+  return { easting, northing, utmZone: zone, south: south === 1 };
+}
+
 /** Compute the pre-run cost estimate + guardrail from the grid spec (SC1). */
 export async function estimateCost(req: EstimateCostReq): Promise<CostEstimateResult> {
   const g = await ensureCompute();

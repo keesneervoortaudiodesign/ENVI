@@ -309,6 +309,31 @@ pub fn reconstruct_level_grid(plan: JsValue, dba: Vec<f64>) -> Result<JsValue, J
     to_js(&reconstruct_level_grid_typed(&req, &dba))
 }
 
+/// Project a WGS84 `(lng, lat)` to the auto-selected project UTM zone (GEOX-04) —
+/// the anchor that places a reconstructed level grid at the drawn site so the
+/// isophone map reprojects back to the right LonLat. Returns
+/// `[easting_m, northing_m, utm_zone, south_flag]` (`south_flag` is `1.0`/`0.0`);
+/// a plain `Vec<f64>` avoids a new wire DTO. Reuses `envi_geo::ProjectCrs` — the
+/// single reprojection seam, never an inline proj string.
+///
+/// # Errors
+/// An out-of-range/non-finite `(lng, lat)` (typed `GeoError` → `JsValue`).
+#[wasm_bindgen]
+pub fn project_to_utm(lng: f64, lat: f64) -> Result<Vec<f64>, JsValue> {
+    let p = envi_geo::LonLat {
+        lon_deg: lng,
+        lat_deg: lat,
+    };
+    let crs = envi_geo::ProjectCrs::for_location(p).map_err(|e| js_err(&e.to_string()))?;
+    let xy = crs.to_utm(p).map_err(|e| js_err(&e.to_string()))?;
+    Ok(vec![
+        xy.x_m,
+        xy.y_m,
+        f64::from(crs.utm_zone),
+        if crs.south { 1.0 } else { 0.0 },
+    ])
+}
+
 /// The typed body of [`reconstruct_level_grid`] (no `JsValue` — natively testable):
 /// partition the plan into tiers, take the fine tier, and reconstruct the dense
 /// grid from the receiver-major `dba` vector. Returns the empty grid (never a

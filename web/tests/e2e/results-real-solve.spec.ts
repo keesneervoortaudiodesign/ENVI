@@ -1,8 +1,9 @@
-// results-real-solve.spec.ts — the TRUE end-to-end proof (SC1/SC2 production path): a
-// GENUINE client-side threaded solve, run to completion, feeds the spectrum panel via
-// the real `applyResultsFeed` link (CalcPanel's `applyTierComplete → setManifest`) — no
-// DEV fixture seed. Drives the real vite-served bundle offline (COOP/COEP ⇒ cross-origin
-// isolated ⇒ the wasm-bindgen-rayon pool starts), zero network egress.
+// results-real-solve.spec.ts — the TRUE end-to-end proof (SC1/SC2/SC3 production path): a
+// GENUINE client-side threaded solve, run to completion, feeds BOTH the spectrum panel
+// AND the isophone noise map via the real `applyResultsFeed` link (CalcPanel's
+// `applyTierComplete → setManifest`/isophone reconstruction) — no DEV fixture seed. Drives
+// the real vite-served bundle offline (COOP/COEP ⇒ cross-origin isolated ⇒ the
+// wasm-bindgen-rayon pool starts), zero network egress.
 //
 // A small calc area + a coarse fine-spacing keep the FINE tier tiny so the whole solve
 // (points → coarse → fine → done) completes in-test in a few seconds. If the threaded
@@ -86,6 +87,18 @@ test("a real threaded solve runs to done and feeds the spectrum panel via the pr
   await expect(chart).toHaveAttribute("data-band-count", "27");
   // A real weighted total is shown (from the WASM readout over the solved tensor).
   await expect(page.getByTestId("spectrum-total")).toBeVisible();
+
+  // The ISOPHONE MAP is also fed from the SAME real solve (SC3): the fine tier's dB(A)
+  // readouts reconstruct into a dense 2-D grid (WASM), anchored at the drawn calc_area,
+  // and render as a FILL layer (never a raster) with real contours (auto-fit breaks).
+  await expect
+    .poll(async () => (await page.evaluate(() => window.__enviTest.isophoneTelemetry())).layerType, {
+      timeout: 30_000,
+    })
+    .toBe("fill");
+  await expect
+    .poll(async () => (await page.evaluate(() => window.__enviTest.isophoneTelemetry())).traceCount)
+    .toBeGreaterThan(0);
 
   expect(egress, `solve-time egress: ${egress.join(", ")}`).toEqual([]);
   expect(unmocked, `unmocked: ${unmocked.join(", ")}`).toEqual([]);

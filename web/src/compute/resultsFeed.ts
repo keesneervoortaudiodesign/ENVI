@@ -22,7 +22,12 @@
 // `tests/e2e/results-real-solve.spec.ts` (a genuine solve → `done` → spectrum renders).
 // The pure assembly is additionally unit-tested (`resultsFeed.test.ts`).
 
-import type { ConditioningDto, ReceiverPlacementDto, TierComplete } from "../generated/wire";
+import type {
+  ConditioningDto,
+  ReceiverPlacementDto,
+  ReconditionReq,
+  TierComplete,
+} from "../generated/wire";
 import type { CalcJobSpec } from "./worker";
 import {
   useResultsStore,
@@ -36,6 +41,10 @@ import {
   useConditioningStore,
 } from "../store/conditioning";
 import { createWasmIdentityClient, useStaleStore } from "../store/stale";
+import { readChunk } from "./opfs";
+import { readoutReceivers, reconstructLevelGrid, projectToUtm } from "./wasm";
+import { useColorScaleStore, type LevelGridInput } from "../store/colorScale";
+import { useSceneStore } from "../store/sceneStore";
 
 // The default (un-conditioned) per-source drive: unity gain, no delay/filter, live.
 function defaultConditioning(): ConditioningDto {
@@ -103,4 +112,115 @@ export function applyResultsFeed(spec: CalcJobSpec, event: TierComplete): void {
   conditioning.attachConditioningClient(createWasmConditioningClient());
   conditioning.seedFromManifest(manifest.perSourceConditioning);
   useStaleStore.getState().attachIdentityClient(createWasmIdentityClient());
+  // Feed the isophone map from the SAME solved tensor (SC3), fire-and-forget so a
+  // slow reconstruction never blocks the spectrum/conditioning surfaces.
+  void feedIsophoneFromSolve(spec, event).catch(() => {
+    /* the isophone simply stays unfed on any reconstruction error (honest empty map) */
+  });
+}
+
+// The WGS84 [lng, lat] centroid of the drawn `calc_area` polygon (the anchor the
+// reconstructed grid is placed at), or null when no calc area is drawn.
+function calcAreaCentroid(): [number, number] | null {
+  const scene = useSceneStore.getState();
+  for (const id of Object.keys(scene.features)) {
+    if (scene.kindOf(id) !== "calc_area") {
+      continue;
+    }
+    const geometry = (scene.features[id] as { geometry?: { type?: string; coordinates?: unknown } })
+      .geometry;
+    if (geometry?.type !== "Polygon" || !Array.isArray(geometry.coordinates)) {
+      continue;
+    }
+    const ring = geometry.coordinates[0] as [number, number][];
+    if (!Array.isArray(ring) || ring.length < 3) {
+      continue;
+    }
+    // Average the ring vertices (drop the closing duplicate if present).
+    const pts =
+      ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
+        ? ring.slice(0, -1)
+        : ring;
+    const n = pts.length;
+    const lng = pts.reduce((s, p) => s + p[0], 0) / n;
+    const lat = pts.reduce((s, p) => s + p[1], 0) / n;
+    return [lng, lat];
+  }
+  return null;
+}
+
+// Uniform break edges spanning (min, max): 5 interior edges → 6 classes. Display-scale
+// math only (no acoustic derivation — D-01). Returns null for a (near-)flat field.
+function autoFitBreaks(values: readonly number[]): number[] | null {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const v of values) {
+    if (Number.isFinite(v)) {
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max - min < 1e-6) {
+    return null;
+  }
+  const step = (max - min) / 6;
+  return [1, 2, 3, 4, 5].map((k) => min + k * step);
+}
+
+/**
+ * Reconstruct the isophone level grid (SC3) from the finished FINE tier and feed it to
+ * the colour-scale store. Assembles the receiver-major dB(A) vector from the REAL WASM
+ * `readout_receivers` over each fine chunk (no acoustic math in TS), reconstructs the
+ * dense 2-D grid in WASM, anchors it at the drawn `calc_area` (via `project_to_utm`), and
+ * auto-fits the breaks to the field's actual range so contours appear. No-ops (leaving the
+ * map empty) when the grid is degenerate (e.g. a 1-D/near-flat field) — never a false map.
+ *
+ * Note: a solve produces PROPAGATION-TRANSFER levels (a source emission/SWL model is
+ * separately deferred), so the map shows the transfer field with auto-scaled breaks; the
+ * EU-END absolute default applies once absolute Lden is available.
+ */
+async function feedIsophoneFromSolve(spec: CalcJobSpec, event: TierComplete): Promise<void> {
+  // Assemble the receiver-major dB(A) vector from the fine chunks' readouts.
+  const dba = new Float64Array(spec.receiverIds.length).fill(Number.NaN);
+  const conditioning: ConditioningDto[] = Array.from({ length: spec.nSub }, defaultConditioning);
+  for (const span of event.spans) {
+    const chunkIds = spec.receiverIds.slice(span.r_offset, span.r_offset + span.len);
+    const { tensor, pincoh } = await readChunk(spec.projectId, event.tensor_hash, span.chunk_index);
+    const req: ReconditionReq = {
+      tensor_hash: event.tensor_hash,
+      per_source_conditioning: conditioning,
+      receiver_ids: [...chunkIds],
+    };
+    const result = await readoutReceivers(spec.scene, req, tensor, pincoh);
+    result.receivers.forEach((r, i) => {
+      dba[span.r_offset + i] = r.total_dba;
+    });
+  }
+
+  // Reconstruct the dense 2-D grid in WASM (the tested pure reconstruction).
+  const grid = (await reconstructLevelGrid(spec.planReq, dba)) as LevelGridInput;
+  if (grid.rows < 2 || grid.cols < 2) {
+    return; // no 2-D field — leave the isophone map empty rather than render a false one
+  }
+
+  // Anchor the grid at the drawn site: place its centre at the calc_area centroid's UTM.
+  const centroid = calcAreaCentroid();
+  if (!centroid) {
+    return;
+  }
+  const { easting, northing, utmZone, south } = await projectToUtm(centroid[0], centroid[1]);
+  const anchored: LevelGridInput = {
+    ...grid,
+    origin: [
+      easting - ((grid.cols - 1) * grid.spacing_m) / 2,
+      northing - ((grid.rows - 1) * grid.spacing_m) / 2,
+    ],
+  };
+
+  const scale = useColorScaleStore.getState();
+  const breaks = autoFitBreaks(anchored.values);
+  if (breaks) {
+    scale.setBreaks(breaks);
+  }
+  scale.setIsophoneInput(anchored, { utm_zone: utmZone, south }, "dB(A)");
 }
