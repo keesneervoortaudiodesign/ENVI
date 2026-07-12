@@ -19,6 +19,7 @@ import type { Map as MapLibreMap, GeoJSONSource } from "maplibre-gl";
 import { useWeatherStore } from "../store/weather";
 import type { DebugSegment } from "../import/sceneDebug";
 import { IMPEDANCE_COLORS } from "./impedanceOverlay";
+import { hexToRgb } from "./color";
 
 const GRID_SOURCE = "envi-weather-grid";
 const GRID_LAYER = "envi-weather-grid-pts";
@@ -34,14 +35,6 @@ const SIGMA_HARD = 200_000;
 
 // The debug ramp endpoints reuse the impedance overlay's class-A (soft) and class-H (hard) palette colours —
 // one source of truth for the two ground-class endpoints, not a second pair of hex literals.
-function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace("#", "");
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-  ];
-}
 const SOFT_RGB: [number, number, number] = hexToRgb(IMPEDANCE_COLORS.A);
 const HARD_RGB: [number, number, number] = hexToRgb(IMPEDANCE_COLORS.H);
 

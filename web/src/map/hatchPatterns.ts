@@ -16,6 +16,7 @@
 //   kinds. Calling either with a mismatched kind throws (defence in depth — the layer wiring never does).
 
 import { objectStyles, type HatchId, type PointGlyph } from "./objectStyles";
+import { hexToRgb } from "./color";
 import type { Kind } from "../draw/kinds";
 
 // An `ImageData`-shaped raster: RGBA, row-major, `width * height * 4` bytes. `map.addImage` accepts this
@@ -30,13 +31,6 @@ export interface RasterImage {
 const TILE = 16;
 // The point marker canvas edge (px). 24 gives crisp glyph edges at the on-map icon size.
 const MARKER = 24;
-
-// Parse a `#rrggbb` hex into [r, g, b] (0–255). The input is always a fixed palette literal (never a user
-// string) — a program-controlled value, so a strict 6-digit parse is sufficient.
-function rgb(hex: string): [number, number, number] {
-  const n = Number.parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
-}
 
 // Write one RGBA pixel into a raster buffer (no-op for out-of-bounds, so shape drawing can be naive).
 function put(data: Uint8ClampedArray, w: number, h: number, x: number, y: number, r: number, g: number, b: number, a: number): void {
@@ -58,7 +52,7 @@ export function hatchPattern(kind: Kind): RasterImage {
   if (style.geometry !== "area") {
     throw new Error(`hatchPattern: ${kind} is not an area kind`);
   }
-  const [r, g, b] = rgb(style.color);
+  const [r, g, b] = hexToRgb(style.color);
   const data = new Uint8ClampedArray(TILE * TILE * 4); // zero-filled ⇒ fully transparent background
   const stroke = (x: number, y: number): void => put(data, TILE, TILE, x, y, r, g, b, 235);
   const drawDiagonal45 = (): void => {
@@ -110,8 +104,8 @@ export function pointMarker(kind: Kind): RasterImage {
   if (style.geometry !== "point") {
     throw new Error(`pointMarker: ${kind} is not a point kind`);
   }
-  const [r, g, b] = rgb(style.color);
-  const [br, bg, bb] = rgb(style.border);
+  const [r, g, b] = hexToRgb(style.color);
+  const [br, bg, bb] = hexToRgb(style.border);
   const data = new Uint8ClampedArray(MARKER * MARKER * 4);
   const c = (MARKER - 1) / 2;
   const outer = MARKER / 2 - 2; // leave a 2 px margin so the border is not clipped

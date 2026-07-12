@@ -28,6 +28,8 @@ import type { ExportCrsDto, ExportGridDto } from "../generated/wire";
 
 import { create } from "zustand";
 
+import { hexToRgb } from "../map/color";
+
 // The two colour-scale families (D-03/D-04): the domain-standard EU-END ramp
 // (default, familiar to acousticians) plus the perceptually-uniform viridis/turbo
 // presets offered for quantitative reading.
@@ -78,16 +80,6 @@ const TURBO_STOPS: readonly string[] = [
 // [LOW_CAP, breaks[0]) and the above-highest is [breaks[last], HIGH_CAP).
 export const LOW_CAP = -1e6;
 export const HIGH_CAP = 1e6;
-
-// Parse a `#rrggbb` hex to [r,g,b] 0..255. Display-colour arithmetic only.
-function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace("#", "");
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-  ];
-}
 
 // [r,g,b] 0..255 → `#rrggbb`.
 function rgbToHex(rgb: [number, number, number]): string {
