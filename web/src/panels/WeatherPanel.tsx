@@ -18,6 +18,7 @@ import { type ReactElement } from "react";
 import { useWeatherStore, type WeatherStatus } from "../store/weather";
 import { useImportStore } from "../store/import";
 import { useSceneStore } from "../store/sceneStore";
+import { InfoButton } from "../help/InfoButton";
 
 // A short compass label for a display azimuth (readability of the per-azimuth readout).
 const COMPASS: Readonly<Record<number, string>> = {
@@ -129,6 +130,7 @@ export function WeatherPanel(): ReactElement {
       <div className="btn-row">
         <label className="field-label">
           Date
+          <InfoButton controlId="weather.date" />
           <input
             type="date"
             className="field-input"
@@ -139,6 +141,7 @@ export function WeatherPanel(): ReactElement {
         </label>
         <label className="field-label">
           Hour (UTC)
+          <InfoButton controlId="weather.hour" />
           <input
             type="number"
             min={0}
@@ -151,6 +154,7 @@ export function WeatherPanel(): ReactElement {
         </label>
         <label className="field-label">
           z₀ (m)
+          <InfoButton controlId="weather.z0" />
           <input
             type="number"
             min={0.001}
@@ -177,6 +181,7 @@ export function WeatherPanel(): ReactElement {
         >
           Import weather
         </button>
+        <InfoButton controlId="weather.import" />
         <span className={`chip ${severity}`} data-testid="weather-status">
           {status}
         </span>
@@ -212,6 +217,7 @@ export function WeatherPanel(): ReactElement {
           />
           <span className="issue-text">Receiver grid</span>
         </label>
+        <InfoButton controlId="weather.debug_grid" />
         <label className="btn-row">
           <input
             type="checkbox"
@@ -221,6 +227,7 @@ export function WeatherPanel(): ReactElement {
           />
           <span className="issue-text">Impedance segmentation</span>
         </label>
+        <InfoButton controlId="weather.debug_impedance" />
         <label className="btn-row">
           <input
             type="checkbox"
@@ -230,6 +237,7 @@ export function WeatherPanel(): ReactElement {
           />
           <span className="issue-text">Screen vertices</span>
         </label>
+        <InfoButton controlId="weather.debug_screens" />
       </div>
       <div className="btn-row">
         <button
@@ -241,6 +249,7 @@ export function WeatherPanel(): ReactElement {
         >
           Compute debug geometry
         </button>
+        <InfoButton controlId="weather.compute_debug" />
       </div>
       {debugStatus ? (
         <div className="issue-text" data-testid="weather-debug-status">

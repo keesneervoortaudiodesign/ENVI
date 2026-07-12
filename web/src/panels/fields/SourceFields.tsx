@@ -17,6 +17,7 @@ import { useState, type ReactElement } from "react";
 
 import type { FieldsProps } from "./types";
 import { useSceneStore } from "../../store/sceneStore";
+import { InfoButton } from "../../help/InfoButton";
 import { splToLw, errorText } from "../../api/client";
 import { materializeDense } from "../../spectrum/interpolateClient";
 
@@ -75,7 +76,10 @@ export function SourceFields({ id, properties }: FieldsProps): ReactElement {
   return (
     <div className="field-group">
       <div className="field-row">
-        <span className="field-label">Sub-source position</span>
+        <span className="field-label">
+          Sub-source position
+          <InfoButton controlId="source.position" />
+        </span>
         <span className="field-input field-triple">
           {axes.map(([axis, value], i) => (
             <input
@@ -94,7 +98,10 @@ export function SourceFields({ id, properties }: FieldsProps): ReactElement {
       </div>
 
       <div className="field-row">
-        <span className="field-label">Sound-power spectrum</span>
+        <span className="field-label">
+          Sound-power spectrum
+          <InfoButton controlId="source.sound_power" />
+        </span>
         <button
           type="button"
           className="btn dense"
@@ -107,7 +114,10 @@ export function SourceFields({ id, properties }: FieldsProps): ReactElement {
 
       {/* Optional SPL-at-reference calibration → server-side L_W back-calc (WEB-02, SVC-07). */}
       <div className="field-row">
-        <span className="field-label">SPL @ reference</span>
+        <span className="field-label">
+          SPL @ reference
+          <InfoButton controlId="source.spl_reference" />
+        </span>
         <span className="field-input">
           <input
             className="input dense mono"
@@ -123,7 +133,9 @@ export function SourceFields({ id, properties }: FieldsProps): ReactElement {
         </span>
       </div>
       <div className="field-row">
-        <span className="field-label" />
+        <span className="field-label">
+          <InfoButton controlId="source.derive_lw" />
+        </span>
         <button
           type="button"
           className="btn dense"

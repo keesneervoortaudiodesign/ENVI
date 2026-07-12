@@ -14,6 +14,7 @@ import { type ReactElement } from "react";
 
 import { KIND_DEFAULTS } from "../../store/inheritance";
 import { SeedChip } from "./SeedChip";
+import { InfoButton } from "../../help/InfoButton";
 import type { FieldsProps } from "./types";
 
 function numeric(value: unknown, fallback: number): number {
@@ -29,7 +30,10 @@ export function ForestFields({ properties, inherited, update }: FieldsProps): Re
   return (
     <div className="field-group">
       <label className="field-row">
-        <span className="field-label">Mean tree density</span>
+        <span className="field-label">
+          Mean tree density
+          <InfoButton controlId="forest.density" />
+        </span>
         <span className="field-input">
           <input
             className="input dense mono"
@@ -50,7 +54,10 @@ export function ForestFields({ properties, inherited, update }: FieldsProps): Re
       </label>
 
       <label className="field-row">
-        <span className="field-label">Mean stem radius</span>
+        <span className="field-label">
+          Mean stem radius
+          <InfoButton controlId="forest.stem_radius" />
+        </span>
         <span className="field-input">
           <input
             className="input dense mono"
@@ -71,7 +78,10 @@ export function ForestFields({ properties, inherited, update }: FieldsProps): Re
       </label>
 
       <label className="field-row">
-        <span className="field-label">Mean height</span>
+        <span className="field-label">
+          Mean height
+          <InfoButton controlId="forest.height" />
+        </span>
         <span className="field-input">
           <input
             className="input dense mono"

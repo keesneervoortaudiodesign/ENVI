@@ -16,6 +16,7 @@
 import { type ReactElement } from "react";
 
 import { useSceneStore } from "../store/sceneStore";
+import { InfoButton } from "../help/InfoButton";
 import type { FieldsProps } from "./fields/types";
 
 // A short, legible form of an edge UUID for the row label (the full UUID stays the store key).
@@ -38,6 +39,7 @@ export function FacadePanel({ id, properties }: FieldsProps): ReactElement {
       {/* Building default — applied to every edge that has no override. */}
       <div className="facade-row facade-default" data-testid="facade-default-row">
         <span className="facade-edge mono">Building default</span>
+        <InfoButton controlId="facade.default" />
         <span className={`chip ${hasDefault ? "info" : "off"}`}>{hasDefault ? "SET" : "NONE"}</span>
         <button
           type="button"
@@ -47,6 +49,12 @@ export function FacadePanel({ id, properties }: FieldsProps): ReactElement {
         >
           Edit
         </button>
+      </div>
+
+      {/* Panel-level help for the per-edge override rows (one InfoButton per control TYPE, D-23). */}
+      <div className="facade-row facade-edges-help">
+        <span className="facade-edge mono">Per-façade overrides</span>
+        <InfoButton controlId="facade.edge" />
       </div>
 
       {edgeIds.length === 0 ? (

@@ -29,6 +29,7 @@ import { estimateCost } from "../compute/cost";
 import { buildPrepareScene, deriveSceneInputs, plannedReceiverCount } from "../compute/marshalScene";
 import { useCalcStore, type CalcJobState } from "../store/calc";
 import { useSceneStore } from "../store/sceneStore";
+import { InfoButton } from "../help/InfoButton";
 
 // The honest capability-failure copy (UI-SPEC S1) — a distinct, non-silent state, NOT a generic failure.
 const CAPABILITY_MESSAGE =
@@ -300,7 +301,10 @@ export function CalcPanel(): ReactElement {
       {projectId ? (
         <>
           <label className="field-row">
-            <span className="field-label">Fine grid spacing</span>
+            <span className="field-label">
+              Fine grid spacing
+              <InfoButton controlId="calc.spacing" />
+            </span>
             <input
               type="number"
               className="field-input input dense"
@@ -334,10 +338,14 @@ export function CalcPanel(): ReactElement {
             <button type="button" className="btn" data-testid="calc-run" disabled={!canRun} onClick={onRun}>
               Run calculation
             </button>
+            <InfoButton controlId="calc.run" />
             {running ? (
-              <button type="button" className="btn danger" data-testid="calc-abort" onClick={() => abort()}>
-                Abort
-              </button>
+              <>
+                <button type="button" className="btn danger" data-testid="calc-abort" onClick={() => abort()}>
+                  Abort
+                </button>
+                <InfoButton controlId="calc.abort" />
+              </>
             ) : null}
             <span className={`chip ${statusSeverity(jobState)}`} data-testid="calc-status">
               {jobState === "failed" ? <span className="dot crit" aria-hidden="true" /> : null}

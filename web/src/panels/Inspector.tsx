@@ -16,6 +16,7 @@ import { type ReactElement } from "react";
 
 import { assertNeverKind, type Kind } from "../draw/kinds";
 import { useSceneStore } from "../store/sceneStore";
+import { InfoButton } from "../help/InfoButton";
 import { GroundZoneFields } from "./fields/GroundZoneFields";
 import type { FieldsProps } from "./fields/types";
 import { ForestFields } from "./fields/ForestFields";
@@ -58,7 +59,10 @@ function ElevationPointFields({ properties, update }: FieldsProps): ReactElement
   return (
     <div className="field-group">
       <label className="field-row">
-        <span className="field-label">Elevation Z</span>
+        <span className="field-label">
+          Elevation Z
+          <InfoButton controlId="elevation_point.z" />
+        </span>
         <span className="field-input">
           <input
             className="input dense mono"
@@ -92,7 +96,10 @@ function WallFields({ id, properties }: FieldsProps): ReactElement {
   return (
     <div className="field-group">
       <label className="field-row">
-        <span className="field-label">Semi-transparent</span>
+        <span className="field-label">
+          Semi-transparent
+          <InfoButton controlId="wall.semi_transparent" />
+        </span>
         <input
           type="checkbox"
           data-testid="wall-semitransparent"
@@ -113,7 +120,10 @@ function WallFields({ id, properties }: FieldsProps): ReactElement {
         </div>
       ) : null}
       <div className="field-row">
-        <span className="field-label">Isolation spectrum</span>
+        <span className="field-label">
+          Isolation spectrum
+          <InfoButton controlId="wall.isolation_spectrum" />
+        </span>
         <button
           type="button"
           className="btn dense"
@@ -138,7 +148,10 @@ export function Inspector(): ReactElement {
 
   return (
     <section className="panel" data-testid="inspector">
-      <div className="panel-header">Properties</div>
+      <div className="panel-header">
+        Properties
+        <InfoButton controlId="inspector.panel" />
+      </div>
       {!selection || !feature || !kind ? (
         <div className="empty-state">Select an object to edit its properties.</div>
       ) : (

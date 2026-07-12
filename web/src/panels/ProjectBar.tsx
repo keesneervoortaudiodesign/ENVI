@@ -19,6 +19,7 @@ import { useSceneStore } from "../store/sceneStore";
 import { useAutosaveStore, saveNow, type SaveStatus } from "../store/autosave";
 import { DeleteProjectDialog } from "./DeleteProjectDialog";
 import { ProjectPicker } from "./ProjectPicker";
+import { InfoButton } from "../help/InfoButton";
 import type { OriginDto } from "../generated/wire";
 
 // A new project's WGS84 origin (the map's initial centre); the server pins its UTM CRS from it (D-03).
@@ -98,9 +99,11 @@ export function ProjectBar(): ReactElement {
         <button type="button" className="btn" data-testid="project-open" onClick={() => setPickerOpen(true)}>
           Open
         </button>
+        <InfoButton controlId="project.open" />
         <button type="button" className="btn" data-testid="project-new" onClick={() => setPickerOpen(true)}>
           New
         </button>
+        <InfoButton controlId="project.new" />
       </div>
       <div className="topbar-right">
         <span className={`save-conn ${indicator.cls}`} data-testid="save-indicator" data-status={status}>
@@ -127,6 +130,7 @@ export function ProjectBar(): ReactElement {
         >
           Save
         </button>
+        <InfoButton controlId="project.save" />
         <div className="menu-wrap" ref={menuRef}>
           <button
             type="button"
@@ -139,6 +143,7 @@ export function ProjectBar(): ReactElement {
           >
             &#x22EF;
           </button>
+          <InfoButton controlId="project.menu" />
           {menuOpen ? (
             <div className="menu" role="menu" data-testid="project-menu-list">
               <button

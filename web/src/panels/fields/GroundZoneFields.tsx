@@ -15,6 +15,7 @@ import { type ReactElement } from "react";
 
 import { KIND_DEFAULTS } from "../../store/inheritance";
 import { SeedChip } from "./SeedChip";
+import { InfoButton } from "../../help/InfoButton";
 import type { FieldsProps } from "./types";
 
 // Nord2000 flow-resistivity σ per impedance class (kPa·s/m²). Mirrors
@@ -40,7 +41,10 @@ export function GroundZoneFields({ properties, inherited, update }: FieldsProps)
   return (
     <div className="field-group">
       <label className="field-row">
-        <span className="field-label">Impedance class</span>
+        <span className="field-label">
+          Impedance class
+          <InfoButton controlId="ground_zone.impedance_class" />
+        </span>
         <select
           className="input dense"
           data-testid="ground-impedance"
@@ -62,7 +66,10 @@ export function GroundZoneFields({ properties, inherited, update }: FieldsProps)
       </label>
 
       <label className="field-row">
-        <span className="field-label">Roughness class</span>
+        <span className="field-label">
+          Roughness class
+          <InfoButton controlId="ground_zone.roughness_class" />
+        </span>
         <select
           className="input dense"
           data-testid="ground-roughness"

@@ -19,6 +19,8 @@ import { useImportStore, LAYER_KEYS, type LayerKey, type LayerState } from "../s
 import { useSceneStore } from "../store/sceneStore";
 import { runImport, retryLayer } from "../import/importJob";
 import { attributionStrings } from "../import/attribution";
+import { InfoButton } from "../help/InfoButton";
+import type { ControlId } from "../help/controlIds";
 
 const LAYER_LABELS: Record<LayerKey, string> = {
   terrain: "Terrain",
@@ -54,6 +56,7 @@ function LayerRow({ layer }: { readonly layer: LayerKey }): ReactElement {
         />
         <span className="issue-text">{LAYER_LABELS[layer]}</span>
       </label>
+      <InfoButton controlId={`import.layer_${layer}` as ControlId} />
 
       <span className={`chip ${severity}`} data-testid={`import-status-${layer}`}>
         {state.status === "error" ? <span className="dot crit" aria-hidden="true" /> : null}
@@ -132,6 +135,7 @@ export function ImportPanel(): ReactElement {
         >
           Import (viewport)
         </button>
+        <InfoButton controlId="import.run" />
         <label className="btn-row">
           <input
             type="checkbox"
@@ -141,6 +145,7 @@ export function ImportPanel(): ReactElement {
           />
           <span className="issue-text">Impedance overlay</span>
         </label>
+        <InfoButton controlId="import.debug_overlay" />
       </div>
 
       {guardrail ? (

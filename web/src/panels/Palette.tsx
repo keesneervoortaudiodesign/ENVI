@@ -14,6 +14,8 @@ import { useEffect, useRef, type ReactElement } from "react";
 import { svgIcon, type IconName } from "../icons";
 import { KIND_META, KINDS, type DrawTool } from "../draw/kinds";
 import { useSceneStore } from "../store/sceneStore";
+import { InfoButton } from "../help/InfoButton";
+import type { ControlId } from "../help/controlIds";
 
 // One palette entry: its tool identity, label, icon, and kind-hue token (select has no hue).
 interface ToolRow {
@@ -58,10 +60,13 @@ export function Palette(): ReactElement {
       <div className="panel-header">Objects</div>
       <ul className="tool-list">
         {ROWS.map((row) => (
-          <li key={row.tool}>
+          // Additive info affordance (D-23): the InfoButton sits OUTSIDE the tool button (no nested
+          // buttons) in a flex row, so selecting the tool and opening its help stay independent.
+          <li key={row.tool} style={{ display: "flex", alignItems: "center", gap: "2px" }}>
             <button
               type="button"
               className={`tool-row${activeTool === row.tool ? " active" : ""}`}
+              style={{ flex: 1 }}
               data-testid={`tool-${row.tool}`}
               aria-pressed={activeTool === row.tool}
               onClick={() => setActiveTool(row.tool)}
@@ -72,6 +77,7 @@ export function Palette(): ReactElement {
                 <span className="dot" style={{ background: `var(${row.hueToken})` }} />
               ) : null}
             </button>
+            <InfoButton controlId={`palette.${row.tool}` as ControlId} />
           </li>
         ))}
       </ul>
