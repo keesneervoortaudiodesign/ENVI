@@ -32,6 +32,19 @@
 
 use envi_engine::freq::{FreqAxis, N_BANDS};
 
+/// IEC 61672-1:2013 analog pole frequency `f₁` (Hz).
+const F1: f64 = 20.6;
+/// IEC 61672-1:2013 analog pole frequency `f₂` (Hz).
+const F2: f64 = 107.7;
+/// IEC 61672-1:2013 analog pole frequency `f₃` (Hz).
+const F3: f64 = 737.9;
+/// IEC 61672-1:2013 analog pole frequency `f₄` (Hz).
+const F4: f64 = 12194.0;
+/// A-weighting normalization offset (dB) setting A(1000 Hz) = 0.
+const A_OFFSET_DB: f64 = 2.00;
+/// C-weighting normalization offset (dB) setting C(1000 Hz) = 0.
+const C_OFFSET_DB: f64 = 0.06;
+
 /// A frequency-weighting curve selector (D-09).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Weighting {
@@ -44,28 +57,57 @@ pub enum Weighting {
 impl Weighting {
     /// The dense `[105]` weighting table for this curve at the grid centres.
     #[must_use]
-    pub fn table(self, _axis: &FreqAxis) -> [f64; N_BANDS] {
-        todo!("GREEN phase")
+    pub fn table(self, axis: &FreqAxis) -> [f64; N_BANDS] {
+        match self {
+            Weighting::A => a_weighting_db(axis),
+            Weighting::C => c_weighting_db(axis),
+        }
     }
 }
 
 /// The A-weighting dB table at the 105 exact grid centres.
+///
+/// `A(f) = 20·log₁₀(R_A(f)) + 2.00` with
+/// `R_A(f) = f₄²·f⁴ / [ (f²+f₁²)·√((f²+f₂²)(f²+f₃²))·(f²+f₄²) ]`.
 #[must_use]
-pub fn a_weighting_db(_axis: &FreqAxis) -> [f64; N_BANDS] {
-    todo!("GREEN phase")
+pub fn a_weighting_db(axis: &FreqAxis) -> [f64; N_BANDS] {
+    let mut table = [0.0; N_BANDS];
+    for (out, &f) in table.iter_mut().zip(axis.centres.iter()) {
+        let f2 = f * f;
+        let num = F4 * F4 * f2 * f2; // f₄²·f⁴
+        let den = (f2 + F1 * F1) * ((f2 + F2 * F2) * (f2 + F3 * F3)).sqrt() * (f2 + F4 * F4);
+        *out = 20.0 * (num / den).log10() + A_OFFSET_DB;
+    }
+    table
 }
 
 /// The C-weighting dB table at the 105 exact grid centres.
+///
+/// `C(f) = 20·log₁₀(R_C(f)) + 0.06` with
+/// `R_C(f) = f₄²·f² / [ (f²+f₁²)(f²+f₄²) ]`.
 #[must_use]
-pub fn c_weighting_db(_axis: &FreqAxis) -> [f64; N_BANDS] {
-    todo!("GREEN phase")
+pub fn c_weighting_db(axis: &FreqAxis) -> [f64; N_BANDS] {
+    let mut table = [0.0; N_BANDS];
+    for (out, &f) in table.iter_mut().zip(axis.centres.iter()) {
+        let f2 = f * f;
+        let num = F4 * F4 * f2; // f₄²·f²
+        let den = (f2 + F1 * F1) * (f2 + F4 * F4);
+        *out = 20.0 * (num / den).log10() + C_OFFSET_DB;
+    }
+    table
 }
 
 /// The energy-domain weighted total `10·log₁₀(Σ_i 10^((levels_i + w_i)/10))`,
-/// aggregated strictly by band index.
+/// aggregated strictly by band index (`levels` and `w` are zipped, never keyed
+/// by nominal Hz — RESEARCH Pitfall 3).
 #[must_use]
-pub fn weighted_total_db(_levels: &[f64], _w: &[f64]) -> f64 {
-    todo!("GREEN phase")
+pub fn weighted_total_db(levels: &[f64], w: &[f64]) -> f64 {
+    let sum: f64 = levels
+        .iter()
+        .zip(w.iter())
+        .map(|(&l, &wi)| 10f64.powf((l + wi) / 10.0))
+        .sum();
+    10.0 * sum.log10()
 }
 
 #[cfg(test)]
