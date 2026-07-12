@@ -118,10 +118,39 @@ pub struct ReceiverReadout {
     pub coherent_energy: Vec<f64>,
     /// Per-band incoherent-channel energy, length [`N_BANDS`].
     pub incoherent_energy: Vec<f64>,
+    /// Per-band coherent-channel level in dB, length [`N_BANDS`] — the coherent
+    /// half of the D-08 split, `10·log₁₀(coherent_energy)` via the engine law, a
+    /// silent band clamped to [`SILENCE_FLOOR_DB`] so the wire stays finite.
+    pub coherent_db: Vec<f64>,
+    /// Per-band incoherent-channel level in dB, length [`N_BANDS`] — the
+    /// incoherent half of the D-08 split (same floor discipline).
+    pub incoherent_db: Vec<f64>,
     /// dB(A) total over all bands.
     pub total_dba: f64,
     /// dB(C) total over all bands.
     pub total_dbc: f64,
+    /// Unweighted energetic total of the coherent channel, dB (the always-shown
+    /// split total; energetic sum of `coherent_db` by band index).
+    pub total_coherent_db: f64,
+    /// Unweighted energetic total of the incoherent channel, dB.
+    pub total_incoherent_db: f64,
+}
+
+/// Display floor (dB) for a per-channel level: a fully silent channel band is
+/// `10·log₁₀(0) = −∞`, which cannot ride the JS-number wire cleanly. The engine
+/// law is driven verbatim, then any non-finite result is clamped to this floor —
+/// a presentation clamp, NOT a re-derivation of the dB law (RESEARCH Pitfall 1).
+/// −400 dB is far below any physical level, so a live band is never affected and
+/// an energetic total of an all-floored channel is still finite (≈ −380 dB).
+pub const SILENCE_FLOOR_DB: f64 = -400.0;
+
+/// Clamp any non-finite per-band level (a `−∞` from an empty channel) to
+/// [`SILENCE_FLOOR_DB`] so the readout carries only finite values on the wire.
+fn floor_levels(levels: Vec<f64>) -> Vec<f64> {
+    levels
+        .into_iter()
+        .map(|v| if v.is_finite() { v } else { SILENCE_FLOOR_DB })
+        .collect()
 }
 
 /// The default readout-law policy (Open Q2): a conditioned/directional source
@@ -247,16 +276,44 @@ pub fn readout_receiver(
     let band_levels_db =
         band_levels_db_two_channel(&h_eff, &hff_eff, &ones, &BandSpectrum::uniform(0.0));
 
+    // Per-channel dB for the D-08 split overlay: drive the SAME two-channel dB law
+    // with the other channel zeroed (never a bespoke 10·log10) — coherent-only is
+    // `band_levels(h_eff, 0)` = 10·log10(coherent_energy); incoherent-only is
+    // `band_levels(0, hff_eff)` = 10·log10(incoherent_energy). A silent channel's
+    // −∞ is clamped to the finite SILENCE_FLOOR_DB for the wire.
+    let zeros_ch = vec![Complex::new(0.0, 0.0); N_BANDS];
+    let coherent_db = floor_levels(band_levels_db_two_channel(
+        &h_eff,
+        &zeros_ch,
+        &ones,
+        &BandSpectrum::uniform(0.0),
+    ));
+    let incoherent_db = floor_levels(band_levels_db_two_channel(
+        &zeros_ch,
+        &hff_eff,
+        &ones,
+        &BandSpectrum::uniform(0.0),
+    ));
+
     // dB(A)/dB(C) totals via the Task-1 A/C tables (D-08 split always present).
     let total_dba = weighted_total_db(&band_levels_db, &a_weighting_db(axis));
     let total_dbc = weighted_total_db(&band_levels_db, &c_weighting_db(axis));
+    // Unweighted energetic per-channel totals (the always-shown split): a zero
+    // weighting table makes `weighted_total_db` a pure energetic sum by band index.
+    let zeros_w = [0.0_f64; N_BANDS];
+    let total_coherent_db = weighted_total_db(&coherent_db, &zeros_w);
+    let total_incoherent_db = weighted_total_db(&incoherent_db, &zeros_w);
 
     Ok(ReceiverReadout {
         band_levels_db,
         coherent_energy,
         incoherent_energy,
+        coherent_db,
+        incoherent_db,
         total_dba,
         total_dbc,
+        total_coherent_db,
+        total_incoherent_db,
     })
 }
 
@@ -443,6 +500,78 @@ mod tests {
             weighted_total_db(&ro.band_levels_db, &c).to_bits()
         );
         assert_ne!(ro.total_dba, ro.total_dbc);
+    }
+
+    #[test]
+    fn per_channel_split_reconstructs_the_combined_band_level() {
+        // The D-08 split gate: for every band, the combined level is the energetic
+        // sum of the coherent + incoherent per-channel dB (10·log10(10^(coh/10) +
+        // 10^(inco/10)) == band_levels_db). Both per-channel dBs and both energetic
+        // totals are finite. Uses the coherent law with a non-zero P_incoh so both
+        // channels are live.
+        let axis = FreqAxis::new();
+        let h = Array3::from_shape_fn((2, 2, N_BANDS), |(s, r, f)| hval(s, r, f));
+        let p = Array3::from_shape_fn((2, 2, N_BANDS), |(s, r, f)| pval(s, r, f));
+        let spectra = vec![BandSpectrum::uniform(85.0), BandSpectrum::uniform(88.0)];
+        let cond = vec![
+            Conditioning {
+                filter: Some(vec![Complex::new(0.7, 0.1); N_BANDS]),
+                delay_s: 1.0e-4,
+            },
+            Conditioning {
+                filter: Some(vec![Complex::new(0.6, -0.05); N_BANDS]),
+                delay_s: 2.0e-4,
+            },
+        ];
+        let ro = readout_receiver(
+            h.view(),
+            p.view(),
+            1,
+            &spectra,
+            &cond,
+            ReadoutLaw::Coherent,
+            &axis,
+        )
+        .unwrap();
+        assert_eq!(ro.coherent_db.len(), N_BANDS);
+        assert_eq!(ro.incoherent_db.len(), N_BANDS);
+        assert!(ro.coherent_db.iter().all(|v| v.is_finite()));
+        assert!(ro.incoherent_db.iter().all(|v| v.is_finite()));
+        assert!(ro.total_coherent_db.is_finite() && ro.total_incoherent_db.is_finite());
+        for f in 0..N_BANDS {
+            let energetic_sum = 10.0
+                * (10f64.powf(ro.coherent_db[f] / 10.0) + 10f64.powf(ro.incoherent_db[f] / 10.0))
+                    .log10();
+            assert_relative_eq!(ro.band_levels_db[f], energetic_sum, epsilon = 1e-9);
+        }
+    }
+
+    #[test]
+    fn empty_incoherent_channel_floors_instead_of_neg_infinity() {
+        // P_incoh all-zero + coherent law ⇒ the incoherent channel is silent; its
+        // per-band dB clamps to the finite floor, never −∞, and its energetic total
+        // stays finite (so the wire/DTO carries only finite values).
+        let axis = FreqAxis::new();
+        let h = Array3::from_shape_fn((1, 1, N_BANDS), |(s, r, f)| hval(s, r, f));
+        let p = Array3::<f64>::zeros((1, 1, N_BANDS));
+        let spectra = vec![BandSpectrum::uniform(80.0)];
+        let cond = vec![Conditioning {
+            filter: None,
+            delay_s: 0.0,
+        }];
+        let ro = readout_receiver(
+            h.view(),
+            p.view(),
+            0,
+            &spectra,
+            &cond,
+            ReadoutLaw::Coherent,
+            &axis,
+        )
+        .unwrap();
+        assert!(ro.incoherent_db.iter().all(|&v| v == SILENCE_FLOOR_DB));
+        assert!(ro.total_incoherent_db.is_finite());
+        assert!(ro.coherent_db.iter().all(|v| v.is_finite()));
     }
 
     #[test]
