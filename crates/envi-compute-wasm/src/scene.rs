@@ -303,6 +303,18 @@ impl PreparedScene {
             .collect()
     }
 
+    /// How many prepared receivers have a GLOBAL index in `[global_lo, global_lo +
+    /// len)`. Used to validate a `solve_chunk_range` request BEFORE any slicing
+    /// (WR-01) and to report the actually-solved count (WR-06). Cheap — a single
+    /// filter pass, no allocation.
+    pub(crate) fn local_receiver_count(&self, global_lo: usize, len: usize) -> usize {
+        let hi = global_lo.saturating_add(len);
+        self.receivers
+            .iter()
+            .filter(|r| (global_lo..hi).contains(&r.global_index))
+            .count()
+    }
+
     /// The receivers whose GLOBAL index lies in `[global_lo, global_lo + len)`,
     /// REINDEXED to local `0..k` (ascending by global index) — mirroring the pool
     /// `local_receivers` pattern so each range writes a self-contained chunk at
@@ -383,6 +395,19 @@ pub fn solve_prepared_range(
             Array3::zeros((scene.n_sub, 0, N_BANDS)),
             Array3::zeros((scene.n_sub, 0, N_BANDS)),
         ));
+    }
+    // WR-01: validate the range is densely covered BEFORE any sharding/slicing. If
+    // the prepared scene's receivers do not fully cover `[r_offset, r_offset+len)`,
+    // the shard slice `chunk_receivers[..]` would index out of bounds and, under
+    // `panic = abort` (wasm), trap the whole module. Return a typed `Range` error
+    // instead so a malformed request is a `JsValue` error, never a wasm trap.
+    let covered = scene.local_receiver_count(r_offset, len);
+    if covered != len {
+        return Err(ComputeError::Range {
+            r_offset,
+            len,
+            covered,
+        });
     }
     solve_prepared_shards(scene, r_offset, len)
 }
@@ -886,6 +911,35 @@ mod tests {
         let (wh, wp) = direct_solve(&sc, 2);
         assert_bits_equal(&h, &wh, "dto-built H_coh");
         assert_p_bits_equal(&p, &wp, "dto-built P_incoh");
+    }
+
+    #[test]
+    fn range_exceeding_receiver_coverage_is_a_typed_error_not_a_panic() {
+        // WR-01: a `len` beyond the prepared scene's receiver coverage must return a
+        // typed `Range` error, never slice out of bounds / trap the wasm module.
+        let sc = scene(2, None, None, false); // receivers global 0,1 (coverage = 2)
+        let err = solve_prepared_range(&sc, 0, 5).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ComputeError::Range {
+                    r_offset: 0,
+                    len: 5,
+                    covered: 2
+                }
+            ),
+            "an over-long range must be a typed Range error, got {err:?}"
+        );
+        // A sparse range (offset past the receivers) is likewise a typed error.
+        let err2 = solve_prepared_range(&sc, 10, 2).unwrap_err();
+        assert!(matches!(
+            err2,
+            ComputeError::Range {
+                r_offset: 10,
+                len: 2,
+                covered: 0
+            }
+        ));
     }
 
     #[test]

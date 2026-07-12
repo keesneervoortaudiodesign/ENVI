@@ -153,6 +153,22 @@ pub enum ComputeError {
     /// a stale/mismatched scene (T-10-06-04).
     #[error("tensor_hash mismatch — the prepared scene is for a different tensor")]
     HashMismatch,
+    /// The requested receiver range `[r_offset, r_offset + len)` is not densely
+    /// covered by the prepared scene's receivers (`local_receivers` selected fewer
+    /// than `len`) — a malformed range that would otherwise slice out of bounds and
+    /// trap the wasm module. Surfaced as a typed error, never a panic (WR-01 /
+    /// T-10-03-02 / T-10-06-03/04: the boundary never panics on data).
+    #[error(
+        "receiver range [{r_offset}, {r_offset}+{len}) covers only {covered} of {len} prepared receivers"
+    )]
+    Range {
+        /// The range's global receiver offset.
+        r_offset: usize,
+        /// The requested range length.
+        len: usize,
+        /// How many prepared receivers actually fall in the range.
+        covered: usize,
+    },
 }
 
 /// Map a [`ComputeError`] to a `JsValue` error (mirrors `gis_err`).
