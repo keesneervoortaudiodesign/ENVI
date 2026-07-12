@@ -205,24 +205,30 @@ async function collectReadouts(
   }
   for (const r of manifest.receivers) {
     let readout = readouts[r.id];
-    if (!readout && client) {
-      const span = manifest.spans.find((s) => s.chunkIndex === r.chunkIndex);
-      if (span) {
-        readout = await client.readout({
-          projectId: manifest.projectId,
-          tensorHash: manifest.tensorHash,
-          scene: manifest.scene,
-          perSourceConditioning: manifest.perSourceConditioning,
-          chunkIndex: r.chunkIndex,
-          rLocal: r.rLocal,
-          chunkReceiverIds: span.receiverIds,
-        });
+    if (!readout) {
+      // Fail LOUDLY rather than dropping receivers silently: a partial CSV presented as
+      // a complete export is the honest-state failure this collector must not commit
+      // (WR-04). No client attached ⇒ we cannot fetch the uncached spectra at all; a
+      // missing span is a manifest inconsistency — surface both, never emit a partial file.
+      if (!client) {
+        throw new Error("Cannot export spectra: the readout engine is not available.");
       }
+      const span = manifest.spans.find((s) => s.chunkIndex === r.chunkIndex);
+      if (!span) {
+        throw new Error(`Cannot export spectra: no chunk span for receiver ${r.id}.`);
+      }
+      readout = await client.readout({
+        projectId: manifest.projectId,
+        tensorHash: manifest.tensorHash,
+        scene: manifest.scene,
+        perSourceConditioning: manifest.perSourceConditioning,
+        chunkIndex: r.chunkIndex,
+        rLocal: r.rLocal,
+        chunkReceiverIds: span.receiverIds,
+      });
     }
-    if (readout) {
-      labels.push(r.id);
-      out.push(readout);
-    }
+    labels.push(r.id);
+    out.push(readout);
   }
   return { labels, readouts: out };
 }
