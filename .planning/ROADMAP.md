@@ -407,7 +407,7 @@ Plans:
   4. Weather what-if works end-to-end: manual overrides (T/RH/p, Beaufort wind + direction, downwind worst-case toggle, temperature gradient, per-azimuth A/B/C) recompute as a scenario; named scenarios switch instantly via per-scenario cached tensors; difference maps render between two scenarios
   5. Results export as GeoTIFF/GeoJSON and spectra as CSV, carrying band index + exact frequency columns and data attribution metadata
 
-**Plans**: 4/11 plans executed
+**Plans**: 5/11 plans executed
 
 Plans:
 **Wave 1**
@@ -421,7 +421,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 11-04-PLAN.md — Export encoders (hand-rolled GeoTIFF + GeoJSON + CSV) + WASM export boundary (GRID-05) [wave 3]
+- [x] 11-04-PLAN.md — Export encoders (hand-rolled GeoTIFF + GeoJSON + CSV) + WASM export boundary (GRID-05) [wave 3]
 - [x] 11-05-PLAN.md — Spectrum panel + results shell + OPFS read glue + dB(A)/dB(C) + coherent/incoherent + Playwright (WEB-11) [wave 3]
 
 **Wave 4** *(blocked on Wave 3 completion)*

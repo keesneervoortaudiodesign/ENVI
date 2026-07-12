@@ -215,7 +215,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | GRID-01 | Phase 9 | Complete |
 | GRID-02 | Phase 10 | Complete |
 | GRID-04 | Phase 11 | Pending |
-| GRID-05 | Phase 11 | Pending |
+| GRID-05 | Phase 11 | In Progress (11-04 WASM encoders: GeoTIFF/GeoJSON/CSV + attribution; export UI download is 11-09) |
 | WEB-01 | Phase 7 | Complete |
 | WEB-02 | Phase 7 | Complete |
 | WEB-03 | Phase 7 | Complete |

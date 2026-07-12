@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 11
 current_phase_name: results-fast-recalc
 status: executing
-stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-07-12T13:34:21.751Z"
+stopped_at: Completed 11-04-PLAN.md
+last_updated: "2026-07-12T14:20:00.000Z"
 last_activity: 2026-07-12
-last_activity_desc: 11-05 receiver spectrum panel + results shell (WEB-11) complete — new readout_receivers WASM boundary (full ReceiverReadout across the wire), D-01 zero-TS-acoustic-math, instant dB(A)/dB(C) + coherent/incoherent split, offline Playwright UAT on the real bundle
+last_activity_desc: 11-04 WASM export encoders (GRID-05) complete — hand-rolled zero-dep single-strip Float32 GeoTIFF + RFC-7946 isophone GeoJSON + band-index/exact-Hz spectra CSV, all browser-download bytes with full CRS/weighting/engine-identity/attribution footer (D-20/21/22); wave 3 done
 progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 64
-  completed_plans: 57
-  percent: 89
+  completed_plans: 58
+  percent: 91
 ---
 
 # Project State
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 11 (results-fast-recalc) — EXECUTING
-Plan: 4 of 11
-Status: Executing Phase 11 — 11-01 (readout) + 11-02 (isophone contouring core) + 11-03 (recondition MAC boundary) + 11-05 (spectrum panel + results shell, WEB-11) complete; wave 3 in progress (11-04 export encoders remaining)
-Last activity: 2026-07-12 — 11-05 receiver spectrum panel (WEB-11) complete: readout_receivers WASM boundary + D-01 spectrum panel with instant dB(A)/dB(C) + coherent/incoherent split, offline Playwright UAT green
+Plan: 5 of 11 complete
+Status: Executing Phase 11 — waves 1–3 complete: 11-01 (readout) + 11-02 (isophone contouring core) + 11-03 (recondition MAC boundary) + 11-04 (export encoders, GRID-05) + 11-05 (spectrum panel + results shell, WEB-11). Wave 4 next (11-06 isophone layer, 11-07 conditioning fast-recalc, 11-09 export UI)
+Last activity: 2026-07-12 — 11-04 export encoders (GRID-05) complete: hand-rolled zero-dep Float32 GeoTIFF + RFC-7946 GeoJSON + band-index/exact-Hz CSV, WASM export boundary → browser bytes with full attribution (D-20/21/22)
 
 Progress: [██████████] Phase 10 — 6/6 plans complete (10-01 compute core · 10-02 COOP/COEP · 10-03 wasm boundary+OPFS sink · 10-04 pool+worker · 10-05 CalcPanel+Playwright · 10-06 real solve seam closed)
 
@@ -105,6 +105,7 @@ Progress: [██████████] Phase 10 — 6/6 plans complete (10-0
 | Phase 10 P05 | 150 | 2 tasks | 6 files |
 | Phase 11 P03 | ~40min | 2 tasks | 6 files |
 | Phase 11 P05 | 90 min | 3 tasks | 19 files |
+| Phase 11 P04 | ~40min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -187,6 +188,7 @@ Recent decisions affecting current work:
 - [Phase 10, 10-01] envi-compute = the pure-Rust, WASM-safe compute core: the tensor-identity closure (tensor_hash/CalcManifest/chunk_receivers + identity DTOs + geometry_positions) factored byte-for-byte out of envi-store and re-exported (source-compatible, wire.ts byte-stable) + the SC1 cost model/Ok/Warn/Block guardrail + the hierarchical points⊂coarse⊂fine tier partition (no receiver recomputed) + the SolveJob assembly that is the FIRST site to populate SolveJob::directivity_phase_rad (SRC-03; phase-free stays bit-identical). Depends on envi-engine, adds NOTHING to its 3-dep quarantine (engine byte-identical, D-02); std::fs manifest I/O stays in envi-store
 - [Phase 10, 10-06] solve_chunk_range seam CLOSED (supersedes the 10-04 typed stub): PrepareSolveReq marshals the whole transfer scene ONCE per submit into an owned PreparedScene (engine validating constructors) in a static RwLock keyed by tensor_hash; the real hash-gated, cancel-aware range-solve runs the UNCHANGED envi_engine::solver::solve rayon-sharded via pool::solve_tier into one [s][r_local][f] OPFS chunk pair — f64::to_bits-equal to a direct engine solve (forest ENG-09 + isolation ENG-10 + phase-carrying balloon SC4; two-shard == single-range; hash-mismatch typed error). WASM-safe scene DTOs factored into envi-compute, re-exported at original paths
 - [Phase 10, HI-01/build-fix] OPFS tensor store keyed by the REAL blake3 marshalled tensor identity (not an ad-hoc 32-bit FNV hash) — HI-01 code-review fix. Shared-memory threaded-wasm build recipe (1099b24): build:wasm:compute emits a SHARED WebAssembly.Memory (--shared-memory --import-memory --max-memory + exported __heap_base/__wasm_init_tls/__tls_*) so wasm-bindgen-rayon initThreadPool can postMessage it to the pool workers; the in-browser threaded solve now runs (offline Playwright 21 passed)
+- [Phase 11, 11-04] GRID-05 export encoders realized as three WASM byte generators (D-20/21/22): `envi_compute::export::{encode_geotiff, encode_isophone_geojson, encode_spectra_csv}` + the `envi_compute_wasm::export` `#[wasm_bindgen]` boundary → `Vec<u8>` browser-download bytes, nothing leaves the device (D-20). GeoTIFF is HAND-ROLLED (zero new dep — the `tiff`/`geotiff-writer`/`tiff-writer` crates declined per RESEARCH Package Legitimacy, same call as iso-band-vs-contour): a minimal single-strip Float32 TIFF with GeoKeyDirectory (Projected + PixelIsPoint + `ProjectedCSTypeGeoKey`=EPSG) + ModelPixelScale + ModelTiepoint + GDAL_NODATA, north-up (grid rows flipped), NaN holes preserved; round-tripped by a dev-only byte-offset reader. GeoJSON reuses the in-tree `geojson` crate (RFC-7946 MultiPolygon per band via the new `IsoBand::fill_polygons` containment classification). CSV identity = BAND INDEX + exact Hz from `FreqAxis::centres` (never nominal, Pitfall 3) + dB(A)/dB(C) totals. Every export embeds the ExportMeta footer (CRS + weighting + engine version + tensor_hash + OSM/Overture/ESA WorldCover/Copernicus attribution, D-22). SceneXY→LonLat reprojection happens ONCE in the boundary via `envi_geo::ProjectCrs::to_wgs84` (GEOX-04); `envi-geo` added to the wasm graph, builds for wasm32, engine 3-dep quarantine unchanged. Filename sanitized program-side (V12/T-11-04-02). ExportReq/ExportFormat/ExportCrsDto/ExportGridDto ts-rs-generated (no-drift green). NOTE: web/dist bundle NOT rebuilt — export UI wiring is 11-09.
 - [Phase 11, 11-03] SVC-06 recondition MAC realized CLIENT-SIDE (D-01/Open Q1): `envi_compute_wasm::recondition` re-mints `marshalled_tensor_hash` from the CURRENT scene, refuses a mismatched claimed hash with a typed `ComputeError::HashMismatch { expected, got }` (mirrors the server 409 body) BEFORE any MAC — the honest client 409, never a silently-served stale readout (D-12). On a match it maps each `ConditioningDto` → (`L_W` = gain_db, complex filter = 10^{dB/20}, delay_s) and drives the FORCE-validated 11-01 `readout_receiver` (compose_gain + readout_coherent) over the OPFS-read tensor — reconditioned spectra with NO re-propagation. Law derived from composition (Open Q2): a default (no-op) conditioning reads out identically to the plain 11-01 readout, so conditioning-excluded-from-identity (D-07) means a conditioning edit never stales. `ConditioningDto` MOVED envi-store→envi-compute::readout (re-exported, wire.ts byte-stable) so the wasm boundary reuses it without dragging std::fs into wasm; `ReconditionReq`/`ReconditionResult` ts-rs-generated (no-drift green). MAC ≡ recompute bit-exact (f64::to_bits). Engine 3-dep quarantine untouched.
 
 ### Pending Todos
@@ -217,6 +219,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-12T13:34:21.742Z
-Stopped at: Completed 11-03-PLAN.md — hash-gated recondition MAC boundary (SVC-06/WEB-05 backend); wave 2 of Phase 11 done
-Resume file: None (wave 3 ready — 11-04 export encoders + 11-05 spectrum panel/OPFS read glue)
+Last session: 2026-07-12T14:20:00.000Z
+Stopped at: Completed 11-04-PLAN.md — WASM export encoders (GRID-05): hand-rolled GeoTIFF + GeoJSON + CSV → browser bytes with full attribution; wave 3 of Phase 11 done
+Resume file: None (wave 4 ready — 11-06 isophone fill layer + color-scale editor, 11-07 conditioning fast-recalc, 11-09 export UI menu)
