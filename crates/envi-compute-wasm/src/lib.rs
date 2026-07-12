@@ -308,12 +308,18 @@ fn run_chunk_range(req: &SolveChunkRangeReq) -> Result<RangeProgressDto, Compute
 
     let r_offset = req.r_offset as usize;
     let len = req.len as usize;
+    // WR-06: report the receivers actually covered by this range, MEASURED from the
+    // prepared scene rather than trusting the requested `req.len`. With WR-01's
+    // coverage gate a partial range is now a `Range` error before we get here, so
+    // `solved == len` on the success path — but measuring (not assuming) keeps the
+    // progress/`receivers` count honest as defence-in-depth.
+    let solved = scene.local_receiver_count(r_offset, len);
     let (h, p) = scene::solve_prepared_range(scene, r_offset, len)?;
     write_chunk_to_opfs(req, scene.n_sub(), &h, &p)?;
 
     Ok(RangeProgressDto {
         chunk_index: req.chunk_index,
-        receivers: req.len,
+        receivers: solved as u32,
     })
 }
 
