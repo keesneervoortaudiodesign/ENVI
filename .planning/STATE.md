@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 11
 current_phase_name: results-fast-recalc
 status: executing
-stopped_at: Completed 11-09-PLAN.md
-last_updated: "2026-07-12T15:49:00.000Z"
+stopped_at: Completed 11-10-PLAN.md
+last_updated: "2026-07-12T16:11:45.045Z"
 last_activity: 2026-07-12
-last_activity_desc: "11-09 results Export menu (GRID-05, D-20/21/22): the Export… .menu downloads the level grid (GeoTIFF), isophone polygons (GeoJSON), and receiver spectra (CSV) — every byte generated in WASM by the 11-04 encoders and saved via a Blob/objectURL (nothing leaves the device, D-20), every file carrying the full CRS + dB-weighting + engine/scene-identity + open-data-attribution footer (D-22); export runs main-thread via an injectable client seam (mirrors readout/trace/identity, worker.ts untouched); CSV gathers every receiver via the results ReadoutClient (D-01 zero TS acoustic math); menu disabled until a result exists + while stale; offline Playwright UAT on the real bundle + real WASM captures all 3 downloads with attribution, zero network egress; web/dist rebuilt"
+last_activity_desc: "11-09 results Export menu (GRID-05, D-20/21/22): the Export… .menu downloads the level grid (GeoTIFF), isophone polygons (GeoJSON), and receiver spectra (CSV) — every byte generated in WASM by the 11-04 encoders and saved via a Blob/objectURL (nothing leaves the device, D-20), every file carrying the full CRS + dB-weighting + engine/scene-identity + open-data-attribution footer (D-22); export runs main-thread via an injectable client seam (worker.ts untouched); CSV gathers every receiver via the results ReadoutClient (D-01 zero TS acoustic math); menu disabled until a result exists + while stale; offline Playwright UAT captures all 3 downloads with attribution, zero network egress; web/dist rebuilt"
 progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 64
-  completed_plans: 62
-  percent: 97
+  completed_plans: 63
+  percent: 91
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 11 (results-fast-recalc) — EXECUTING
-Plan: 9 of 11 complete
+Plan: 10 of 11 complete
 Status: Ready to execute
 Last activity: 2026-07-12 — 11-09 results Export menu (GRID-05, D-20/21/22): the Export… .menu downloads the level grid (GeoTIFF), isophone polygons (GeoJSON), and receiver spectra (CSV) — every byte generated in WASM by the 11-04 encoders and saved via a Blob/objectURL (nothing leaves the device, D-20), every file carrying the full CRS + dB-weighting + engine/scene-identity + open-data-attribution footer (D-22); export runs main-thread via an injectable client seam (worker.ts untouched); CSV gathers every receiver via the results ReadoutClient (D-01 zero TS acoustic math); menu disabled until a result exists + while stale; offline Playwright UAT captures all 3 downloads with attribution, zero network egress; web/dist rebuilt
 
@@ -110,6 +110,7 @@ Progress: [██████████] Phase 10 — 6/6 plans complete (10-0
 | Phase 11 P07 | 17 min | 3 tasks | 12 files |
 | Phase 11 P08 | 28 | 3 tasks | 16 files |
 | Phase 11 P09 | ~30 min | 3 tasks | 6 files |
+| Phase 11 P10 | 14 min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -198,6 +199,7 @@ Recent decisions affecting current work:
 - [Phase 11, 11-07] WEB-05/SVC-06 conditioning fast-recalc SHIPPED (SC2): a per-source Gain(dB)+Delay(ms)+reused-SpectrumEditor Filter (D-11) drives a ~150 ms DEBOUNCED (D-10) readout_receivers MAC over the cached OPFS tensor — the receiver spectrum AND the isophone map update live with NO re-propagation (the calc job never leaves idle; the map RE-CONTOURS the reconditioned grid, SC3). D-01 held with ZERO TS acoustic math (grep gate 0): the dB→complex filter, readout law, and blake3 identity all run in WASM; the dense [105] filter is materialised SERVER-side through the reused SpectrumEditor's own interpolation. Two honest states: store/stale.ts re-mints the tensor identity of the CURRENT scene (shared compute/marshalScene marshaller, extracted from CalcPanel — single source of truth) and flips the D-12 ".chip.warn Out of date" badge on divergence; the watcher keys on the manifest tensorHash so a conditioning recalc (swaps the drive, keeps the hash) NEVER re-mints → conditioning never stales (D-07, enforced structurally). A MAC against a mismatched hash THROWS `tensor_hash mismatch` → the store sets `refuse` → the honest 409 reject banner, never a silently-served stale readout (the SVC-06 client realization). Isophone map link = re-feed setIsophoneInput with the WASM-produced per-lattice total_dba (placed by index only); the production fine-tier lattice feed stays the documented 11-05/06 follow-up. Zero Rust/wire/Cargo changes. Offline Playwright UAT on the real bundle + real WASM MAC green.
 - [Phase ?]: 11-08: friendly what-if knobs reuse the single-source envi_gis::weather Route-2 derivation; no forked met math
 - [Phase ?]: 11-08: A-B difference computed in WASM (difference_dba in stable envi-gis-wasm); TS zero acoustic arithmetic (D-01)
+- [Phase 11]: D-17/18/19 realized: scene objects render at full NoizCalc styling (categorical hue + point glyph/line width/area hatch) ABOVE the isophone fill; MapLibre hatch/markers = pure ImageData rasters via map.addImage; display styling is a system SEPARATE from Terra Draw draw-time (useTerraDraw.ts untouched, Phase-7 regression guard green).
 
 ### Pending Todos
 
@@ -227,6 +229,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-12T15:49:00.000Z
-Stopped at: Completed 11-09-PLAN.md
+Last session: 2026-07-12T16:11:37.317Z
+Stopped at: Completed 11-10-PLAN.md
 Resume file: None

@@ -407,7 +407,7 @@ Plans:
   4. Weather what-if works end-to-end: manual overrides (T/RH/p, Beaufort wind + direction, downwind worst-case toggle, temperature gradient, per-azimuth A/B/C) recompute as a scenario; named scenarios switch instantly via per-scenario cached tensors; difference maps render between two scenarios
   5. Results export as GeoTIFF/GeoJSON and spectra as CSV, carrying band index + exact frequency columns and data attribution metadata
 
-**Plans**: 9/11 plans executed
+**Plans**: 10/11 plans executed
 
 Plans:
 **Wave 1**
@@ -433,7 +433,7 @@ Plans:
 **Wave 5** *(blocked on Wave 4 completion)*
 
 - [x] 11-08-PLAN.md — Weather scenarios (clone-then-edit, friendly+advanced A/B/C) + diverging difference map + Playwright (WEB-12/METX-03/04) [wave 5]
-- [ ] 11-10-PLAN.md — Scene-object color+hatch styling sweep over the isophone fill + draw-time regression guard (D-17/18/19) [wave 5]
+- [x] 11-10-PLAN.md — Scene-object color+hatch styling sweep over the isophone fill + draw-time regression guard (D-17/18/19) [wave 5]
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
