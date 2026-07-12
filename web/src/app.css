@@ -709,3 +709,85 @@ select.input.dense {
 .picker-create .input {
   flex: 1;
 }
+
+/* Isophone colour-scale editor (WEB-06) — preset picker + editable break rows + the
+   NoizCalc §4.6.5 generator. Tokens only (no invented values, D-11). */
+.colorscale-editor {
+  gap: var(--space-2);
+}
+.colorscale-breaks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.colorscale-break-row {
+  align-items: center;
+  gap: var(--space-2);
+}
+.colorscale-swatch {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.colorscale-generator {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+.colorscale-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* Docked isophone legend (bottom-left over the map, .map-readout idiom). Break
+   values + class swatches + the metadata weighting label (legend ≡ contour ≡ class). */
+.isophone-legend {
+  position: absolute;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 2;
+  padding: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xxs);
+  color: var(--color-text-muted);
+  pointer-events: auto;
+}
+.isophone-legend-head {
+  color: var(--color-text-dim);
+  margin-bottom: var(--space-1);
+}
+.isophone-legend-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+}
+.isophone-legend-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.isophone-legend-swatch {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+}
+.isophone-legend-label {
+  color: var(--color-text);
+}

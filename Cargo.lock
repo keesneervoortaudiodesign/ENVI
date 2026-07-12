@@ -491,6 +491,7 @@ dependencies = [
  "blake3",
  "envi-compute",
  "envi-engine",
+ "envi-geo",
  "js-sys",
  "ndarray",
  "num-complex",

@@ -21,6 +21,9 @@ import { runImport, retryLayer } from "./import/importJob";
 import { getTile, removeTile } from "./import/opfs";
 import { writeChunkFile } from "./compute/opfs";
 import { useResultsStore } from "./store/results";
+import { useColorScaleStore, type LevelGridInput } from "./store/colorScale";
+import { isophoneTelemetry } from "./map/isophoneLayer";
+import type { ExportCrsDto } from "./generated/wire";
 import type { GroundZoneOutcome } from "./validate/groundZone";
 import type { AuthoredSpectrumDto, BboxDto, PrepareSolveReq } from "./generated/wire";
 
@@ -179,6 +182,19 @@ export interface EnviTestBridge {
   // hash gate matches. Returns the receiver UUIDs in order. Opens a test project if
   // none is open.
   seedResults(receiverCount: number): Promise<string[]>;
+
+  // --- Isophone map (WEB-06/GRID-04 offline UAT, 11-06) ---
+  // Seed a deterministic level grid + CRS + weighting into the colour-scale store —
+  // the SAME `setIsophoneInput` a finished readout feeds. The IsophoneLayer then
+  // re-contours it via the REAL WASM tracer (no re-solve). A ramp spanning ~40–90 dB
+  // so all six EU-END classes appear.
+  seedIsophone(): void;
+  // The isophone telemetry (trace count / rendered feature count / layer paint type)
+  // for the SC3 re-contour + fill-not-raster assertions.
+  isophoneTelemetry(): ReturnType<typeof isophoneTelemetry>;
+  // The current colour-scale source of truth (preset + breaks + colors) so the UAT
+  // can assert legend ≡ contour ≡ class colours.
+  colorScaleState(): { preset: string; breaks: number[]; colors: string[] };
 }
 
 export function installTestBridge(): void {
@@ -349,6 +365,35 @@ export function installTestBridge(): void {
         spans: [{ chunkIndex: 0, receiverIds: ids }],
       });
       return ids;
+    },
+    seedIsophone() {
+      // A 24×24 lattice near the UTM 31N central meridian (so the SceneXY→LonLat
+      // reprojection lands in the Netherlands), values ramping ~40–90 dB so the
+      // full EU-END class scheme (< 55 … ≥ 75) traces.
+      const rows = 24;
+      const cols = 24;
+      const values: number[] = [];
+      for (let r = 0; r < rows; r += 1) {
+        for (let c = 0; c < cols; c += 1) {
+          values.push(40 + (c / (cols - 1)) * 50);
+        }
+      }
+      const grid: LevelGridInput = {
+        rows,
+        cols,
+        origin: [500_000, 5_800_000],
+        spacing_m: 10,
+        values,
+      };
+      const crs: ExportCrsDto = { utm_zone: 31, south: false };
+      useColorScaleStore.getState().setIsophoneInput(grid, crs, "dB(A)");
+    },
+    isophoneTelemetry() {
+      return isophoneTelemetry();
+    },
+    colorScaleState() {
+      const s = useColorScaleStore.getState();
+      return { preset: s.preset, breaks: [...s.breaks], colors: [...s.colors] };
     },
   };
   (window as unknown as { __enviTest?: EnviTestBridge }).__enviTest = bridge;

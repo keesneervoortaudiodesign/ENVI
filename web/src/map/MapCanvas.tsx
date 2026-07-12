@@ -21,6 +21,7 @@ import { DARK_BASEMAP_STYLE } from "./basemap";
 import { useTerraDraw } from "./useTerraDraw";
 import { DgmOverlay } from "./DgmOverlay";
 import { ImpedanceOverlay } from "./impedanceOverlay";
+import { IsophoneLayer, MapLegend } from "./isophoneLayer";
 import {
   ReceiverGridOverlay,
   ImpedanceSegOverlay,
@@ -247,6 +248,9 @@ export function MapCanvas(): ReactElement {
       <ZoomController />
       <ViewportTracker />
       <ImportAttribution />
+      {/* Isophone FILL layer (D-02) below the scene objects (D-18) + docked legend. */}
+      <IsophoneLayer />
+      <MapLegend />
       <DgmOverlay />
       <ImpedanceOverlay />
       <ReceiverGridOverlay />
