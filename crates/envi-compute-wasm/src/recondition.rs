@@ -30,7 +30,7 @@ use ndarray::ArrayView3;
 use num_complex::Complex;
 use wasm_bindgen::prelude::*;
 
-use envi_compute::readout::{ConditioningDto, Conditioning, ReadoutLaw, default_law, readout_receiver};
+use envi_compute::readout::{Conditioning, ConditioningDto, default_law, readout_receiver};
 
 use crate::dto::{PrepareSolveReq, ReconditionReq, ReconditionResult};
 use crate::opfs_reader::read_chunk;
@@ -48,20 +48,124 @@ use crate::{ComputeError, compute_err, from_js, js_err, to_js};
 /// on a sub-source/receiver count mismatch, a non-dense/non-finite filter (V5), or
 /// an engine readout `SinkError`.
 pub fn recondition_receivers(
-    _req: &ReconditionReq,
-    _current_tensor_hash: &str,
-    _h_coh: ArrayView3<'_, Complex<f64>>,
-    _p_incoh_abs: ArrayView3<'_, f64>,
-    _axis: &FreqAxis,
+    req: &ReconditionReq,
+    current_tensor_hash: &str,
+    h_coh: ArrayView3<'_, Complex<f64>>,
+    p_incoh_abs: ArrayView3<'_, f64>,
+    axis: &FreqAxis,
 ) -> Result<ReconditionResult, ComputeError> {
-    Err(ComputeError::Recondition("unimplemented".to_string()))
+    // The hash gate FIRST (D-12 / Open Q1): refuse a mismatched hash BEFORE any MAC
+    // so a stale readout is never produced — the honest client-side 409. The
+    // {expected, got} fields mirror the server 409 body.
+    if req.tensor_hash != current_tensor_hash {
+        return Err(ComputeError::HashMismatch {
+            expected: current_tensor_hash.to_string(),
+            got: req.tensor_hash.clone(),
+        });
+    }
+
+    let (n_sub, n_rcv, _) = h_coh.dim();
+    if req.per_source_conditioning.len() != n_sub {
+        return Err(ComputeError::Recondition(format!(
+            "per_source_conditioning has {} entries, expected one per sub-source (n_sub = {n_sub})",
+            req.per_source_conditioning.len()
+        )));
+    }
+    if req.receiver_ids.len() != n_rcv {
+        return Err(ComputeError::Recondition(format!(
+            "receiver_ids has {} entries, expected the chunk receiver count ({n_rcv})",
+            req.receiver_ids.len()
+        )));
+    }
+
+    // Build the per-source engine readout inputs, validating each filter's dense
+    // [105] length + finiteness (V5) up front — a typed error, never a panic.
+    let mut spectra = Vec::with_capacity(n_sub);
+    let mut conditioning = Vec::with_capacity(n_sub);
+    for c in &req.per_source_conditioning {
+        let (l_w, cond) = to_engine(c)?;
+        spectra.push(l_w);
+        conditioning.push(cond);
+    }
+
+    // The readout law is derived from the conditioning composition (Open Q2): a
+    // conditioned/directional drive sums coherently (loudspeaker-array MAC), a
+    // plain no-op drive sums incoherently — so a default recondition reads out
+    // identically to the plain 11-01 readout (the never-stale invariant, D-07).
+    let law = default_law(&conditioning);
+
+    // Read out every receiver in receiver_ids order (index = tensor column) by
+    // driving the FORCE-validated 11-01 readout core (compose_gain + readout_coherent
+    // internally) — never a bespoke MAC/dB loop here.
+    let mut out = Vec::with_capacity(n_rcv);
+    for r in 0..n_rcv {
+        let ro = readout_receiver(h_coh, p_incoh_abs, r, &spectra, &conditioning, law, axis)
+            .map_err(|e| ComputeError::Recondition(e.to_string()))?;
+        out.push(ro.band_levels_db);
+    }
+
+    // `stale` is always false: a mismatch is refused above (never served stale), and
+    // conditioning is excluded from tensor identity so a match can never be stale.
+    Ok(ReconditionResult {
+        spectra: out,
+        stale: false,
+    })
 }
 
 /// Map a wire [`ConditioningDto`] to the engine readout inputs: a broadband
 /// `L_W` [`BandSpectrum`] (the `gain_db`) and a [`Conditioning`] carrying the
 /// complex per-band filter + the delay in seconds.
-fn to_engine(_c: &ConditioningDto) -> Result<(BandSpectrum, Conditioning), ComputeError> {
-    Err(ComputeError::Recondition("unimplemented".to_string()))
+///
+/// A muted source is silenced with an all-zero complex filter (an exact `0` gain);
+/// a present filter is validated dense `[105]` + finite (V5) and converted from dB
+/// magnitude to a real complex gain `10^{dB/20}`. `gain_db`/`delay_ms` are
+/// finiteness-checked. A typed [`ComputeError::Recondition`], never a panic.
+fn to_engine(c: &ConditioningDto) -> Result<(BandSpectrum, Conditioning), ComputeError> {
+    if !c.gain_db.is_finite() {
+        return Err(ComputeError::Recondition(format!(
+            "conditioning gain_db is not finite: {}",
+            c.gain_db
+        )));
+    }
+    if !c.delay_ms.is_finite() {
+        return Err(ComputeError::Recondition(format!(
+            "conditioning delay_ms is not finite: {}",
+            c.delay_ms
+        )));
+    }
+
+    let filter = if c.muted {
+        // A muted source contributes exactly zero to both the coherent and the
+        // incoherent channel — an all-zero complex filter silences it exactly.
+        Some(vec![Complex::new(0.0, 0.0); N_BANDS])
+    } else if let Some(f) = &c.filter_band_db {
+        if f.len() != N_BANDS {
+            return Err(ComputeError::Recondition(format!(
+                "filter_band_db has {} values, expected a dense [{N_BANDS}] by band index",
+                f.len()
+            )));
+        }
+        let mut cf = Vec::with_capacity(N_BANDS);
+        for &db in f {
+            if !db.is_finite() {
+                return Err(ComputeError::Recondition(
+                    "filter_band_db carries a non-finite value".to_string(),
+                ));
+            }
+            cf.push(Complex::new(10f64.powf(db / 20.0), 0.0));
+        }
+        Some(cf)
+    } else {
+        None
+    };
+
+    Ok((
+        BandSpectrum::uniform(c.gain_db),
+        Conditioning {
+            filter,
+            delay_s: c.delay_ms / 1000.0,
+        },
+    ))
 }
 
 /// Recondition the OPFS tensor for the target receivers (SVC-06 / D-01), hash-gated
@@ -83,7 +187,8 @@ pub fn recondition(
     let current = crate::identity::marshalled_tensor_hash(&scene);
     let n_sub = scene.n_sub as usize;
     let chunk_len = req.receiver_ids.len();
-    let (h, p) = read_chunk(hi_bytes, pi_bytes, n_sub, chunk_len).map_err(|e| js_err(&e.to_string()))?;
+    let (h, p) =
+        read_chunk(hi_bytes, pi_bytes, n_sub, chunk_len).map_err(|e| js_err(&e.to_string()))?;
     let axis = FreqAxis::new();
     let result = recondition_receivers(&req, &current, h.view(), p.view(), &axis)
         .map_err(|e| compute_err(&e))?;
@@ -94,6 +199,7 @@ pub fn recondition(
 #[cfg(not(target_arch = "wasm32"))]
 mod tests {
     use super::*;
+    use envi_compute::readout::ReadoutLaw;
     use envi_engine::tensor::{compose_gain, readout_coherent};
     use ndarray::Array3;
 
@@ -182,8 +288,10 @@ mod tests {
                 delay_s: c.delay_ms / 1000.0,
             })
             .collect();
-        let spectra: Vec<BandSpectrum> =
-            cond.iter().map(|c| BandSpectrum::uniform(c.gain_db)).collect();
+        let spectra: Vec<BandSpectrum> = cond
+            .iter()
+            .map(|c| BandSpectrum::uniform(c.gain_db))
+            .collect();
 
         for r in 0..n_rcv {
             let reference = readout_receiver(
