@@ -25,7 +25,7 @@ import { useEffect, useMemo, type ReactElement } from "react";
 import type { TierKindDto } from "../generated/wire";
 import type { CalcJobSpec } from "../compute/worker";
 import { CalcClient } from "../compute/client";
-import { estimateCost } from "../compute/cost";
+import { estimateCost } from "../compute/wasm";
 import { buildPrepareScene, deriveSceneInputs, plannedReceiverCount } from "../compute/marshalScene";
 import { useCalcStore, type CalcJobState } from "../store/calc";
 import { useSceneStore } from "../store/sceneStore";

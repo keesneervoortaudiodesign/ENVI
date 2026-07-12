@@ -29,11 +29,11 @@ import { create } from "zustand";
 import type {
   ConditioningDto,
   PrepareSolveReq,
-  ReadoutResult,
   ReconditionReq,
   ReceiverReadoutDto,
 } from "../generated/wire";
 import { readChunk } from "../compute/opfs";
+import { readoutReceivers } from "../compute/wasm";
 
 // The band-level display resolution: 1/3-octave (default, the 27 third-octave
 // band indices) ⇄ the full 105-point 1/12-octave expert view (D-06). Aggregation
@@ -217,25 +217,13 @@ export const useResultsStore = create<ResultsState>((set, get) => ({
     }),
 }));
 
-// The REAL readout client: lazily initialises the compute wasm module on the main
-// thread (the same module CalcPanel already uses for cost/plan — the dev/prod
-// server sends COOP/COEP so `crossOriginIsolated` holds), reads the covering OPFS
-// chunk bytes, and calls the `readout_receivers` export. The wasm is a DYNAMIC
-// import inside the factory so importing this store in Node (the vitest unit test)
-// never pulls the browser-only wasm/OPFS graph.
+// The REAL readout client: reads the covering OPFS chunk bytes and calls the shared
+// compute facade's `readout_receivers` (the same lazily-initialised module CalcPanel uses
+// for cost/plan — the dev/prod server sends COOP/COEP so `crossOriginIsolated` holds). The
+// facade's dynamic import keeps the browser-only wasm/OPFS graph out of the Node unit test.
 export function createWasmReadoutClient(): ReadoutClient {
-  let glue: Promise<typeof import("../generated/wasm-compute/envi_compute_wasm")> | null = null;
-  const ensureGlue = (): Promise<typeof import("../generated/wasm-compute/envi_compute_wasm")> => {
-    glue ??= (async () => {
-      const g = await import("../generated/wasm-compute/envi_compute_wasm");
-      await g.default();
-      return g;
-    })();
-    return glue;
-  };
   return {
     async readout(req) {
-      const g = await ensureGlue();
       const { tensor, pincoh } = await readChunk(req.projectId, req.tensorHash, req.chunkIndex);
       // Annotate against the generated DTO so a Rust-side field rename is a `tsc` error,
       // not a silent `deny_unknown_fields` failure in the browser (WR-02 / D-10).
@@ -244,7 +232,7 @@ export function createWasmReadoutClient(): ReadoutClient {
         per_source_conditioning: [...req.perSourceConditioning],
         receiver_ids: [...req.chunkReceiverIds],
       };
-      const result = g.readout_receivers(req.scene, request, tensor, pincoh) as ReadoutResult;
+      const result = await readoutReceivers(req.scene, request, tensor, pincoh);
       const readout = result.receivers[req.rLocal];
       if (!readout) {
         throw new Error("result data unavailable for the selected receiver");

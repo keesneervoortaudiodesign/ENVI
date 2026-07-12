@@ -22,6 +22,7 @@ import { useEffect } from "react";
 
 import type { PrepareSolveReq } from "../generated/wire";
 import { buildPrepareScene } from "../compute/marshalScene";
+import { tensorHash } from "../compute/wasm";
 import { useSceneStore } from "./sceneStore";
 import { useCalcStore } from "./calc";
 import { useResultsStore } from "./results";
@@ -88,25 +89,11 @@ export const useStaleStore = create<StaleState>((set, get) => ({
   },
 }));
 
-// The REAL identity client: lazily instantiates the compute wasm module on the main
-// thread (COOP/COEP holds `crossOriginIsolated`) and calls the `tensor_hash` export. A
-// dynamic import keeps the wasm graph out of the Node unit-test module load.
+// The REAL identity client: calls the shared compute facade's `tensor_hash` (the same
+// blake3 digest the tensor was keyed by; COOP/COEP holds `crossOriginIsolated`). The
+// facade's dynamic import keeps the wasm graph out of the Node unit-test module load.
 export function createWasmIdentityClient(): IdentityClient {
-  let glue: Promise<typeof import("../generated/wasm-compute/envi_compute_wasm")> | null = null;
-  const ensureGlue = (): Promise<typeof import("../generated/wasm-compute/envi_compute_wasm")> => {
-    glue ??= (async () => {
-      const g = await import("../generated/wasm-compute/envi_compute_wasm");
-      await g.default();
-      return g;
-    })();
-    return glue;
-  };
-  return {
-    async remint(scene) {
-      const g = await ensureGlue();
-      return g.tensor_hash(scene) as string;
-    },
-  };
+  return { remint: tensorHash };
 }
 
 // Watch the DRAWN scene + calc grid for an edit and re-mint the identity against the

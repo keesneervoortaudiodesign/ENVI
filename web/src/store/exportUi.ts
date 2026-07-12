@@ -31,6 +31,7 @@ import type {
 } from "../generated/wire";
 import { contourBreaks, useColorScaleStore } from "./colorScale";
 import { useResultsStore, type ResultsState } from "./results";
+import { exportEncode, exportFilename } from "../compute/wasm";
 
 // The engine version string stamped into every export footer (scene identity, D-22).
 // Half of the reproducibility key alongside the scene `tensor_hash`; matches the
@@ -119,32 +120,12 @@ export interface ExportClient {
   filename(base: string, format: ExportFormat): Promise<string>;
 }
 
-// The real client: lazily instantiates the compute wasm module on the MAIN THREAD (the
-// same module the readout / trace / identity seams use — the dev/prod server sends
-// COOP/COEP so `crossOriginIsolated` holds), and calls the `export` / `export_filename`
-// exports. `export` is exposed as `_export` by wasm-bindgen (`export` is a reserved JS
-// word). A dynamic import inside the factory keeps the wasm graph out of the Node
-// unit-test module load (mirrors the results `ReadoutClient`).
+// The real client: calls the shared compute facade's `export` / `export_filename` wrappers
+// (the same lazily-initialised module the readout / trace / identity seams use — the dev/
+// prod server sends COOP/COEP so `crossOriginIsolated` holds). The facade's dynamic import
+// keeps the wasm graph out of the Node unit-test module load (mirrors the `ReadoutClient`).
 export function createWasmExportClient(): ExportClient {
-  let glue: Promise<typeof import("../generated/wasm-compute/envi_compute_wasm")> | null = null;
-  const ensureGlue = (): Promise<typeof import("../generated/wasm-compute/envi_compute_wasm")> => {
-    glue ??= (async () => {
-      const g = await import("../generated/wasm-compute/envi_compute_wasm");
-      await g.default();
-      return g;
-    })();
-    return glue;
-  };
-  return {
-    async encode(req) {
-      const g = await ensureGlue();
-      return g._export(req) as Uint8Array;
-    },
-    async filename(base, format) {
-      const g = await ensureGlue();
-      return g.export_filename(base, format) as string;
-    },
-  };
+  return { encode: exportEncode, filename: exportFilename };
 }
 
 // Single module-level client (browser-only), kept out of the stores so they stay

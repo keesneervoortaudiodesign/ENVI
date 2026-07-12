@@ -22,29 +22,13 @@ import type {
   PrepareSolveReq,
   ReceiverPlacementDto,
   SubSourcePlacementDto,
-  TierPlanResult,
 } from "../generated/wire";
 import { useSceneStore } from "../store/sceneStore";
+import { planTiers, tensorHash } from "./wasm";
 
 // Receiver height + the corridor's first-receiver down-range x (SceneXY meters).
 export const RECEIVER_Z_M = 1.5;
 export const CORRIDOR_X0_M = 100;
-
-// Init the (threaded) compute wasm module once on the main thread — only pure fns
-// (`plan_tiers`, `tensor_hash`) are called here; the rayon pool is the worker's job.
-// The glue is a DYNAMIC import inside the factory so importing this module in Node (the
-// vitest unit graph for store/stale.ts) never pulls the browser-only wasm/worker graph.
-// Idempotent: wasm-bindgen caches the instance.
-type ComputeGlue = typeof import("../generated/wasm-compute/envi_compute_wasm");
-let gluePromise: Promise<ComputeGlue> | null = null;
-export function ensureCompute(): Promise<ComputeGlue> {
-  gluePromise ??= (async () => {
-    const g = await import("../generated/wasm-compute/envi_compute_wasm");
-    await g.default();
-    return g;
-  })();
-  return gluePromise;
-}
 
 // Projected polygon area (m²) via a local equirectangular shoelace around the ring's mean
 // latitude. The ring is WGS84 `[lng, lat]`; a valid enough metric for the receiver-count +
@@ -122,8 +106,7 @@ export async function plannedReceiverCount(
   coarseMultiples: readonly number[],
   areaM2: number,
 ): Promise<number> {
-  const g = await ensureCompute();
-  const plan = g.plan_tiers(buildPlanReq(spacingM, coarseMultiples, areaM2)) as TierPlanResult;
+  const plan = await planTiers(buildPlanReq(spacingM, coarseMultiples, areaM2));
   return plan.tiers.reduce((n, t) => n + t.receivers.length, 0);
 }
 
@@ -152,8 +135,7 @@ export async function buildPrepareScene(
 
   const planReq = buildPlanReq(spacingM, coarseMultiples, inputs.areaM2);
 
-  const g = await ensureCompute();
-  const plan = g.plan_tiers(planReq) as TierPlanResult;
+  const plan = await planTiers(planReq);
 
   // The union of the tiers' receivers, keyed by global index (contiguous 0..N-1 in emission
   // order). Each global index gets a TS-minted UUID (the wasm mints none) and a placement.
@@ -203,8 +185,8 @@ export async function buildPrepareScene(
   };
 
   // Derive the OPFS/manifest key from the REAL tensor identity (HI-01 / D-09).
-  const tensorHash = g.tensor_hash(prepareScene);
-  prepareScene.tensor_hash = tensorHash;
+  const hash = await tensorHash(prepareScene);
+  prepareScene.tensor_hash = hash;
 
   return { scene: prepareScene, receiverIds, nSub, planReq, areaM2: inputs.areaM2 };
 }
