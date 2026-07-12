@@ -39,6 +39,11 @@ serde-wasm-bindgen = "0.6.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+# blake3 (WASM-safe; already in the graph via envi-compute) — the marshalled-scene
+# tensor-identity hash (HI-01 / D-09). Names the same primitive `envi-compute`'s
+# `identity::tensor_hash` uses, so the OPFS/manifest key is a real blake3 digest
+# over every tensor-affecting field, never a JS-side ad-hoc hash.
+blake3 = "1"
 # ts-rs (D-10): derive the committed TS mirror on the boundary DTOs. The generator
 # (fs export) is only ever invoked by the native no-drift test; the trait itself
 # is pure-Rust and compiles for wasm32 (it never runs on the wasm path).

@@ -40,6 +40,11 @@
 #![deny(unsafe_code)]
 
 pub mod dto;
+// The marshalled-scene tensor-identity hash (HI-01 / D-09) — the blake3 digest the
+// OPFS/manifest key is derived from, over every tensor-affecting field of a
+// `PrepareSolveReq`. Exposed to the client via the `tensor_hash` boundary export so
+// the browser never invents its own key.
+pub mod identity;
 pub mod opfs_sink;
 // The caller-side rayon sharding driver (GRID-02). Compiled for every NATIVE build
 // (so `cargo test pool` exercises it) and for the THREADED wasm build; excluded
@@ -245,6 +250,24 @@ pub fn plan_tiers(req: JsValue) -> Result<JsValue, JsValue> {
         })
         .collect();
     to_js(&TierPlanResult { tiers })
+}
+
+/// Compute the marshalled-scene tensor-identity hash (HI-01 / D-09) for a
+/// [`PrepareSolveReq`] — the blake3 digest over EVERY tensor-affecting field
+/// (terrain, atmosphere, coherence, weather, sub-sources + directivity, receivers,
+/// forest, isolation, `n_sub`; the request's own `tensor_hash` field is excluded).
+/// The client uses the returned 64-char lowercase hex as the OPFS/manifest key
+/// (`calc/<hash>/…`) and as the `tensor_hash` it threads into [`prepare_solve`] /
+/// [`solve_chunk_range`], so the store is keyed by the TRUE tensor identity rather
+/// than an ad-hoc client-side hash. A cheap standalone export (no scene build), so
+/// the key is available before `prepare_solve` for the cost/estimate path.
+///
+/// # Errors
+/// A shape error in the request DTO.
+#[wasm_bindgen]
+pub fn tensor_hash(req: JsValue) -> Result<String, JsValue> {
+    let req: PrepareSolveReq = from_js(req)?;
+    Ok(identity::marshalled_tensor_hash(&req))
 }
 
 /// Marshal the ENTIRE transfer scene ONCE per submit (D-08). Deserializes a

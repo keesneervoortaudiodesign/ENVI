@@ -22,7 +22,7 @@
 
 import { useEffect, useMemo, type ReactElement } from "react";
 
-import init, { plan_tiers } from "../generated/wasm-compute/envi_compute_wasm";
+import init, { plan_tiers, tensor_hash } from "../generated/wasm-compute/envi_compute_wasm";
 import type {
   PlanTiersReq,
   PrepareSolveReq,
@@ -64,17 +64,6 @@ let computeReady: Promise<void> | null = null;
 function ensureCompute(): Promise<void> {
   computeReady ??= init().then(() => undefined);
   return computeReady;
-}
-
-// A stable hex-only identity string (OPFS path segment; hex is required by the sink's path guard). Content-
-// derived so an unchanged scene re-runs against the same key (D-09 idempotence, best-effort here).
-function hexHash(input: string): string {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < input.length; i += 1) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h.toString(16).padStart(8, "0");
 }
 
 // Projected polygon area (m²) via a local equirectangular shoelace around the ring's mean latitude. The ring
@@ -245,10 +234,11 @@ async function buildJobSpec(spacingM: number, coarseMultiples: readonly number[]
     (_v, i): SubSourcePlacementDto => ({ position: [2.5, 0, 0.5 + 0.3 * i], directivity: null }),
   );
 
-  const tensorHash = hexHash(`${spacingM}|${Math.round(inputs.areaM2)}|${nSub}|${total}`);
   const xMax = Math.max(400, CORRIDOR_X0_M + total + 10);
   const prepareScene: PrepareSolveReq = {
-    tensor_hash: tensorHash,
+    // Placeholder — replaced below by the TRUE blake3 tensor identity. The Rust
+    // hasher EXCLUDES this field, so the placeholder does not affect the digest.
+    tensor_hash: "",
     n_sub: nSub,
     terrain: {
       points: [
@@ -266,6 +256,16 @@ async function buildJobSpec(spacingM: number, coarseMultiples: readonly number[]
     forest_path_length_m: null,
     isolation: null,
   };
+
+  // Derive the OPFS/manifest key from the REAL tensor identity (HI-01 / D-09): the
+  // blake3 digest the wasm boundary computes over every tensor-affecting field of the
+  // marshalled scene (terrain, atmosphere, coherence, weather, sub-sources, receiver
+  // positions, forest, isolation, n_sub). This is the single source of truth for the
+  // key — the client no longer invents its own hash, so two distinct scenes cannot
+  // collide onto the same `calc/<hash>/` directory. The wasm module is already
+  // initialised (ensureCompute above).
+  const tensorHash = tensor_hash(prepareScene);
+  prepareScene.tensor_hash = tensorHash;
 
   const chunkReceivers = 32;
   return { projectId, tensorHash, planReq, scene: prepareScene, receiverIds, nSub, chunkReceivers };
