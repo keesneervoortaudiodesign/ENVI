@@ -162,7 +162,8 @@ export const catalog: Record<ControlId, HelpEntry> = {
   "project.menu": {
     title: "More project actions",
     body: [
-      "Opens the overflow menu for project-level actions such as deleting the project. Destructive actions there use an explicit typed-name confirmation, because deleting a project is irreversible.",
+      "Opens the overflow menu for project-level actions such as deleting the project. It keeps rarely used, potentially destructive actions out of the main toolbar so they are not triggered by accident.",
+      "Destructive actions there use an explicit typed-name confirmation, because deleting a project removes its scene and results permanently and cannot be undone.",
     ],
     citations: [envi("Overflow menu; irreversible actions gated by a typed-name confirm")],
   },
@@ -389,28 +390,32 @@ export const catalog: Record<ControlId, HelpEntry> = {
   "weather.debug_grid": {
     title: "Debug: receiver grid",
     body: [
-      "Overlays the computed receiver lattice on the map so you can check the grid layout inside the calculation area before running. Display aid only; it does not change the scene.",
+      "Overlays the computed receiver lattice on the map so you can check the grid layout inside the calculation area before running a full solve.",
+      "It is a display aid only: it does not change the scene or the calculation, and toggling it costs nothing. Use it to confirm the grid covers the area you expect and clears the building footprints.",
     ],
     citations: [envi("Receiver-grid debug overlay")],
   },
   "weather.debug_impedance": {
     title: "Debug: impedance segmentation",
     body: [
-      "Overlays how a source–receiver terrain profile is split into ground-impedance segments where it crosses ground zones. It helps verify that the ground model matches the drawn zones. Display aid only.",
+      "Overlays how a source–receiver terrain profile is split into ground-impedance segments where it crosses ground zones, so you can verify that the ground model matches the drawn land cover.",
+      "It is a display aid only and does not change the calculation. Because ground effect is often the largest environmental term, confirming the segmentation is a useful sanity check before a solve.",
     ],
     citations: [av("Terrain profile segmented by ground impedance"), envi("Impedance-segmentation debug overlay")],
   },
   "weather.debug_screens": {
     title: "Debug: screen vertices",
     body: [
-      "Overlays the screen/diffraction vertices injected into the terrain profile (wall tops, building edges, berm crests), so you can confirm which obstacles the diffraction sub-model will see. Display aid only.",
+      "Overlays the screen/diffraction vertices injected into the terrain profile (wall tops, building edges, berm crests), so you can confirm which obstacles the diffraction sub-model will actually see.",
+      "It is a display aid only. Nord2000 caps a path at two screen edges, so this overlay is a quick way to check that the intended shielding obstacles are the ones being picked up.",
     ],
     citations: [av("Screen tops as diffraction vertices in the profile"), envi("Screen-vertex debug overlay")],
   },
   "weather.compute_debug": {
     title: "Compute debug geometry",
     body: [
-      "Runs the geometry pre-pass that produces the debug overlays (receiver grid, impedance segmentation, screen vertices) without launching a full acoustic solve. Use it to sanity-check the geometry cheaply before a real calculation.",
+      "Runs the geometry pre-pass that produces the debug overlays (receiver grid, impedance segmentation, screen vertices) without launching a full acoustic solve.",
+      "Use it to sanity-check the geometry cheaply before committing to a real calculation, which is far more expensive. It builds the terrain profiles and segmentation the solver would use, then draws them.",
     ],
     citations: [envi("Geometry pre-pass for the debug overlays")],
   },
@@ -529,13 +534,15 @@ export const catalog: Record<ControlId, HelpEntry> = {
     title: "Number of intervals (generator)",
     body: [
       "How many evenly spaced classes the uniform generator produces (at least 2). With the smallest value and the magnitude, it fixes the whole ladder: breaks run from the smallest value upward in equal steps.",
+      "More intervals give finer colour resolution over the level range; fewer give broader bands. The generator only seeds the break list — you can still hand-edit individual breaks afterwards.",
     ],
     citations: [ti("Number of grid-scale intervals, §4.6.5")],
   },
   "colorscale.apply": {
     title: "Apply uniform scale",
     body: [
-      "Replaces the current break list with an evenly spaced ladder built from the smallest value, interval magnitude, and interval count, then re-contours the map. Use it as a quick reset to a regular scale before hand-tuning individual breaks.",
+      "Replaces the current break list with an evenly spaced ladder built from the smallest value, interval magnitude, and interval count, then re-contours the map from the cached grid with no re-solve.",
+      "Use it as a quick reset to a regular scale before hand-tuning individual breaks. It overwrites the existing breaks, so save any bespoke ladder you want to keep first.",
     ],
     citations: [ti("Apply the generated uniform scale, §4.6.5")],
   },
@@ -543,6 +550,7 @@ export const catalog: Record<ControlId, HelpEntry> = {
     title: "Ascending order",
     body: [
       "Controls whether the colour sequence runs from low to high level (ascending) or is reversed. It changes which end of the ramp maps to the loudest class, without changing the break values themselves.",
+      "Ascending (dark/cool = quiet, bright/warm = loud) is the usual convention for noise maps; reverse it only if a report template expects the opposite orientation.",
     ],
     citations: [ti("Ascending/descending colour order, §4.6.5")],
   },
@@ -550,6 +558,7 @@ export const catalog: Record<ControlId, HelpEntry> = {
     title: "Keep colour sequence",
     body: [
       "When on, the class colours keep their sequence as you change the number of intervals, so the palette identity is preserved and only the break values move. When off, colours are re-sampled across the ramp for the new class count.",
+      "Keeping the sequence is useful when a fixed set of band colours has a regulatory meaning; re-sampling is useful when you just want an even spread of the ramp over whatever class count you pick.",
     ],
     citations: [ti("Keep-colour-sequence option, §4.6.5")],
   },
@@ -591,7 +600,8 @@ export const catalog: Record<ControlId, HelpEntry> = {
   "conditioning.mute": {
     title: "Mute source",
     body: [
-      "Removes this source from the mix without deleting it, so you can audition the map with and without a given source. Muting and unmuting recomputes the readout live from the cached tensor.",
+      "Removes this source from the mix without deleting it, so you can audition the map with and without a given source. Muting and unmuting recomputes the readout live from the cached tensor with no re-propagation.",
+      "It is the quickest way to see a single source's contribution to the total: mute everything else, or mute just the source in question and watch the map change.",
     ],
     citations: [envi("Per-source mute in the live recalc")],
   },
@@ -608,14 +618,16 @@ export const catalog: Record<ControlId, HelpEntry> = {
   "scenario.list": {
     title: "Scenario list",
     body: [
-      "Lists the base scenario and any you create. Each row switches to a scenario, shows whether its result is cached or needs computing, computes it, and (for non-base scenarios) deletes it. Switching between computed scenarios is instant; a met change marks a scenario as needing recomputation.",
+      "Lists the base scenario and any you create. Each row switches to a scenario, shows whether its result is cached or needs computing, computes it, and (for non-base scenarios) deletes it.",
+      "Switching between already-computed scenarios is instant because each caches its own result; a meteorology change marks that scenario as needing recomputation, since weather alters propagation.",
     ],
     citations: [envi("Per-scenario cached tensor keyed by its met/scene identity")],
   },
   "scenario.name": {
     title: "Scenario name",
     body: [
-      "A human-readable label for the active scenario (for example \"Downwind SW 5 m/s\"). Naming keeps comparisons legible in the list and on the difference-map legend.",
+      "A human-readable label for the active scenario (for example \"Downwind SW 5 m/s\"). Naming keeps comparisons legible in the scenario list and on the difference-map legend.",
+      "Give scenarios descriptive names that capture the condition they represent, so an A−B comparison reads clearly in a report.",
     ],
     citations: [envi("Named scenario references")],
   },
@@ -623,6 +635,7 @@ export const catalog: Record<ControlId, HelpEntry> = {
     title: "Save scenario",
     body: [
       "Computes (or recomputes) the active scenario with its current meteorology and caches the result. Because a met change alters propagation, this runs a full solve for the scenario rather than a live re-mix.",
+      "Save/compute after editing the met inputs so the scenario's cached map reflects them; the list marks a scenario that has pending edits as not yet computed.",
     ],
     citations: [av("Meteorology recompute yields a new propagation result")],
   },
@@ -715,7 +728,8 @@ export const catalog: Record<ControlId, HelpEntry> = {
   "scenario.raw_c": {
     title: "Raw profile C (ground sound speed, m/s)",
     body: [
-      "The sound speed at the ground, in m/s (advanced mode) — the profile's offset (about 340 m/s at 15 °C). A and B describe how sound speed changes with height above this base value.",
+      "The sound speed at the ground, in m/s (advanced mode) — the profile's offset, about 340 m/s at 15 °C. A and B describe how sound speed changes with height above this base value.",
+      "It follows from the ground-level air temperature; leave it near 340 m/s unless you are modelling a markedly hotter or colder surface.",
     ],
     citations: [av("Sound-speed profile: ground-level sound speed")],
   },
@@ -738,14 +752,16 @@ export const catalog: Record<ControlId, HelpEntry> = {
   "scenario.compare_b": {
     title: "Compare — scenario B",
     body: [
-      "Picks the second scenario for the difference map (the subtrahend in A − B). Choose a different scenario from A; identical picks produce no difference.",
+      "Picks the second scenario for the difference map (the subtrahend in A − B). Choose a scenario different from A; identical picks produce a flat zero difference.",
+      "Both A and B must be computed before the difference can be drawn, since it works from their cached dB(A) grids.",
     ],
     citations: [envi("Scenario A−B difference map (D-16)")],
   },
   "scenario.compare_run": {
     title: "Compare scenarios",
     body: [
-      "Computes the A − B dB(A) difference across the grid and renders it as a diverging map with a legend, highlighting where meteorology changes the exposure most. Both scenarios must be computed.",
+      "Computes the A − B dB(A) difference across the grid and renders it as a diverging map with a legend, highlighting where meteorology changes the exposure most and in which direction.",
+      "The difference is computed in WebAssembly from the two scenarios' cached dB(A) totals, so both must be computed first. Positive and negative differences use opposite ends of the diverging scale.",
     ],
     citations: [envi("Diverging difference map from two cached scenario totals")],
   },
@@ -753,6 +769,7 @@ export const catalog: Record<ControlId, HelpEntry> = {
     title: "Clear difference map",
     body: [
       "Removes the difference overlay and returns the map to the single active scenario's noise map.",
+      "Use it to step back from a comparison to the ordinary level view without changing either scenario's cached result.",
     ],
     citations: [envi("Clear the scenario difference overlay")],
   },
