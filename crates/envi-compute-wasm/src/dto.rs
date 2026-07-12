@@ -442,6 +442,54 @@ pub struct ReconditionResult {
     pub stale: bool,
 }
 
+// --- readout_receivers request/result (WEB-11 spectrum panel, 11-05) ----------
+
+/// One receiver's FULL two-channel readout on the wire (WEB-11 / D-05/06/08/09):
+/// dense `[105]` band-index total levels (dB), the coherent/incoherent per-band
+/// split (dB), and the dB(A)/dB(C) + per-channel energetic totals. EVERY value is
+/// WASM-produced by the FORCE-validated `readout_receiver` core — the frontend
+/// renders these and performs ZERO acoustic arithmetic (D-01). Result-facing.
+///
+/// This is the fuller sibling of [`ReconditionResult::spectra`]: recondition
+/// returns only `band_levels_db` (the reconditioned MAC), whereas the spectrum
+/// panel additionally needs both weighted totals (instant dB(A)⇄dB(C), no
+/// recompute) and the coherent/incoherent split — all precomputed here so the UI
+/// toggles are pure re-render.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct ReceiverReadoutDto {
+    /// Per-band total level, dB, dense `[105]` band-index order.
+    pub band_levels_db: Vec<f64>,
+    /// Per-band coherent-channel level, dB, dense `[105]` (the D-08 split overlay).
+    pub coherent_db: Vec<f64>,
+    /// Per-band incoherent-channel level, dB, dense `[105]`.
+    pub incoherent_db: Vec<f64>,
+    /// dB(A) total over all bands (precomputed → instant weighting toggle, D-09).
+    pub total_dba: f64,
+    /// dB(C) total over all bands (precomputed → instant weighting toggle, D-09).
+    pub total_dbc: f64,
+    /// Unweighted energetic total of the coherent channel, dB (always-shown split).
+    pub total_coherent_db: f64,
+    /// Unweighted energetic total of the incoherent channel, dB.
+    pub total_incoherent_db: f64,
+}
+
+/// `readout_receivers` result: one [`ReceiverReadoutDto`] per receiver, aligned
+/// 1:1 with the request's `receiver_ids`, plus a `stale` flag. Result-facing.
+///
+/// `stale` is ALWAYS `false` (same invariant as [`ReconditionResult`]): a
+/// mismatched hash is refused outright as a typed `HashMismatch`, never served as
+/// a stale-flagged readout, and conditioning is excluded from tensor identity
+/// (D-07) so a conditioning edit can never stale a matched tensor.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct ReadoutResult {
+    /// One full readout per receiver, in `receiver_ids` order.
+    pub receivers: Vec<ReceiverReadoutDto>,
+    /// Always `false` — a mismatched hash is refused, never served stale.
+    pub stale: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

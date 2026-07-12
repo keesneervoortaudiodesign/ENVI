@@ -1188,6 +1188,25 @@ chunk_index: number,
 receivers: number, };
 
 /**
+ * `readout_receivers` result: one [`ReceiverReadoutDto`] per receiver, aligned
+ * 1:1 with the request's `receiver_ids`, plus a `stale` flag. Result-facing.
+ *
+ * `stale` is ALWAYS `false` (same invariant as [`ReconditionResult`]): a
+ * mismatched hash is refused outright as a typed `HashMismatch`, never served as
+ * a stale-flagged readout, and conditioning is excluded from tensor identity
+ * (D-07) so a conditioning edit can never stale a matched tensor.
+ */
+export type ReadoutResult = { 
+/**
+ * One full readout per receiver, in `receiver_ids` order.
+ */
+receivers: Array<ReceiverReadoutDto>, 
+/**
+ * Always `false` — a mismatched hash is refused, never served stale.
+ */
+stale: boolean, };
+
+/**
  * Serde twin of `envi_engine::scene::Receiver`, plus a stable feature `id`.
  */
 export type ReceiverDto = { 
@@ -1251,6 +1270,49 @@ global_index: number,
  * Receiver position `[x, y, z]`, meters.
  */
 position: [number, number, number], };
+
+/**
+ * One receiver's FULL two-channel readout on the wire (WEB-11 / D-05/06/08/09):
+ * dense `[105]` band-index total levels (dB), the coherent/incoherent per-band
+ * split (dB), and the dB(A)/dB(C) + per-channel energetic totals. EVERY value is
+ * WASM-produced by the FORCE-validated `readout_receiver` core — the frontend
+ * renders these and performs ZERO acoustic arithmetic (D-01). Result-facing.
+ *
+ * This is the fuller sibling of [`ReconditionResult::spectra`]: recondition
+ * returns only `band_levels_db` (the reconditioned MAC), whereas the spectrum
+ * panel additionally needs both weighted totals (instant dB(A)⇄dB(C), no
+ * recompute) and the coherent/incoherent split — all precomputed here so the UI
+ * toggles are pure re-render.
+ */
+export type ReceiverReadoutDto = { 
+/**
+ * Per-band total level, dB, dense `[105]` band-index order.
+ */
+band_levels_db: Array<number>, 
+/**
+ * Per-band coherent-channel level, dB, dense `[105]` (the D-08 split overlay).
+ */
+coherent_db: Array<number>, 
+/**
+ * Per-band incoherent-channel level, dB, dense `[105]`.
+ */
+incoherent_db: Array<number>, 
+/**
+ * dB(A) total over all bands (precomputed → instant weighting toggle, D-09).
+ */
+total_dba: number, 
+/**
+ * dB(C) total over all bands (precomputed → instant weighting toggle, D-09).
+ */
+total_dbc: number, 
+/**
+ * Unweighted energetic total of the coherent channel, dB (always-shown split).
+ */
+total_coherent_db: number, 
+/**
+ * Unweighted energetic total of the incoherent channel, dB.
+ */
+total_incoherent_db: number, };
 
 /**
  * The reason a `recompute` was requested. Minimal + extensible: new reasons can

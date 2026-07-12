@@ -32,7 +32,9 @@ use wasm_bindgen::prelude::*;
 
 use envi_compute::readout::{Conditioning, ConditioningDto, default_law, readout_receiver};
 
-use crate::dto::{PrepareSolveReq, ReconditionReq, ReconditionResult};
+use crate::dto::{
+    PrepareSolveReq, ReadoutResult, ReceiverReadoutDto, ReconditionReq, ReconditionResult,
+};
 use crate::opfs_reader::read_chunk;
 use crate::{ComputeError, compute_err, from_js, js_err, to_js};
 
@@ -108,6 +110,79 @@ pub fn recondition_receivers(
     // conditioning is excluded from tensor identity so a match can never be stale.
     Ok(ReconditionResult {
         spectra: out,
+        stale: false,
+    })
+}
+
+/// Read out EVERY receiver's FULL two-channel spectrum (WEB-11 / D-05/06/08/09),
+/// hash-gated against the CURRENT scene identity exactly like [`recondition_receivers`].
+///
+/// Unlike [`recondition_receivers`] (which returns only the reconditioned
+/// `band_levels_db`), this returns the full [`ReceiverReadoutDto`] per receiver —
+/// band levels, the coherent/incoherent split, and both weighted totals — so the
+/// spectrum panel's dB(A)⇄dB(C) and split toggles are pure re-render (D-01: zero
+/// TS acoustic math). Drives the SAME FORCE-validated [`readout_receiver`] core.
+///
+/// The typed, natively `cargo test`-able core of [`readout_receivers`] (no `JsValue`).
+///
+/// # Errors
+/// [`ComputeError::HashMismatch`] if `req.tensor_hash != current_tensor_hash`;
+/// [`ComputeError::Recondition`] on a count/filter validation or readout failure.
+pub fn readout_all_receivers(
+    req: &ReconditionReq,
+    current_tensor_hash: &str,
+    h_coh: ArrayView3<'_, Complex<f64>>,
+    p_incoh_abs: ArrayView3<'_, f64>,
+    axis: &FreqAxis,
+) -> Result<ReadoutResult, ComputeError> {
+    // The hash gate FIRST (D-12 / Open Q1): never produce a stale readout.
+    if req.tensor_hash != current_tensor_hash {
+        return Err(ComputeError::HashMismatch {
+            expected: current_tensor_hash.to_string(),
+            got: req.tensor_hash.clone(),
+        });
+    }
+
+    let (n_sub, n_rcv, _) = h_coh.dim();
+    if req.per_source_conditioning.len() != n_sub {
+        return Err(ComputeError::Recondition(format!(
+            "per_source_conditioning has {} entries, expected one per sub-source (n_sub = {n_sub})",
+            req.per_source_conditioning.len()
+        )));
+    }
+    if req.receiver_ids.len() != n_rcv {
+        return Err(ComputeError::Recondition(format!(
+            "receiver_ids has {} entries, expected the chunk receiver count ({n_rcv})",
+            req.receiver_ids.len()
+        )));
+    }
+
+    let mut spectra = Vec::with_capacity(n_sub);
+    let mut conditioning = Vec::with_capacity(n_sub);
+    for c in &req.per_source_conditioning {
+        let (l_w, cond) = to_engine(c)?;
+        spectra.push(l_w);
+        conditioning.push(cond);
+    }
+    let law = default_law(&conditioning);
+
+    let mut out = Vec::with_capacity(n_rcv);
+    for r in 0..n_rcv {
+        let ro = readout_receiver(h_coh, p_incoh_abs, r, &spectra, &conditioning, law, axis)
+            .map_err(|e| ComputeError::Recondition(e.to_string()))?;
+        out.push(ReceiverReadoutDto {
+            band_levels_db: ro.band_levels_db,
+            coherent_db: ro.coherent_db,
+            incoherent_db: ro.incoherent_db,
+            total_dba: ro.total_dba,
+            total_dbc: ro.total_dbc,
+            total_coherent_db: ro.total_coherent_db,
+            total_incoherent_db: ro.total_incoherent_db,
+        });
+    }
+
+    Ok(ReadoutResult {
+        receivers: out,
         stale: false,
     })
 }
@@ -191,6 +266,40 @@ pub fn recondition(
         read_chunk(hi_bytes, pi_bytes, n_sub, chunk_len).map_err(|e| js_err(&e.to_string()))?;
     let axis = FreqAxis::new();
     let result = recondition_receivers(&req, &current, h.view(), p.view(), &axis)
+        .map_err(|e| compute_err(&e))?;
+    to_js(&result)
+}
+
+/// Read out every receiver's FULL two-channel spectrum from the OPFS tensor
+/// (WEB-11 / D-01), hash-gated against the CURRENT scene identity. This is the
+/// spectrum panel's readout boundary: it returns band levels + the
+/// coherent/incoherent split + both weighted totals, so the UI's display/
+/// weighting/split toggles recompute nothing (D-09).
+///
+/// Reuses the [`ReconditionReq`] request shape (tensor identity + per-source
+/// conditioning + receiver ids); the result is a [`ReadoutResult`] rather than
+/// the band-levels-only [`ReconditionResult`].
+///
+/// # Errors
+/// A shape error in either DTO; a [`crate::opfs_reader::ChunkDecodeError`] on a
+/// malformed chunk; a [`ComputeError::HashMismatch`] on a stale/mismatched hash;
+/// or a [`ComputeError::Recondition`] validation/readout failure.
+#[wasm_bindgen]
+pub fn readout_receivers(
+    scene: JsValue,
+    req: JsValue,
+    hi_bytes: &[u8],
+    pi_bytes: &[u8],
+) -> Result<JsValue, JsValue> {
+    let scene: PrepareSolveReq = from_js(scene)?;
+    let req: ReconditionReq = from_js(req)?;
+    let current = crate::identity::marshalled_tensor_hash(&scene);
+    let n_sub = scene.n_sub as usize;
+    let chunk_len = req.receiver_ids.len();
+    let (h, p) =
+        read_chunk(hi_bytes, pi_bytes, n_sub, chunk_len).map_err(|e| js_err(&e.to_string()))?;
+    let axis = FreqAxis::new();
+    let result = readout_all_receivers(&req, &current, h.view(), p.view(), &axis)
         .map_err(|e| compute_err(&e))?;
     to_js(&result)
 }
@@ -378,6 +487,55 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The WEB-11 readout boundary returns the FULL two-channel readout per
+    /// receiver: finite band levels + split + both weighted totals, with the
+    /// per-band split reconstructing the combined level energetically.
+    #[test]
+    fn readout_all_receivers_returns_full_split_and_totals() {
+        let axis = FreqAxis::new();
+        let (n_sub, n_rcv) = (2usize, 3usize);
+        let (h, p) = synth_tensor(n_sub, n_rcv);
+        let req = ReconditionReq {
+            tensor_hash: "id".to_string(),
+            per_source_conditioning: conditioned(n_sub),
+            receiver_ids: ids(n_rcv),
+        };
+        let out = readout_all_receivers(&req, "id", h.view(), p.view(), &axis).unwrap();
+        assert_eq!(out.receivers.len(), n_rcv);
+        assert!(!out.stale);
+        for rd in &out.receivers {
+            assert_eq!(rd.band_levels_db.len(), N_BANDS);
+            assert_eq!(rd.coherent_db.len(), N_BANDS);
+            assert_eq!(rd.incoherent_db.len(), N_BANDS);
+            assert!(rd.total_dba.is_finite() && rd.total_dbc.is_finite());
+            assert!(rd.total_coherent_db.is_finite() && rd.total_incoherent_db.is_finite());
+            for f in 0..N_BANDS {
+                let energetic = 10.0
+                    * (10f64.powf(rd.coherent_db[f] / 10.0)
+                        + 10f64.powf(rd.incoherent_db[f] / 10.0))
+                    .log10();
+                assert!((rd.band_levels_db[f] - energetic).abs() < 1e-9);
+            }
+        }
+    }
+
+    /// The readout boundary hash-gates exactly like recondition: a mismatch is a
+    /// typed HashMismatch, never a served readout.
+    #[test]
+    fn readout_all_receivers_hash_gates() {
+        let axis = FreqAxis::new();
+        let (h, p) = synth_tensor(1, 2);
+        let req = ReconditionReq {
+            tensor_hash: "client".to_string(),
+            per_source_conditioning: vec![ConditioningDto::default()],
+            receiver_ids: ids(2),
+        };
+        assert!(matches!(
+            readout_all_receivers(&req, "current", h.view(), p.view(), &axis),
+            Err(ComputeError::HashMismatch { .. })
+        ));
     }
 
     /// A non-dense `[105]` filter is a typed Recondition error, never a panic (V5).

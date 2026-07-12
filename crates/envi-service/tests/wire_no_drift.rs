@@ -84,9 +84,9 @@ use envi_gis_wasm::dto::{
 use envi_compute_wasm::dto::{
     AtmosphereDto, ChunkSpanDto, CoherenceInputsDto, CostEstimateResult, DirectionalDto,
     DirectivityBalloonDto, EstimateCostReq, GuardrailLevelDto, PlanTiersReq, PrepareSolveReq,
-    RangeProgressDto, ReceiverPlacementDto, ReconditionReq, ReconditionResult, RotationDto,
-    SolveChunkRangeReq, SubSourcePlacementDto, TierComplete, TierDto, TierKindDto, TierPlanResult,
-    TierReceiverDto,
+    RangeProgressDto, ReadoutResult, ReceiverPlacementDto, ReceiverReadoutDto, ReconditionReq,
+    ReconditionResult, RotationDto, SolveChunkRangeReq, SubSourcePlacementDto, TierComplete,
+    TierDto, TierKindDto, TierPlanResult, TierReceiverDto,
 };
 
 /// Provenance banner prepended to the committed `wire.ts` (mirrors the oracle
@@ -236,6 +236,11 @@ fn export_all_wire_types(cfg: &Config) {
     // ReconditionReq reuses) is registered above via envi-store — one wire type.
     ReconditionReq::export_all(cfg).unwrap();
     ReconditionResult::export_all(cfg).unwrap();
+    // Full two-channel readout boundary (WEB-11 spectrum panel, 11-05). Reuses the
+    // ReconditionReq request shape (registered above) — only the richer result +
+    // per-receiver readout DTO are new wire types.
+    ReceiverReadoutDto::export_all(cfg).unwrap();
+    ReadoutResult::export_all(cfg).unwrap();
 }
 
 /// Deterministically regenerate the full `wire.ts` contents (banner + ts-rs
