@@ -42,6 +42,7 @@
 #![deny(unsafe_code)]
 
 pub mod cost;
+pub mod grid;
 pub mod identity;
 pub mod interpolate;
 pub mod job_assembly;
