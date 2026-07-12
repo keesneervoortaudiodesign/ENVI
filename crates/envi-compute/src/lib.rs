@@ -45,6 +45,7 @@ pub mod cost;
 pub mod identity;
 pub mod interpolate;
 pub mod job_assembly;
+pub mod readout;
 pub mod scene_dto;
 pub mod tiers;
 pub mod weighting;
