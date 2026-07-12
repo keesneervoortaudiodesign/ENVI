@@ -711,7 +711,9 @@ pub fn derive_weather_friendly(req: JsValue) -> Result<JsValue, JsValue> {
                 return Err(js_err(&format!("raw override {what} is not finite")));
             }
         }
-        let z0 = z0.max(0.001);
+        // Clamp through the engine's single source of truth (IN-02) so this raw
+        // override never drifts from `envi_gis::weather`'s Z0_MIN_M floor.
+        let z0 = z0.max(envi_engine::propagation::refraction::profile::Z0_MIN_M);
         let profile = SoundSpeedProfileDto {
             a,
             b,
