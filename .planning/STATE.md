@@ -6,15 +6,15 @@ current_phase: 11
 current_phase_name: results-fast-recalc
 status: executing
 stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-07-12T13:30:00.000Z"
+last_updated: "2026-07-12T13:34:21.751Z"
 last_activity: 2026-07-12
-last_activity_desc: 11-03 hash-gated recondition MAC boundary complete (client-side 409/HashMismatch + compose_gain/readout_coherent over the OPFS tensor)
+last_activity_desc: 11-05 receiver spectrum panel + results shell (WEB-11) complete — new readout_receivers WASM boundary (full ReceiverReadout across the wire), D-01 zero-TS-acoustic-math, instant dB(A)/dB(C) + coherent/incoherent split, offline Playwright UAT on the real bundle
 progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 64
-  completed_plans: 56
-  percent: 88
+  completed_plans: 57
+  percent: 89
 ---
 
 # Project State
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 11 (results-fast-recalc) — EXECUTING
-Plan: 3 of 11
-Status: Executing Phase 11 — 11-01 (readout) + 11-02 (isophone contouring core) + 11-03 (recondition MAC boundary) complete; wave 2 done, wave 3 (11-04/11-05) ready
-Last activity: 2026-07-12 — 11-03 hash-gated recondition MAC boundary complete (client-side 409/HashMismatch, MAC ≡ recompute bit-exact, conditioning never stales)
+Plan: 4 of 11
+Status: Executing Phase 11 — 11-01 (readout) + 11-02 (isophone contouring core) + 11-03 (recondition MAC boundary) + 11-05 (spectrum panel + results shell, WEB-11) complete; wave 3 in progress (11-04 export encoders remaining)
+Last activity: 2026-07-12 — 11-05 receiver spectrum panel (WEB-11) complete: readout_receivers WASM boundary + D-01 spectrum panel with instant dB(A)/dB(C) + coherent/incoherent split, offline Playwright UAT green
 
 Progress: [██████████] Phase 10 — 6/6 plans complete (10-01 compute core · 10-02 COOP/COEP · 10-03 wasm boundary+OPFS sink · 10-04 pool+worker · 10-05 CalcPanel+Playwright · 10-06 real solve seam closed)
 
@@ -104,6 +104,7 @@ Progress: [██████████] Phase 10 — 6/6 plans complete (10-0
 | Phase 10 P06 | 90min | 3 tasks | 17 files |
 | Phase 10 P05 | 150 | 2 tasks | 6 files |
 | Phase 11 P03 | ~40min | 2 tasks | 6 files |
+| Phase 11 P05 | 90 min | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -216,6 +217,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-12T13:30:00.000Z
+Last session: 2026-07-12T13:34:21.742Z
 Stopped at: Completed 11-03-PLAN.md — hash-gated recondition MAC boundary (SVC-06/WEB-05 backend); wave 2 of Phase 11 done
 Resume file: None (wave 3 ready — 11-04 export encoders + 11-05 spectrum panel/OPFS read glue)

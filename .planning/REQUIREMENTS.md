@@ -113,7 +113,7 @@
 - [x] **WEB-08**: Draw/assign a **semi-transparent screen** and edit its isolation spectrum (SCN-01)
 - [x] **WEB-09**: Assign **per-façade isolation spectra** on a semi-transparent building (SCN-02)
 - [x] **WEB-10**: **Isolation-spectrum editor** — enter 1/12-octave directly, or 1/1- / 1/3-octave with linear interpolation to the 1/12-octave grid (SCN-03)
-- [ ] **WEB-11**: **Receiver-point spectrum readout** — per-band (1/12-oct expert + 1/3-oct display aggregated by band index), dB(A)/dB(C) totals, coherent/incoherent split, instant dB(A)⇄dB(C) toggle without recompute
+- [x] **WEB-11**: **Receiver-point spectrum readout** — per-band (1/12-oct expert + 1/3-oct display aggregated by band index), dB(A)/dB(C) totals, coherent/incoherent split, instant dB(A)⇄dB(C) toggle without recompute
 - [ ] **WEB-12**: Weather what-if panel — import, manual override, named-scenario management and difference-map view (METX-03/04)
 
 ### Service & persistence (SVC)
@@ -226,7 +226,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | WEB-08 | Phase 7 | Complete |
 | WEB-09 | Phase 7 | Complete |
 | WEB-10 | Phase 7 | Complete |
-| WEB-11 | Phase 11 | Pending |
+| WEB-11 | Phase 11 | Complete |
 | WEB-12 | Phase 11 | Pending |
 | SVC-01 | Phase 6 | Complete |
 | SVC-02 | Phase 10 | Complete |
