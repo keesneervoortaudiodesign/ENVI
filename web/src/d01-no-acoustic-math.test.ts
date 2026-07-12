@@ -9,49 +9,37 @@
 // energy into decibels. Geometry/layout math (sqrt, round, min, max) and the σ flow-
 // resistivity colour scale in web/src/map/weatherOverlay.ts (a display transform, not an
 // acoustic readout) are intentionally out of scope.
-
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+//
+// Source files are read via Vite's raw glob (`?raw`, eager) rather than `node:fs`, so the
+// test typechecks under the app tsconfig (`types: []`, no @types/node) and runs in the
+// Vitest (Vite) transform unchanged.
 
 import { describe, expect, it } from "vitest";
 
-const SCANNED_DIRS = ["src/store", "src/panels", "src/spectrum"];
-// The dB-derivation operators. `Math.log` (natural log) is not used for dB and is not a
-// reliable signal, so we target the base-10/base-2/pow/exp forms that a level computation
-// would actually need.
-const FORBIDDEN = /Math\.(log10|log2|pow|exp)\b/;
+// Eagerly inline every results-surface source file as a raw string. Vite resolves these
+// at transform time; the map is keyed by the file path relative to this module.
+const SOURCES = import.meta.glob("./{store,panels,spectrum}/**/*.{ts,tsx}", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
 
-function tsFilesUnder(dir: string): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return [];
-  }
-  const out: string[] = [];
-  for (const name of entries) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) {
-      out.push(...tsFilesUnder(full));
-    } else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) {
-      out.push(full);
-    }
-  }
-  return out;
-}
+// The dB-derivation operators. `Math.log` (natural log) is not used for dB and is not a
+// reliable signal, so we target the base-10/base-2/pow/exp forms a level computation needs.
+const FORBIDDEN = /Math\.(log10|log2|pow|exp)\b/;
 
 describe("D-01: no acoustic math in the TS results layer", () => {
   it("has no dB-derivation Math calls (log10/log2/pow/exp) under the results surfaces", () => {
     const offenders: string[] = [];
-    for (const dir of SCANNED_DIRS) {
-      for (const file of tsFilesUnder(dir)) {
-        const src = readFileSync(file, "utf-8");
-        src.split("\n").forEach((line, i) => {
-          if (FORBIDDEN.test(line)) {
-            offenders.push(`${file}:${i + 1}  ${line.trim()}`);
-          }
-        });
+    for (const [path, src] of Object.entries(SOURCES)) {
+      if (/\.test\.tsx?$/.test(path)) {
+        continue;
       }
+      src.split("\n").forEach((line, i) => {
+        if (FORBIDDEN.test(line)) {
+          offenders.push(`${path}:${i + 1}  ${line.trim()}`);
+        }
+      });
     }
     expect(
       offenders,

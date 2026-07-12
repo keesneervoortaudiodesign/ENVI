@@ -20,12 +20,13 @@
 // shape) scaled to the tier plan's receiver count — a GENUINE client-side threaded solve of the unchanged
 // Nord2000 engine. Deriving per-corridor terrain profiles / impedance from the drawn WGS84 polygon is Phase 11.
 
-import { useEffect, useMemo, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, type ReactElement } from "react";
 
 import type { TierKindDto } from "../generated/wire";
 import type { CalcJobSpec } from "../compute/worker";
 import { CalcClient } from "../compute/client";
 import { estimateCost } from "../compute/wasm";
+import { applyResultsFeed } from "../compute/resultsFeed";
 import { buildPrepareScene, deriveSceneInputs, plannedReceiverCount } from "../compute/marshalScene";
 import { useCalcStore, type CalcJobState } from "../store/calc";
 import { useSceneStore } from "../store/sceneStore";
@@ -176,6 +177,11 @@ export function CalcPanel(): ReactElement {
 
   const sceneInputs = useMemo(() => deriveSceneInputs(features, kindOf), [features, kindOf]);
 
+  // The most recently submitted job spec — the results feed needs the scene +
+  // receiver ids to assemble the manifest when the fine tier completes. A ref (not
+  // store state) so a completing tier reads the CURRENT run's spec without re-subscribing.
+  const submittedSpec = useRef<CalcJobSpec | null>(null);
+
   // On mount: attach a real compute client + forward the worker's capability / status / tier events into the
   // store, and record the main-thread cross-origin-isolation capability so Run is gated before any submit.
   useEffect(() => {
@@ -189,6 +195,13 @@ export function CalcPanel(): ReactElement {
         s.applyStatus(msg.status);
       } else if (msg.type === "tier") {
         s.applyTierComplete(msg.event);
+        // Feed the finished FINE tier into the results surfaces (SC1 spectrum +
+        // SC2 conditioning) from the REAL solve — the production `applyTierComplete
+        // → setManifest` link. No-ops for the points/coarse tiers.
+        const spec = submittedSpec.current;
+        if (spec) {
+          applyResultsFeed(spec, msg.event);
+        }
       }
     });
     store.attachClient(client);
@@ -275,6 +288,9 @@ export function CalcPanel(): ReactElement {
   const onRun = (): void => {
     void buildJobSpec(spacing, coarseMultiples).then((spec) => {
       if (spec) {
+        // Remember the submitted spec so the fine-tier feed can assemble the results
+        // manifest against THIS run's scene + receiver ids.
+        submittedSpec.current = spec;
         useCalcStore.getState().run(spec);
       }
     });

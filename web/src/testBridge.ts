@@ -21,6 +21,9 @@ import { runImport, retryLayer } from "./import/importJob";
 import { getTile, removeTile } from "./import/opfs";
 import { writeChunkFile } from "./compute/opfs";
 import { useResultsStore, createWasmReadoutClient } from "./store/results";
+import { applyResultsFeed } from "./compute/resultsFeed";
+import type { CalcJobSpec } from "./compute/worker";
+import type { TierComplete } from "./generated/wire";
 import {
   createWasmConditioningClient,
   useConditioningStore,
@@ -308,6 +311,13 @@ export interface EnviTestBridge {
   // none is open.
   seedResults(receiverCount: number): Promise<string[]>;
 
+  // Drive the PRODUCTION calc→results feed (11-VERIFICATION follow-up): seed the OPFS
+  // tensor, then push a solve-shaped FINE `TierComplete` through the REAL
+  // `applyResultsFeed(spec, event)` — the same `applyTierComplete → setManifest` link
+  // the CalcPanel runs when a real solve completes — rather than calling `setManifest`
+  // directly. Proves the production feed path lights up the spectrum panel. Returns ids.
+  feedFromSolve(receiverCount: number): Promise<string[]>;
+
   // --- Isophone map (WEB-06/GRID-04 offline UAT, 11-06) ---
   // Seed a deterministic level grid + CRS + weighting into the colour-scale store —
   // the SAME `setIsophoneInput` a finished readout feeds. The IsophoneLayer then
@@ -543,6 +553,58 @@ export function installTestBridge(): void {
         })),
         spans: [{ chunkIndex: 0, receiverIds: ids }],
       });
+      return ids;
+    },
+    async feedFromSolve(receiverCount) {
+      let projectId = useSceneStore.getState().projectId;
+      if (!projectId) {
+        projectId = "feed-uat-project";
+        useSceneStore.getState().setProject(projectId, "Feed UAT");
+      }
+      const scene = buildResultsScene(receiverCount);
+      const glue = await import("./generated/wasm-compute/envi_compute_wasm");
+      await glue.default();
+      const tensorHash = glue.tensor_hash(scene);
+      const { tensor, pincoh } = buildResultsFixtureBytes(receiverCount);
+      await writeChunkFile(projectId, tensorHash, "tensor", 0, tensor);
+      await writeChunkFile(projectId, tensorHash, "pincoh", 0, pincoh);
+      const ids = Array.from({ length: receiverCount }, () => crypto.randomUUID());
+      // A solve-shaped job spec + a single-chunk FINE tier over all receivers.
+      const spec: CalcJobSpec = {
+        projectId,
+        tensorHash,
+        planReq: {
+          fine_spacing_m: 10,
+          lattice_origin: [0, 0],
+          area_min: [0, 0],
+          area_max: [0, 0],
+          discrete_points: [],
+          coarse_multiples: [],
+        },
+        scene,
+        receiverIds: ids,
+        nSub: 1,
+        chunkReceivers: receiverCount,
+      };
+      const event: TierComplete = {
+        kind: "tier_complete",
+        tier: "fine",
+        tier_index: 0,
+        spacing_m: 10,
+        tensor_hash: tensorHash,
+        receiver_ids: ids,
+        spans: [
+          {
+            chunk_index: 0,
+            r_offset: 0,
+            len: receiverCount,
+            tensor_file: `calc/${tensorHash}/tensor/0`,
+            pincoh_file: `calc/${tensorHash}/pincoh/0`,
+          },
+        ],
+      };
+      // The REAL production feed (not a direct setManifest).
+      applyResultsFeed(spec, event);
       return ids;
     },
     seedIsophone() {

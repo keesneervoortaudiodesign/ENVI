@@ -24,6 +24,7 @@ import type {
   CostEstimateResult,
   EstimateCostReq,
   ExportFormat,
+  ExportGridDto,
   ExportReq,
   PlanTiersReq,
   PrepareSolveReq,
@@ -82,6 +83,23 @@ export async function readoutReceivers(
 export async function traceIsophones(req: TraceIsophonesReq): Promise<string> {
   const g = await ensureCompute();
   return g.trace_isophones(req) as string;
+}
+
+/**
+ * Reconstruct the fine-tier lattice into a dense 2-D level grid (GRID-04) from the
+ * SAME `PlanTiersReq` the solve used plus a receiver-major `dba` readout vector
+ * (indexed by global receiver index; `NaN` = no-data hole). The dB values are
+ * WASM-produced (the caller assembles `dba` from `readoutReceivers` totals), so no
+ * acoustic math happens in TS; this only scatters them onto the lattice via the
+ * tested pure `reconstruct_level_grid`. The result is the `LevelGridInput`/
+ * `ExportGridDto` the colour-scale store contours (SC3).
+ */
+export async function reconstructLevelGrid(
+  planReq: PlanTiersReq,
+  dba: Float64Array | readonly number[],
+): Promise<ExportGridDto> {
+  const g = await ensureCompute();
+  return g.reconstruct_level_grid(planReq, Float64Array.from(dba)) as ExportGridDto;
 }
 
 /** Compute the pre-run cost estimate + guardrail from the grid spec (SC1). */
