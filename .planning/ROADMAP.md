@@ -159,7 +159,7 @@ Architecture per `.planning/research/ARCHITECTURE.md`: three new crates (`envi-g
 - [x] **Phase 7: Frontend Shell & Scene Editing** - MapLibre/Terra Draw scene editor for all object kinds — including semi-transparent screens/buildings with the isolation-spectrum editor, forests, and elevation editing — with draw-time validation (completed 2026-07-10)
 - [x] **Phase 8: GIS Ingestion & DGM** - Viewport import of GLO-30/LiDAR terrain, WorldCover ground cover, and Overture/OSM buildings onto a triangulated DGM; local-cache compute path; check-and-complete editability (completed 2026-07-11)
 - [x] **Phase 9: Path Extraction & Weather** - DEM cut-profile extractor (GRASS oracle), impedance segmentation, screening edges, CDT receiver grids; Open-Meteo import → per-azimuth A/B/C; ERA5 groundwork (completed 2026-07-11)
-- [x] **Phase 10: Calculation Service** - Chunked tensor store + job runner wiring the promoted engine solver: submit/progress/abort with pre-run cost estimate, hash-keyed manifests, memory-bounded large grids (completed 2026-07-11)
+- [x] **Phase 10: Calculation Service** - Chunked tensor store + job runner wiring the promoted engine solver: submit/progress/abort with pre-run cost estimate, hash-keyed manifests, memory-bounded large grids (completed 2026-07-12)
 - [ ] **Phase 11: Results & Fast Recalc** - Receiver spectra, isophone noise maps with editable color scale, interactive source conditioning via the tensor MAC, named weather scenarios + difference maps, exports
 
 ## Milestone 2 Phase Details
@@ -381,7 +381,7 @@ Plans:
   3. The grid solve runs rayon-parallel over receiver-axis chunks streamed to the on-disk tensor store — a large-grid run (~100k receivers) completes within the stated memory budget, RSS bounded by workers × chunk size
   4. The calc manifest records content hashes (scene geometry, met, receiver set, engine version, band axis) so every stored tensor's identity is verifiable, and a scene containing forests and semi-transparent screens/façades computes through ENG-09/10 with their effects visible in the results
 
-**Plans**: 6/6 plans complete
+**Plans**: 6/6 plans complete — Phase COMPLETE (all 5 completion gates closed 2026-07-12)
 
 Plans:
 
@@ -448,7 +448,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 7. Frontend Shell & Scene Editing | 10/10 | Complete (all 5 completion gates closed) | 2026-07-10 |
 | 8. GIS Ingestion & DGM | 8/8 | Complete (all 5 completion gates closed) | 2026-07-11 |
 | 9. Path Extraction & Weather | 6/6 | Complete (all 5 completion gates closed) | 2026-07-11 |
-| 10. Calculation Service | 0/? | Not started | - |
+| 10. Calculation Service | 6/6 | Complete (all 5 completion gates closed) | 2026-07-12 |
 | 11. Results & Fast Recalc | 0/? | Not started | - |
 
 ---

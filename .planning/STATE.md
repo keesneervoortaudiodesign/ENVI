@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 10
 current_phase_name: calculation-service
-status: in-progress
-stopped_at: Phase 10 plan 10-06 complete (real solve_chunk_range + prepare_solve scene marshalling + OPFS runtime open)
-last_updated: "2026-07-11T22:01:07.575Z"
-last_activity: 2026-07-11
-last_activity_desc: 10-06 executed (prepare_solve + REAL solve_chunk_range bit-equal to a direct engine solve, 3 tasks, all quality gates green)
+status: complete
+stopped_at: Phase 10 complete — all 5 completion gates green
+last_updated: "2026-07-12T03:00:00.000Z"
+last_activity: 2026-07-12
+last_activity_desc: "Phase 10 CLOSED: 6/6 plans + 5 completion gates green (10-REVIEW HI-01 + WR-01..06 fixed + re-review clean, simplify clean, 10-SECURITY SECURED 31/31, 10-VERIFICATION passed 4/4, doc-consistency). Client-side threaded-WASM Nord2000 compute: envi-compute pure core (factored tensor identity + cost/guardrail + hierarchical tiers + SolveJob directional-phase seam) + envi-compute-wasm threaded cdylib (OPFS chunked TensorSink, wasm-bindgen-rayon pool, blake3 tensor identity) + COOP/COEP credentialless + CalcPanel UI + real solve_chunk_range bit-equal to a direct engine solve. Shared-memory build fixed (1099b24) — in-browser threaded solve runs; offline Playwright 21 passed"
 progress:
   total_phases: 11
   completed_phases: 10
@@ -24,22 +24,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** A numerically faithful Nord2000 engine — validated against the FORCE road-traffic test cases — that produces correct per-band outdoor sound levels over GIS terrain.
-**Current focus:** Phase 09 — path-extraction-weather
+**Current focus:** Phase 10 — calculation-service (COMPLETE); Phase 11 — results-fast-recalc (next)
 
 ## Current Position
 
-Phase: 10 (calculation-service) — IN PROGRESS
-Plan: 6 of 6 complete (10-01 ✓, 10-02 ✓, 10-03 ✓, 10-04 ✓, 10-06 ✓; 10-05 pending)
-Status: Phase 10 in progress. 10-06 executed — the last solve seam is CLOSED: the client-side compute is REAL. `prepare_solve` marshals the whole transfer scene ONCE per submit into an owned `PreparedScene` (built via the engine's validating constructors) stored in a shared `static RwLock<Option<PreparedScene>>` keyed by `tensor_hash`; the real `solve_chunk_range` (no more `Pending` stub) is hash-gated + cancel-aware and runs the UNCHANGED `envi_engine::solver::solve` rayon-sharded via `pool::solve_tier`, assembled into ONE sub-source-major `[s][r_local][f]` chunk written to its OPFS `tensor/`+`pincoh/` file pair. The load-bearing gate passes: the marshalled range-solve tensor is `f64::to_bits`-equal to a direct engine solve — with a forest (ENG-09) + isolation spectrum (ENG-10) + a phase-carrying directivity balloon (SC4), phase-free staying bit-identical; two-shard == single-range; hash-mismatch is a typed error. The WASM-safe scene DTOs (terrain/ground/isolation/forest/sound-speed) + the `interpolate` core were factored into `envi-compute` and re-exported at their original paths (source-compatible, `wire.ts` byte-stable, no duplicate `SoundSpeedProfileDto`); the worker preopens the async OPFS handles ahead of the synchronous solve and calls `prepare_solve` once before the (unchanged) tier loop. Engine byte-identical; threaded `build:wasm:compute` exits 0; all gates green. GRID-02 + SVC-02 delivered. Next: 10-05 (CalcPanel UI + offline Playwright UAT of the real threaded bundle).
-Last activity: 2026-07-11 — 10-06 executed (prepare_solve + REAL solve_chunk_range bit-equal to a direct engine solve, 3 tasks, all quality gates green)
+Phase: 10 (calculation-service) — COMPLETE
+Plan: 6 of 6 complete (10-01 … 10-06)
+Status: Phase 10 COMPLETE — all 5 completion gates closed (code-review HI-01 + WR-01..06 fixed + re-review clean · simplify clean · secure SECURED 31/31 · verify passed 4/4 · doc-consistency). SVC-02/GRID-02/WEB-07 delivered: a user runs a REAL Nord2000 calculation CLIENT-SIDE as threaded WebAssembly — `envi-compute` (pure-Rust WASM-safe core: tensor identity factored byte-for-byte out of `envi-store` + SC1 cost model/Ok/Warn/Block guardrail + hierarchical points⊂coarse⊂fine tiers + `SolveJob` assembly with the directional-phase seam, SRC-03) + `envi-compute-wasm` (threaded cdylib: OPFS-backed chunked `TensorSink`, `wasm-bindgen-rayon` pool driver, blake3 marshalled tensor identity, HI-01) + COOP/COEP credentialless cross-origin isolation + CalcPanel UI (pre-run cost estimate + guardrail, tiered progress, cooperative abort) + the real `solve_chunk_range` (`prepare_solve` marshals the scene once into a `static RwLock<PreparedScene>` keyed by `tensor_hash`; the range-solve is `f64::to_bits`-equal to a direct engine solve, ENG-09/10 + directional phase; two-shard == single-range; hash-mismatch is a typed error). The shared-memory `WebAssembly.Memory` build was fixed (1099b24) — the in-browser threaded rayon solve now runs, not just native `cargo test` bit-equivalence; offline Playwright 21 passed. Engine byte-identical. Next: Phase 11 (Results & Fast Recalc).
+Last activity: 2026-07-12 — Phase 10 closed: 6/6 plans + 5 gates green (offline Playwright 21 passed)
 
-Progress: [██████████] Phase 10 — 5/6 plans complete (10-01 core · 10-02 COOP/COEP · 10-03 boundary+OPFS sink · 10-04 pool+worker · 10-06 real solve seam closed)
+Progress: [██████████] Phase 10 — 6/6 plans complete (10-01 compute core · 10-02 COOP/COEP · 10-03 wasm boundary+OPFS sink · 10-04 pool+worker · 10-05 CalcPanel+Playwright · 10-06 real solve seam closed)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 18
+- Total plans completed: 24
 - Average duration: ~28min
 - Total execution time: ~6 hours
 
@@ -49,6 +49,7 @@ Progress: [██████████] Phase 10 — 5/6 plans complete (10-0
 |-------|-------|-------|----------|
 | 1 | 3 | 77min | 26min |
 | 9 | 6 | - | - |
+| 10 | 6 | - | - |
 
 **Recent Trend:**
 
@@ -181,6 +182,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 10, 10-03] JobStatus reused verbatim from existing wire.ts (envi-service, D-10) client-side; no duplicate re-derivation. TierComplete D-07 event + cost/tier DTOs ts-rs-generated into the single committed wire.ts (no-drift green).
 - [Phase ?]: 10-04: rayon native-normal + wasm-optional (threads-gated) so cargo test runs the real par_iter driver; stable wasm build stays rayon-free
 - [Phase ?]: 10-04: pool::solve_tier shards disjoint ranges (one file per range at local offset 0); solve_chunk_range remains a typed seam pending a scene-context DTO
+- [Phase 10, 10-01] envi-compute = the pure-Rust, WASM-safe compute core: the tensor-identity closure (tensor_hash/CalcManifest/chunk_receivers + identity DTOs + geometry_positions) factored byte-for-byte out of envi-store and re-exported (source-compatible, wire.ts byte-stable) + the SC1 cost model/Ok/Warn/Block guardrail + the hierarchical points⊂coarse⊂fine tier partition (no receiver recomputed) + the SolveJob assembly that is the FIRST site to populate SolveJob::directivity_phase_rad (SRC-03; phase-free stays bit-identical). Depends on envi-engine, adds NOTHING to its 3-dep quarantine (engine byte-identical, D-02); std::fs manifest I/O stays in envi-store
+- [Phase 10, 10-06] solve_chunk_range seam CLOSED (supersedes the 10-04 typed stub): PrepareSolveReq marshals the whole transfer scene ONCE per submit into an owned PreparedScene (engine validating constructors) in a static RwLock keyed by tensor_hash; the real hash-gated, cancel-aware range-solve runs the UNCHANGED envi_engine::solver::solve rayon-sharded via pool::solve_tier into one [s][r_local][f] OPFS chunk pair — f64::to_bits-equal to a direct engine solve (forest ENG-09 + isolation ENG-10 + phase-carrying balloon SC4; two-shard == single-range; hash-mismatch typed error). WASM-safe scene DTOs factored into envi-compute, re-exported at original paths
+- [Phase 10, HI-01/build-fix] OPFS tensor store keyed by the REAL blake3 marshalled tensor identity (not an ad-hoc 32-bit FNV hash) — HI-01 code-review fix. Shared-memory threaded-wasm build recipe (1099b24): build:wasm:compute emits a SHARED WebAssembly.Memory (--shared-memory --import-memory --max-memory + exported __heap_base/__wasm_init_tls/__tls_*) so wasm-bindgen-rayon initThreadPool can postMessage it to the pool workers; the in-browser threaded solve now runs (offline Playwright 21 passed)
 
 ### Pending Todos
 
@@ -198,6 +202,7 @@ Recent decisions affecting current work:
 
 - ~~Must obtain AV 1106/07 and the FORCE road-traffic test-case suite before Phase 1 execution~~ RESOLVED (01-01): all 4 FORCE workbooks + AV PDFs fetched into git-ignored refs/, SHA-256 pinned in refs/refs.sha256; case "1" full-precision anchor (LAeq,24h=39.39836757521) verified. Suite stays green whether or not refs are present.
 - ~~Open question (Phase 3/4): how to represent Nord2000 partial-coherence (coefficient F_τ) alongside the coherent complex transfer~~ RESOLVED (03-03): F_τ (Eq. 112) multiplies the coherent H_coh_factor via the CoherenceInputs::f_delta_nu seam (phase preserved, D-12); the turbulence-decorrelated energy remains the separate real P_incoh channel; F→1 ⇒ P_incoh→0 bit-exact
+- ~~Phase 10: the threaded-wasm `build:wasm:compute` artifact shipped a non-shared `WebAssembly.Memory`, so `wasm-bindgen-rayon`'s `initThreadPool` could not postMessage it to the pool workers (`#<Memory> could not be cloned`) — the in-browser threaded solve never ran, only native `cargo test` bit-equivalence had proven it~~ RESOLVED (1099b24): the build recipe now emits a SHARED memory (`--shared-memory --import-memory --max-memory` + exported `__heap_base`/`__wasm_init_tls`/`__tls_*`), the glue builds `new WebAssembly.Memory({…, shared:true})`, and the worker installs `onmessage` before the pool-init await (buffer+replay) so a same-tick submit is not dropped; offline Playwright suite 21 passed, web/dist rebuilt, engine byte-identical
 
 ## Deferred Items
 
@@ -209,6 +214,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-11T22:00:52.276Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-calculation-service/10-CONTEXT.md
+Last session: 2026-07-12T03:00:00.000Z
+Stopped at: Phase 10 CLOSED — 6/6 plans + all 5 completion gates green (offline Playwright 21 passed); Phase 11 (results-fast-recalc) not yet started
+Resume file: .planning/ROADMAP.md (Phase 11 — Results & Fast Recalc — not yet planned)

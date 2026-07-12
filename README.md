@@ -288,8 +288,9 @@ milestone a user can:
 3. **Get weather data** — Open-Meteo import deriving the per-azimuth A/B/C meteorology (ERA5/CDS groundwork).
 4. **Manual weather what-if** — override wind (Beaufort + direction), downwind worst-case, temperature gradient, A/B/C; **named scenarios** with per-scenario cached tensors, instant switching, and **difference maps**.
 5. **Draw scene objects** — directional sources, walls, buildings, forests, ground-effect (damping/impedance) zones, elevation points/lines, receivers, calculation area.
-6. **Spectral results at points** — per-band readout (1/12-oct expert + 1/3-oct by band index), dB(A)/dB(C) totals, coherent/incoherent split, CSV export.
-7. **Noise map in dB(A) & dB(C)** — server-side isophone **fill polygons** (not a heatmap) with an editable color scale + legend.
+6. **Run a calculation** — submit from the UI with a pre-run cost estimate (receiver count, tensor bytes) and a grid-spacing guardrail, watch tiered progress, and abort cleanly. The real Nord2000 solve runs **client-side as threaded WebAssembly** (COOP/COEP cross-origin isolation), streamed to a chunked **OPFS** tensor store within a stated memory budget.
+7. **Spectral results at points** — per-band readout (1/12-oct expert + 1/3-oct by band index), dB(A)/dB(C) totals, coherent/incoherent split, CSV export.
+8. **Noise map in dB(A) & dB(C)** — server-side isophone **fill polygons** (not a heatmap) with an editable color scale + legend.
 
 ### New engine extensions (beyond stock Nord2000)
 
@@ -302,6 +303,7 @@ milestone a user can:
 |-------|------|
 | `envi-gis` + `envi-gis-wasm` | **Pure-Rust, sans-I/O** GIS-ingestion core + a thin `wasm-bindgen` cdylib (Phase-8 pivot, 08-CONTEXT D-01): COG/BigTIFF decode over cached tile bytes, source registry + tile planning, terrain decimation, WorldCover→σ table + land-cover vectorization, Overpass buildings, re-import merge. **No GDAL/PROJ-C** — the client runs as WASM in the browser; TypeScript owns `fetch`+OPFS and reads cached tiles back with the network off. Later geometry derivation (DEM cut-profile, impedance segmentation, screening edges, CDT receiver grids, contouring) and weather (Open-Meteo/ERA5) land in Phases 9–11. Cross-origin S3 sources go through `envi-service`'s allowlisted byte proxy. |
 | `envi-store` | serde DTO mirror of the engine scene types (keeps serde **out** of `envi-engine`), project-folder layout, **receiver-axis-chunked** tensor store. |
+| `envi-compute` + `envi-compute-wasm` | **Pure-Rust, WASM-safe compute core** + a thin **threaded** `wasm-bindgen` cdylib (Phase-10): the transfer-tensor identity, the pre-run cost model + guardrail, the hierarchical points⊂coarse⊂fine receiver tiers, and `SolveJob` assembly (directional-phase seam). A real Nord2000 solve runs **client-side as threaded WebAssembly** — `wasm-bindgen-rayon` pool over a shared `WebAssembly.Memory`, cross-origin-isolated via COOP/COEP credentialless — streamed to an **OPFS chunked tensor store** (keyed by the blake3 tensor identity) inside a memory budget, with cooperative abort at chunk boundaries. The engine solver is **unchanged** (one solve path, `f64::to_bits`-equal to a native run). |
 | `envi-service` | axum HTTP API + job registry (SSE progress, cancellation) + the **recondition/recompute** recalc router; serves the built frontend as one deployable binary. |
 | `web/` | Vite + React, **MapLibre GL JS 5 + react-map-gl 8 + Terra Draw** scene editor, property panels, weather what-if, job status, spectra charts, isophone overlay. |
 
