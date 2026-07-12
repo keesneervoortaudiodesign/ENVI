@@ -18,6 +18,8 @@ import { useResultsStore } from "../store/results";
 import { useColorScaleStore } from "../store/colorScale";
 import { useStaleStore } from "../store/stale";
 import { downloadExport, type UiExportFormat } from "../store/exportUi";
+import { InfoButton } from "../help/InfoButton";
+import type { ControlId } from "../help/controlIds";
 
 // The three export formats + their menu copy (UI-SPEC §Export menu inventory; sentence
 // case, English-only, units/identity shown).
@@ -75,21 +77,29 @@ export function ExportMenu(): ReactElement {
         >
           {busy ? "Generating…" : "Export…"}
         </button>
+        <InfoButton controlId="export.open" />
 
         {open && !disabled ? (
           <div className="menu export-menu-list" role="menu" data-testid="export-menu-list">
             {FORMATS.map((f) => (
-              <button
+              <div
                 key={f.id}
-                type="button"
-                className="menu-item export-menu-item"
-                role="menuitem"
-                data-testid={`export-${f.id}`}
-                onClick={() => void onExport(f.id)}
+                className="export-menu-item-row"
+                style={{ display: "flex", alignItems: "center" }}
               >
-                <span className="export-menu-label">{f.label}</span>
-                <span className="export-menu-hint mono">{f.hint}</span>
-              </button>
+                <button
+                  type="button"
+                  className="menu-item export-menu-item"
+                  style={{ flex: 1 }}
+                  role="menuitem"
+                  data-testid={`export-${f.id}`}
+                  onClick={() => void onExport(f.id)}
+                >
+                  <span className="export-menu-label">{f.label}</span>
+                  <span className="export-menu-hint mono">{f.hint}</span>
+                </button>
+                <InfoButton controlId={`export.${f.id}` as ControlId} />
+              </div>
             ))}
           </div>
         ) : null}

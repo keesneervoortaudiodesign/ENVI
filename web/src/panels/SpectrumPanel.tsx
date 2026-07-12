@@ -30,6 +30,7 @@ import {
   type Weighting,
 } from "../store/results";
 import { anchorIndices, hzLabelForIndex, N_BANDS, useFreqAxis } from "../spectrum/interpolateClient";
+import { InfoButton } from "../help/InfoButton";
 
 // UI-SPEC §Data Visualization Palettes #4 — the three result series colours.
 const COLOR_TOTAL = "#3987e5";
@@ -79,6 +80,7 @@ export function SpectrumPanel(): ReactElement {
     <div className="panel-section spectrum-panel" data-testid="spectrum-panel">
       <div className="panel-header">
         <span className="section-title">Receiver spectrum</span>
+        <InfoButton controlId="spectrum.receiver" />
       </div>
 
       {/* Dual receiver selection: a mini-map of receiver markers AND a synced list. */}
@@ -105,6 +107,7 @@ export function SpectrumPanel(): ReactElement {
           >
             1/12-oct
           </ToggleButton>
+          <InfoButton controlId="spectrum.display_mode" />
         </div>
         <div className="switch" role="group" aria-label="Frequency weighting">
           <ToggleButton
@@ -121,6 +124,7 @@ export function SpectrumPanel(): ReactElement {
           >
             dB(C)
           </ToggleButton>
+          <InfoButton controlId="spectrum.weighting" />
         </div>
         <button
           type="button"
@@ -131,6 +135,7 @@ export function SpectrumPanel(): ReactElement {
         >
           Split
         </button>
+        <InfoButton controlId="spectrum.split" />
       </div>
 
       {selectedReceiverId === null ? (
@@ -412,6 +417,7 @@ function SpectrumView({
       >
         {tableOpen ? "Hide exact numbers" : "Show exact numbers"}
       </button>
+      <InfoButton controlId="spectrum.table" />
       {tableOpen ? (
         <div className="spectrum-table" data-testid="spectrum-results-table">
           <div className="spectrum-table-head mono">

@@ -19,6 +19,7 @@ import {
   useColorScaleStore,
   type Preset,
 } from "../store/colorScale";
+import { InfoButton } from "../help/InfoButton";
 
 const PRESETS: { id: Preset; label: string }[] = [
   { id: "end", label: "EU-END" },
@@ -89,9 +90,14 @@ export function ColorScaleEditor(): ReactElement {
             {p.label}
           </button>
         ))}
+        <InfoButton controlId="colorscale.preset" />
       </div>
 
       {/* Editable break rows: value + class swatch (the single source of truth). */}
+      <div className="field-row colorscale-breaks-caption">
+        <span className="field-label mono">Isophone breaks</span>
+        <InfoButton controlId="colorscale.breaks" />
+      </div>
       <ul className="colorscale-breaks" data-testid="colorscale-breaks">
         {drafts.map((d, i) => (
           <li className="field-row colorscale-break-row" key={`break-${i}`}>
@@ -124,6 +130,7 @@ export function ColorScaleEditor(): ReactElement {
           <label className="field-label" htmlFor="colorscale-smallest">
             Smallest interval
           </label>
+          <InfoButton controlId="colorscale.smallest" />
           <input
             id="colorscale-smallest"
             type="number"
@@ -139,6 +146,7 @@ export function ColorScaleEditor(): ReactElement {
           <label className="field-label" htmlFor="colorscale-magnitude">
             Interval magnitude
           </label>
+          <InfoButton controlId="colorscale.magnitude" />
           <input
             id="colorscale-magnitude"
             type="number"
@@ -155,6 +163,7 @@ export function ColorScaleEditor(): ReactElement {
           <label className="field-label" htmlFor="colorscale-count">
             Number of intervals
           </label>
+          <InfoButton controlId="colorscale.count" />
           <input
             id="colorscale-count"
             type="number"
@@ -174,6 +183,7 @@ export function ColorScaleEditor(): ReactElement {
         >
           Apply uniform scale
         </button>
+        <InfoButton controlId="colorscale.apply" />
       </div>
 
       {/* Ascending + keep-color-sequence toggles (§4.6.5). */}
@@ -187,6 +197,7 @@ export function ColorScaleEditor(): ReactElement {
           />
           Ascending
         </label>
+        <InfoButton controlId="colorscale.ascending" />
         <label className="field-check">
           <input
             type="checkbox"
@@ -196,6 +207,7 @@ export function ColorScaleEditor(): ReactElement {
           />
           Keep colour sequence
         </label>
+        <InfoButton controlId="colorscale.keep_sequence" />
       </div>
 
       {error ? (

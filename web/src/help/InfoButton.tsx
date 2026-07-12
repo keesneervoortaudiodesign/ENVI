@@ -15,7 +15,7 @@
 // so `renderToStaticMarkup` in the Node unit test renders the closed button without a DOM. The
 // docked panel uses a portal, which is only mounted when opened (never during a closed SSR render).
 
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import { svgIcon } from "../icons";
@@ -44,7 +44,7 @@ function ensureHelpStyles(): void {
 .info-button[aria-expanded="true"] { color: var(--color-info); }
 .info-button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; color: var(--color-info); }
 .info-popover {
-  position: absolute; z-index: 50; top: calc(100% + 6px); right: 0;
+  position: fixed; z-index: 1000;
   width: 288px; max-width: 80vw; text-align: left;
   background: var(--color-surface-2); color: var(--color-text);
   border: 1px solid var(--color-border-strong); border-radius: var(--radius-md);
@@ -63,7 +63,7 @@ function ensureHelpStyles(): void {
 .info-more:hover { color: var(--color-primary-hover); }
 .info-more:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 .help-dock {
-  position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 92vw; z-index: 60;
+  position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 92vw; z-index: 1001;
   background: var(--color-surface); color: var(--color-text);
   border-left: 1px solid var(--color-border-strong); box-shadow: var(--shadow-lg);
   padding: var(--space-5); overflow: auto; text-align: left;
@@ -139,10 +139,14 @@ export function HelpPopover({
   controlId,
   entry,
   onMore,
+  style,
+  popoverRef,
 }: {
   readonly controlId: ControlId;
   readonly entry: HelpEntry;
   readonly onMore: () => void;
+  readonly style?: CSSProperties;
+  readonly popoverRef?: RefObject<HTMLDivElement | null>;
 }): ReactElement {
   const primary = entry.citations[0];
   return (
@@ -151,6 +155,8 @@ export function HelpPopover({
       role="dialog"
       aria-label={`Help: ${entry.title}`}
       data-testid={`info-popover-${controlId}`}
+      ref={popoverRef}
+      style={style}
     >
       <p className="info-popover-title">{entry.title}</p>
       <p className="info-popover-body">{entry.body[0]}</p>
@@ -220,11 +226,23 @@ export function InfoButton({ controlId }: { readonly controlId: ControlId }): Re
   const entry = catalog[controlId];
   const [open, setOpen] = useState(false);
   const [docked, setDocked] = useState(false);
+  const [popStyle, setPopStyle] = useState<CSSProperties | null>(null);
   const wrapRef = useRef<HTMLSpanElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     ensureHelpStyles();
   }, []);
+
+  // Anchor the (portalled, position:fixed) popover to the button — right-aligned, just below it — so it
+  // renders above every panel/map stacking context instead of being clipped/intercepted by the shell.
+  useLayoutEffect(() => {
+    if (open && btnRef.current && typeof window !== "undefined") {
+      const r = btnRef.current.getBoundingClientRect();
+      setPopStyle({ top: Math.round(r.bottom + 6), right: Math.round(window.innerWidth - r.right) });
+    }
+  }, [open]);
 
   // Close the popover on an outside click / Escape (the dock has its own close). Torn down on unmount.
   useEffect(() => {
@@ -232,7 +250,10 @@ export function InfoButton({ controlId }: { readonly controlId: ControlId }): Re
       return;
     }
     const onDown = (e: MouseEvent): void => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      const inWrap = wrapRef.current?.contains(t) ?? false;
+      const inPop = popRef.current?.contains(t) ?? false;
+      if (!inWrap && !inPop) {
         setOpen(false);
       }
     };
@@ -266,6 +287,7 @@ export function InfoButton({ controlId }: { readonly controlId: ControlId }): Re
   return (
     <span className="info-button-wrap" ref={wrapRef}>
       <button
+        ref={btnRef}
         type="button"
         className="info-button"
         data-testid={`info-${controlId}`}
@@ -277,16 +299,21 @@ export function InfoButton({ controlId }: { readonly controlId: ControlId }): Re
         <InfoGlyph />
       </button>
 
-      {open ? (
-        <HelpPopover
-          controlId={controlId}
-          entry={entry}
-          onMore={() => {
-            setOpen(false);
-            setDocked(true);
-          }}
-        />
-      ) : null}
+      {open && popStyle && typeof document !== "undefined"
+        ? createPortal(
+            <HelpPopover
+              controlId={controlId}
+              entry={entry}
+              popoverRef={popRef}
+              style={{ position: "fixed", ...popStyle }}
+              onMore={() => {
+                setOpen(false);
+                setDocked(true);
+              }}
+            />,
+            document.body,
+          )
+        : null}
 
       {docked && typeof document !== "undefined"
         ? createPortal(

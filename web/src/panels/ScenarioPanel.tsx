@@ -25,6 +25,8 @@ import {
   type MetOverrides,
 } from "../store/scenarios";
 import { createWasmDifferenceClient, useDifferenceStore } from "../store/difference";
+import { InfoButton } from "../help/InfoButton";
+import type { ControlId } from "../help/controlIds";
 
 // UI-SPEC §Copywriting Contract copy — verbatim, English-only.
 const EMPTY_HEADING = "One scenario";
@@ -90,6 +92,7 @@ export function ScenarioPanel(): ReactElement {
     <div className="panel-section scenario-panel" data-testid="scenario-panel">
       <div className="panel-header scenario-header">
         <span className="section-title">Weather scenarios</span>
+        <InfoButton controlId="scenario.list" />
         <button
           type="button"
           className="btn dense"
@@ -98,6 +101,7 @@ export function ScenarioPanel(): ReactElement {
         >
           New scenario
         </button>
+        <InfoButton controlId="scenario.new" />
       </div>
 
       {scenarios.length === 1 ? (
@@ -173,6 +177,7 @@ export function ScenarioPanel(): ReactElement {
             value={active.name}
             onChange={(e) => renameScenario(active.id, e.target.value)}
           />
+          <InfoButton controlId="scenario.name" />
           <button
             type="button"
             className="btn dense"
@@ -181,6 +186,7 @@ export function ScenarioPanel(): ReactElement {
           >
             Save scenario
           </button>
+          <InfoButton controlId="scenario.save" />
         </div>
 
         <div className="scenario-mode">
@@ -204,6 +210,7 @@ export function ScenarioPanel(): ReactElement {
             />
             <span>Advanced (raw A/B/C)</span>
           </label>
+          <InfoButton controlId="scenario.mode" />
         </div>
 
         {met.mode === "friendly" ? (
@@ -218,7 +225,10 @@ export function ScenarioPanel(): ReactElement {
         <div className="section-title">Compare scenarios</div>
         <div className="scenario-compare-picker">
           <label className="field-row">
-            <span className="field-label">A</span>
+            <span className="field-label">
+              A
+              <InfoButton controlId="scenario.compare_a" />
+            </span>
             <select
               className="input dense"
               data-testid="scenario-compare-a"
@@ -234,7 +244,10 @@ export function ScenarioPanel(): ReactElement {
             </select>
           </label>
           <label className="field-row">
-            <span className="field-label">B</span>
+            <span className="field-label">
+              B
+              <InfoButton controlId="scenario.compare_b" />
+            </span>
             <select
               className="input dense"
               data-testid="scenario-compare-b"
@@ -260,6 +273,7 @@ export function ScenarioPanel(): ReactElement {
           >
             Compare scenarios
           </button>
+          <InfoButton controlId="scenario.compare_run" />
           <button
             type="button"
             className="btn dense"
@@ -268,6 +282,7 @@ export function ScenarioPanel(): ReactElement {
           >
             Clear map
           </button>
+          <InfoButton controlId="scenario.compare_clear" />
         </div>
       </div>
 
@@ -299,6 +314,7 @@ function FriendlyInputs({
         step={0.5}
         value={met.temperature_c}
         testid="scenario-temp"
+        controlId="scenario.temperature"
         onChange={(v) => onChange({ temperature_c: v })}
       />
       <NumberField
@@ -307,6 +323,7 @@ function FriendlyInputs({
         step={1}
         value={met.humidity_pct}
         testid="scenario-humidity"
+        controlId="scenario.humidity"
         onChange={(v) => onChange({ humidity_pct: v })}
       />
       <NumberField
@@ -315,10 +332,14 @@ function FriendlyInputs({
         step={0.1}
         value={met.pressure_kpa}
         testid="scenario-pressure"
+        controlId="scenario.pressure"
         onChange={(v) => onChange({ pressure_kpa: v })}
       />
       <label className="field-row">
-        <span className="field-label">Wind (Beaufort)</span>
+        <span className="field-label">
+          Wind (Beaufort)
+          <InfoButton controlId="scenario.beaufort" />
+        </span>
         <select
           className="input dense"
           data-testid="scenario-beaufort"
@@ -338,6 +359,7 @@ function FriendlyInputs({
         step={5}
         value={met.windFromDeg}
         testid="scenario-wind-dir"
+        controlId="scenario.wind_direction"
         onChange={(v) => onChange({ windFromDeg: v })}
       />
       <NumberField
@@ -346,6 +368,7 @@ function FriendlyInputs({
         step={0.005}
         value={met.tempGradientCPerM}
         testid="scenario-gradient"
+        controlId="scenario.temp_gradient"
         onChange={(v) => onChange({ tempGradientCPerM: v })}
       />
       <label className="conditioning-mute">
@@ -357,6 +380,7 @@ function FriendlyInputs({
         />
         <span>Downwind worst-case (favourable per bearing)</span>
       </label>
+      <InfoButton controlId="scenario.worst_case" />
     </div>
   );
 }
@@ -380,6 +404,7 @@ function AdvancedInputs({
         step={0.1}
         value={raw.a}
         testid="scenario-raw-a"
+        controlId="scenario.raw_a"
         onChange={(v) => set({ a: v })}
       />
       <NumberField
@@ -388,6 +413,7 @@ function AdvancedInputs({
         step={0.005}
         value={raw.b}
         testid="scenario-raw-b"
+        controlId="scenario.raw_b"
         onChange={(v) => set({ b: v })}
       />
       <NumberField
@@ -396,6 +422,7 @@ function AdvancedInputs({
         step={0.1}
         value={raw.c}
         testid="scenario-raw-c"
+        controlId="scenario.raw_c"
         onChange={(v) => set({ c: v })}
       />
       <NumberField
@@ -404,6 +431,7 @@ function AdvancedInputs({
         step={0.001}
         value={raw.z0}
         testid="scenario-raw-z0"
+        controlId="scenario.raw_z0"
         onChange={(v) => set({ z0: v })}
       />
     </div>
@@ -416,6 +444,7 @@ function NumberField({
   step,
   value,
   testid,
+  controlId,
   onChange,
 }: {
   readonly label: string;
@@ -423,11 +452,15 @@ function NumberField({
   readonly step: number;
   readonly value: number;
   readonly testid: string;
+  readonly controlId: ControlId;
   readonly onChange: (v: number) => void;
 }): ReactElement {
   return (
     <label className="field-row">
-      <span className="field-label">{label}</span>
+      <span className="field-label">
+        {label}
+        <InfoButton controlId={controlId} />
+      </span>
       <input
         type="number"
         className="field-input input dense mono"

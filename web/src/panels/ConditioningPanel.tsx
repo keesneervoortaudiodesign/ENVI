@@ -27,6 +27,7 @@ import { createWasmIdentityClient, useStaleStore, useStaleWatch } from "../store
 import { useResultsStore } from "../store/results";
 import { useSceneStore } from "../store/sceneStore";
 import { useSpectrumPreview, N_BANDS } from "../spectrum/interpolateClient";
+import { InfoButton } from "../help/InfoButton";
 
 // The scene-store spectrum key a source's reused-SpectrumEditor filter authors under. A
 // distinct namespace so it never collides with a feature/edge isolation spectrum (D-11).
@@ -125,7 +126,10 @@ export function ConditioningPanel(): ReactElement | null {
             <div className="conditioning-source-head mono">Source {i + 1}</div>
 
             <label className="field-row">
-              <span className="field-label">Gain</span>
+              <span className="field-label">
+                Gain
+                <InfoButton controlId="conditioning.gain" />
+              </span>
               <input
                 type="number"
                 className="field-input input dense mono"
@@ -139,7 +143,10 @@ export function ConditioningPanel(): ReactElement | null {
             </label>
 
             <label className="field-row">
-              <span className="field-label">Delay</span>
+              <span className="field-label">
+                Delay
+                <InfoButton controlId="conditioning.delay" />
+              </span>
               <input
                 type="number"
                 className="field-input input dense mono"
@@ -162,6 +169,7 @@ export function ConditioningPanel(): ReactElement | null {
               >
                 {hasFilter ? "Edit filter" : "Add filter"}
               </button>
+              <InfoButton controlId="conditioning.filter" />
               <label className="conditioning-mute">
                 <input
                   type="checkbox"
@@ -171,6 +179,7 @@ export function ConditioningPanel(): ReactElement | null {
                 />
                 <span>Mute</span>
               </label>
+              <InfoButton controlId="conditioning.mute" />
             </div>
           </div>
         );
