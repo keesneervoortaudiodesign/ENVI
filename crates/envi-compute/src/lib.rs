@@ -47,3 +47,4 @@ pub mod interpolate;
 pub mod job_assembly;
 pub mod scene_dto;
 pub mod tiers;
+pub mod weighting;
