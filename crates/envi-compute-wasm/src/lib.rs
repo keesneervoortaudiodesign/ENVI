@@ -81,8 +81,9 @@ use thiserror::Error;
 use wasm_bindgen::prelude::*;
 
 use dto::{
-    CostEstimateResult, EstimateCostReq, GuardrailLevelDto, PlanTiersReq, PrepareSolveReq,
-    RangeProgressDto, SolveChunkRangeReq, TierDto, TierKindDto, TierPlanResult, TierReceiverDto,
+    CostEstimateResult, EstimateCostReq, ExportGridDto, GuardrailLevelDto, PlanTiersReq,
+    PrepareSolveReq, RangeProgressDto, SolveChunkRangeReq, TierDto, TierKindDto, TierPlanResult,
+    TierReceiverDto,
 };
 use scene::PreparedScene;
 
@@ -288,6 +289,57 @@ pub fn plan_tiers(req: JsValue) -> Result<JsValue, JsValue> {
     to_js(&TierPlanResult { tiers })
 }
 
+/// Reconstruct the fine-tier receiver lattice into a dense 2-D [`ExportGridDto`]
+/// (GRID-04) from the SAME [`PlanTiersReq`] the worker solved plus a receiver-major
+/// `dba` readout vector (indexed by global receiver index; a `NaN` is a no-data
+/// hole). This is the missing seam that lets a FINISHED solve feed the isophone
+/// map: the client assembles `dba` from the per-chunk [`readout_receivers`] totals
+/// (no acoustic math in TS — the dB values are WASM-produced) and this boundary
+/// re-derives the fine lattice deterministically and scatters each value to its
+/// `(row, col)` via [`envi_compute::grid::reconstruct_level_grid`] — the pure,
+/// FORCE-lattice-tested reconstruction, never re-implemented on the JS side. The
+/// returned grid is the `ExportGridDto`/`LevelGridInput` the colour-scale store
+/// contours (SC3) — a break edit re-contours it with no re-solve.
+///
+/// # Errors
+/// A shape error in the request DTO.
+#[wasm_bindgen]
+pub fn reconstruct_level_grid(plan: JsValue, dba: Vec<f64>) -> Result<JsValue, JsValue> {
+    let req: PlanTiersReq = from_js(plan)?;
+    to_js(&reconstruct_level_grid_typed(&req, &dba))
+}
+
+/// The typed body of [`reconstruct_level_grid`] (no `JsValue` — natively testable):
+/// partition the plan into tiers, take the fine tier, and reconstruct the dense
+/// grid from the receiver-major `dba` vector. Returns the empty grid (never a
+/// panic) when the plan has no fine tier.
+fn reconstruct_level_grid_typed(req: &PlanTiersReq, dba: &[f64]) -> ExportGridDto {
+    let multiples: Vec<usize> = req.coarse_multiples.iter().map(|&k| k as usize).collect();
+    let plan = envi_compute::tiers::partition(
+        req.fine_spacing_m,
+        req.lattice_origin,
+        envi_compute::tiers::Rect {
+            min: req.area_min,
+            max: req.area_max,
+        },
+        &req.discrete_points,
+        &multiples,
+    );
+    let grid = plan
+        .tiers
+        .iter()
+        .find(|t| t.kind == envi_compute::tiers::TierKind::Fine)
+        .map(|fine| envi_compute::grid::reconstruct_level_grid(fine, dba))
+        .unwrap_or_else(|| envi_compute::grid::LevelGrid::empty(req.fine_spacing_m));
+    ExportGridDto {
+        rows: grid.rows as u32,
+        cols: grid.cols as u32,
+        origin: grid.origin,
+        spacing_m: grid.spacing_m,
+        values: grid.values,
+    }
+}
+
 /// Compute the marshalled-scene tensor-identity hash (HI-01 / D-09) for a
 /// [`PrepareSolveReq`] — the blake3 digest over EVERY tensor-affecting field
 /// (terrain, atmosphere, coherence, weather, sub-sources + directivity, receivers,
@@ -445,6 +497,56 @@ mod tests {
     use super::*;
     use dto::{AtmosphereDto, CoherenceInputsDto, ReceiverPlacementDto, SubSourcePlacementDto};
     use envi_compute::scene_dto::{GroundSegmentDto, TerrainProfileDto};
+
+    #[test]
+    fn reconstruct_level_grid_typed_scatters_the_fine_readout_onto_its_lattice() {
+        // fine=10 over [0,100]² → an 11×11 lattice with one coarse tier (k=10). The
+        // dba vector is keyed by global_index (value = 100 + global_index), matching
+        // the pure grid.rs contract. This exercises the wasm boundary's typed body:
+        // partition → fine tier → reconstruct, with no acoustic math on the JS side.
+        let req = PlanTiersReq {
+            fine_spacing_m: 10.0,
+            lattice_origin: [0.0, 0.0],
+            area_min: [0.0, 0.0],
+            area_max: [100.0, 100.0],
+            discrete_points: Vec::new(),
+            coarse_multiples: vec![10],
+        };
+        // A dba long enough to cover every receiver index (points+coarse+fine union).
+        let dba: Vec<f64> = (0..1024).map(|i| 100.0 + i as f64).collect();
+
+        let grid = reconstruct_level_grid_typed(&req, &dba);
+
+        assert_eq!(grid.rows, 11);
+        assert_eq!(grid.cols, 11);
+        assert_eq!(grid.origin, [0.0, 0.0]);
+        assert_eq!(grid.spacing_m, 10.0);
+        assert_eq!(grid.values.len(), 121);
+        // The four coarse corners are no-data holes (fine tier never introduced them).
+        for (row, col) in [(0usize, 0usize), (0, 10), (10, 0), (10, 10)] {
+            assert!(grid.values[row * grid.cols as usize + col].is_nan());
+        }
+        // Exactly the 117 fine gap nodes are finite; the 4 coarse corners are holes.
+        let filled = grid.values.iter().filter(|v| v.is_finite()).count();
+        assert_eq!(filled, 117);
+    }
+
+    #[test]
+    fn reconstruct_level_grid_typed_is_empty_when_no_fine_lattice() {
+        // A degenerate fine spacing yields no fine lattice → an empty grid, no panic.
+        let req = PlanTiersReq {
+            fine_spacing_m: 0.0,
+            lattice_origin: [0.0, 0.0],
+            area_min: [0.0, 0.0],
+            area_max: [100.0, 100.0],
+            discrete_points: Vec::new(),
+            coarse_multiples: Vec::new(),
+        };
+        let grid = reconstruct_level_grid_typed(&req, &[]);
+        assert_eq!(grid.rows, 0);
+        assert_eq!(grid.cols, 0);
+        assert!(grid.values.is_empty());
+    }
 
     fn omni_req(tensor_hash: &str) -> PrepareSolveReq {
         PrepareSolveReq {

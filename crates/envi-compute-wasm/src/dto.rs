@@ -522,7 +522,7 @@ pub struct ExportCrsDto {
 /// The cached level grid on the export wire (SceneXY meters) — the raster source
 /// for GeoTIFF and the field the iso-band tracer contours for GeoJSON.
 /// Request-facing.
-#[derive(Debug, Clone, PartialEq, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 #[ts(export_to = "wire.ts")]
 pub struct ExportGridDto {
