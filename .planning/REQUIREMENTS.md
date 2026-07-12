@@ -98,7 +98,7 @@
 
 - [x] **GRID-01**: Generate a building-aware receiver grid via constrained Delaunay (spade); plus discrete receiver points
 - [x] **GRID-02**: Batch-compute the transfer tensor over the grid, parallelized (rayon), receiver-axis chunked
-- [ ] **GRID-04**: Contour results into isophone fill polygons (pure-Rust `contour`; `gdal-sys` escape hatch)
+- [x] **GRID-04**: Contour results into isophone fill polygons (pure-Rust `contour`; `gdal-sys` escape hatch)
 - [ ] **GRID-05**: Export results (GeoTIFF / GeoJSON) and spectra (CSV)
 
 ### Web frontend (WEB)
@@ -108,7 +108,7 @@
 - [x] **WEB-03**: Place/edit receiver points and the receiver-grid / calculation-area domain
 - [x] **WEB-04**: Draw/edit buildings, walls, ground-effect (impedance A–H + roughness N/S/M/L) zones, forests, and elevation points/lines with DGM re-triangulation; last-object property inheritance; click-to-select validation messages
 - [ ] **WEB-05**: Configure source input conditioning (per-source gain/filter/delay) in the UI with **interactive fast recalculation** (tensor MAC) and a results-stale badge
-- [ ] **WEB-06**: Render isophone overlays as fill polygons with an editable color scale + legend (dB weighting from result metadata)
+- [x] **WEB-06**: Render isophone overlays as fill polygons with an editable color scale + legend (dB weighting from result metadata)
 - [x] **WEB-07**: Submit a calculation job and view progress / abort / results; pre-run cost estimate
 - [x] **WEB-08**: Draw/assign a **semi-transparent screen** and edit its isolation spectrum (SCN-01)
 - [x] **WEB-09**: Assign **per-façade isolation spectra** on a semi-transparent building (SCN-02)
@@ -214,14 +214,14 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | METX-04 | Phase 11 | Pending |
 | GRID-01 | Phase 9 | Complete |
 | GRID-02 | Phase 10 | Complete |
-| GRID-04 | Phase 11 | Pending |
+| GRID-04 | Phase 11 | Complete |
 | GRID-05 | Phase 11 | In Progress (11-04 WASM encoders: GeoTIFF/GeoJSON/CSV + attribution; export UI download is 11-09) |
 | WEB-01 | Phase 7 | Complete |
 | WEB-02 | Phase 7 | Complete |
 | WEB-03 | Phase 7 | Complete |
 | WEB-04 | Phase 7 | Complete |
 | WEB-05 | Phase 11 | Pending |
-| WEB-06 | Phase 11 | Pending |
+| WEB-06 | Phase 11 | Complete |
 | WEB-07 | Phase 10 | Complete |
 | WEB-08 | Phase 7 | Complete |
 | WEB-09 | Phase 7 | Complete |

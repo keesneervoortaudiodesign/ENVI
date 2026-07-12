@@ -407,7 +407,7 @@ Plans:
   4. Weather what-if works end-to-end: manual overrides (T/RH/p, Beaufort wind + direction, downwind worst-case toggle, temperature gradient, per-azimuth A/B/C) recompute as a scenario; named scenarios switch instantly via per-scenario cached tensors; difference maps render between two scenarios
   5. Results export as GeoTIFF/GeoJSON and spectra as CSV, carrying band index + exact frequency columns and data attribution metadata
 
-**Plans**: 5/11 plans executed
+**Plans**: 6/11 plans executed
 
 Plans:
 **Wave 1**
@@ -426,7 +426,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 11-06-PLAN.md — Isophone fill layer + color-scale editor (END + viridis/turbo, re-contour no re-solve) + Playwright (WEB-06/GRID-04) [wave 4]
+- [x] 11-06-PLAN.md — Isophone fill layer + color-scale editor (END + viridis/turbo, re-contour no re-solve) + Playwright (WEB-06/GRID-04) [wave 4]
 - [ ] 11-07-PLAN.md — Conditioning fast-recalc MAC + stale badge + 409 refusal + Playwright (WEB-05/SVC-06) [wave 4]
 - [ ] 11-09-PLAN.md — Export UI menu + browser download + attribution + Playwright (GRID-05) [wave 4]
 
