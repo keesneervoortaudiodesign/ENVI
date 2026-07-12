@@ -253,6 +253,10 @@ export function DifferenceLayer(): null {
     }
 
     const recontour = (): void => {
+      // Bump the generation on EVERY run (including a clear) so any pending deferred
+      // apply from an earlier trace is superseded — a clear must invalidate an
+      // in-flight/queued re-add, not just a newer trace (WR-03).
+      const myGen = (gen.current += 1);
       if (!delta || !grid || !crs) {
         removeDifferenceLayer(instance);
         return;
@@ -262,7 +266,6 @@ export function DifferenceLayer(): null {
       const midIndex = Math.floor(scale.colors.length / 2);
       TELEMETRY.midpointColor = scale.colors[midIndex] ?? null;
       const req = buildDifferenceTraceRequest(grid, crs, scale, labelA, labelB);
-      const myGen = (gen.current += 1);
       TELEMETRY.traceCount += 1;
       ensureClient()
         .trace(req)
@@ -274,7 +277,14 @@ export function DifferenceLayer(): null {
           if (instance.isStyleLoaded()) {
             applyDifferenceGeoJson(instance, fc);
           } else {
-            instance.once("load", () => applyDifferenceGeoJson(instance, fc));
+            // Re-check the generation when the deferred `load` finally fires so a queued
+            // callback cannot re-add a superseded delta fill after a clear (WR-03).
+            instance.once("load", () => {
+              if (myGen !== gen.current) {
+                return;
+              }
+              applyDifferenceGeoJson(instance, fc);
+            });
           }
           TELEMETRY.error = null;
         })

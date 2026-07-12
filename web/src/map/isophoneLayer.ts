@@ -254,11 +254,14 @@ export function IsophoneLayer(): null {
     const req = buildTraceRequest(useColorScaleStore.getState());
 
     const recontour = (): void => {
+      // Bump the generation on EVERY run (including a clear) so any pending deferred
+      // apply from an earlier trace is superseded — a clear must invalidate an
+      // in-flight/queued re-add, not just a newer trace (WR-03).
+      const myGen = (gen.current += 1);
       if (!req) {
         removeIsophoneLayer(instance);
         return;
       }
-      const myGen = (gen.current += 1);
       TELEMETRY.traceCount += 1;
       ensureClient()
         .trace(req)
@@ -270,7 +273,15 @@ export function IsophoneLayer(): null {
           if (instance.isStyleLoaded()) {
             applyIsophoneGeoJson(instance, fc);
           } else {
-            instance.once("load", () => applyIsophoneGeoJson(instance, fc));
+            // Re-check the generation when the deferred `load` finally fires: the grid
+            // may have been cleared / re-contoured meanwhile, and this queued callback
+            // must not re-add a superseded fill (WR-03).
+            instance.once("load", () => {
+              if (myGen !== gen.current) {
+                return;
+              }
+              applyIsophoneGeoJson(instance, fc);
+            });
           }
           TELEMETRY.error = null;
         })
