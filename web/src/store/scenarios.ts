@@ -237,6 +237,15 @@ export const useScenarioStore = create<ScenarioState>((set, get) => ({
       // A met change is a RECOMPUTE (new tensor identity) — the FULL Phase-10 solve
       // into a per-scenario OPFS calc/<hash>/ dir, then read out the dB(A) totals.
       const solved = await client.solve({ ...scenario, derived }, derived);
+      // Discard a stale result: a `setMet` that landed DURING the solve flipped
+      // `computed:false` for this scenario and changed its met identity. Committing now
+      // would flip it back to `computed:true` with a tensor/totals for the OLD met — a
+      // false-green a Compare would then subtract against the displayed (new) met (WR-01).
+      const still = get().scenarios.find((s) => s.id === id);
+      if (!still || still.met !== scenario.met) {
+        set((s) => ({ computingId: s.computingId === id ? null : s.computingId }));
+        return;
+      }
       set((s) => ({
         scenarios: s.scenarios.map((sc) =>
           sc.id === id ? { ...sc, derived, solve: solved, computed: true } : sc,
