@@ -7,7 +7,8 @@
 //   innerHTML, never dangerouslySetInnerHTML) so the markup is constructed, not parsed from a string.
 //   Valid input range: any `IconName`; unknown names cannot be constructed (compile-time exhaustive).
 
-// The palette tool identities: the pointer tool + the 9 frozen kinds (geojson.rs KINDS).
+// The palette tool identities: the pointer tool + the 9 frozen kinds (geojson.rs KINDS),
+// plus the app-wide `info` affordance glyph (D-23 Info-Button help system).
 export type IconName =
   | "select"
   | "source"
@@ -18,7 +19,8 @@ export type IconName =
   | "ground_zone"
   | "elevation_point"
   | "elevation_line"
-  | "calc_area";
+  | "calc_area"
+  | "info";
 
 const PATHS: Record<IconName, string[]> = {
   // Simple stroke paths in a 0..16 viewBox (UI-SPEC glyph column).
@@ -32,6 +34,8 @@ const PATHS: Record<IconName, string[]> = {
   elevation_point: ["M8 3 L13 8 L8 13 L3 8 Z", "M7 8 h2"],
   elevation_line: ["M2 8 q2 -4 4 0 q2 4 4 0 q2 -4 4 0"],
   calc_area: ["M3 3 h3", "M10 3 h3", "M13 3 v3", "M13 10 v3", "M13 13 h-3", "M6 13 h-3", "M3 13 v-3", "M3 6 v-3"],
+  // An "i" in a ring — the D-23 info affordance. Ring + dot + stem, currentColor stroke.
+  info: ["M8 1.6 a6.4 6.4 0 1 0 0.01 0", "M8 5 h0.01", "M8 7.4 v4"],
 };
 
 export function svgIcon(name: IconName): SVGElement {
