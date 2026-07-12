@@ -137,16 +137,36 @@ fn geo_key_directory(epsg: u16) -> Vec<u16> {
     ]
 }
 
+/// The EPSG code did not fit the GeoTIFF `ProjectedCSTypeGeoKey` (a `u16`), so the
+/// raster could not be stamped with a defined CRS. Returned instead of silently
+/// degrading a georeferenced export to the undefined CRS `0` (IN-03). The export
+/// boundary validates the UTM zone to `1..=60` (WR-03), so a real UTM EPSG
+/// (`326xx`/`327xx`) always fits — this guard is defense-in-depth.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[error("EPSG {epsg} does not fit the GeoTIFF ProjectedCSTypeGeoKey (u16)")]
+pub struct EpsgOverflow {
+    /// The offending EPSG code.
+    pub epsg: u32,
+}
+
 /// Encode the level `grid` as a minimal single-strip Float32 GeoTIFF carrying the
 /// EPSG + geotransform + the [`ExportMeta`] footer (D-20/D-21/D-22). Zero new dep.
 ///
 /// An empty grid yields an empty byte vector (nothing to raster). NaN no-data
 /// holes are preserved as Float32 NaN and declared via the `GDAL_NODATA` tag.
-#[must_use]
-pub fn encode_geotiff(grid: &LevelGrid, meta: &ExportMeta) -> Vec<u8> {
+///
+/// # Errors
+/// [`EpsgOverflow`] when `meta.epsg` exceeds `u16::MAX` and so cannot ride the
+/// GeoTIFF `ProjectedCSTypeGeoKey` — a georeferenced raster is never silently
+/// stamped with the undefined CRS `0` (IN-03).
+pub fn encode_geotiff(grid: &LevelGrid, meta: &ExportMeta) -> Result<Vec<u8>, EpsgOverflow> {
     if grid.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
+    // Fail loud rather than emitting an undefined-CRS raster (IN-03). WR-03 already
+    // guarantees a valid UTM EPSG upstream, so this only trips on a bad ExportMeta.
+    let epsg = u16::try_from(meta.epsg).map_err(|_| EpsgOverflow { epsg: meta.epsg })?;
+
     let cols = grid.cols;
     let rows = grid.rows;
     let strip_bytes = (rows * cols * 4) as u32;
@@ -157,7 +177,6 @@ pub fn encode_geotiff(grid: &LevelGrid, meta: &ExportMeta) -> Vec<u8> {
     let max_y = grid.origin[1] + (rows as f64 - 1.0) * grid.spacing_m;
     let pixel_scale = [grid.spacing_m, grid.spacing_m, 0.0];
     let tiepoint = [0.0, 0.0, 0.0, grid.origin[0], max_y, 0.0];
-    let epsg = u16::try_from(meta.epsg).unwrap_or(0);
 
     // The IFD fields, ascending by tag. StripOffsets is patched with the real
     // pixel offset once the layout is known.
@@ -244,7 +263,7 @@ pub fn encode_geotiff(grid: &LevelGrid, meta: &ExportMeta) -> Vec<u8> {
             out.extend_from_slice(&v.to_le_bytes());
         }
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -323,7 +342,7 @@ mod tests {
     #[test]
     fn geotiff_round_trips_float32_pixels_geokeys_and_geotransform() {
         let grid = fixture();
-        let bytes = encode_geotiff(&grid, &meta());
+        let bytes = encode_geotiff(&grid, &meta()).unwrap();
         let ifd = parse_ifd(&bytes);
 
         // Dimensions + Float32 single-strip layout.
@@ -406,6 +425,22 @@ mod tests {
 
     #[test]
     fn empty_grid_encodes_to_no_bytes() {
-        assert!(encode_geotiff(&LevelGrid::empty(10.0), &meta()).is_empty());
+        assert!(
+            encode_geotiff(&LevelGrid::empty(10.0), &meta())
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn epsg_over_u16_is_a_typed_error_not_a_silent_crs_zero() {
+        // IN-03: an EPSG that cannot ride the u16 GeoKey must error, never emit a
+        // raster silently stamped with the undefined CRS 0.
+        let mut m = meta();
+        m.epsg = 70_000; // > u16::MAX
+        assert_eq!(
+            encode_geotiff(&fixture(), &m),
+            Err(EpsgOverflow { epsg: 70_000 })
+        );
     }
 }

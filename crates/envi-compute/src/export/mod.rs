@@ -38,8 +38,8 @@ pub mod geojson;
 pub mod geotiff;
 
 pub use csv::encode_spectra_csv;
-pub use geojson::{IsoBandLonLat, PolygonLonLat, encode_isophone_geojson};
-pub use geotiff::encode_geotiff;
+pub use geojson::{GeoJsonEncodeError, IsoBandLonLat, PolygonLonLat, encode_isophone_geojson};
+pub use geotiff::{EpsgOverflow, encode_geotiff};
 
 /// The metadata + attribution footer stamped onto every export (D-22).
 ///
@@ -65,32 +65,44 @@ pub struct ExportMeta {
 }
 
 impl ExportMeta {
-    /// A single-line footer, e.g. for the GeoTIFF `ImageDescription` tag.
+    /// A single-line footer, e.g. for the GeoTIFF `ImageDescription` tag. Free-text
+    /// fields have their CR/LF collapsed to a space so the footer stays one line.
     #[must_use]
     pub fn one_line(&self) -> String {
         format!(
             "ENVI Nord2000 export | CRS=EPSG:{} | Weighting={} | Engine={} | Tensor={} | Attribution={}",
             self.epsg,
-            self.weighting_label,
-            self.engine_version,
-            self.tensor_hash,
-            self.attribution
+            one_line_field(&self.weighting_label),
+            one_line_field(&self.engine_version),
+            one_line_field(&self.tensor_hash),
+            one_line_field(&self.attribution)
         )
     }
 
     /// The footer as `#`-prefixed CSV comment lines (newline-terminated, one field
     /// per line) — the header block a downloaded spectra CSV opens with.
+    ///
+    /// Each free-text field has its CR/LF collapsed to a space (WR-02): a comment
+    /// line is not a CSV field, so an embedded newline must not break out of the `#`
+    /// comment block and inject a fake data row.
     #[must_use]
     pub fn csv_comment_lines(&self) -> String {
         format!(
             "# ENVI Nord2000 spectra export\n# CRS: EPSG:{}\n# Weighting: {}\n# Engine: {}\n# Tensor: {}\n# Attribution: {}\n",
             self.epsg,
-            self.weighting_label,
-            self.engine_version,
-            self.tensor_hash,
-            self.attribution
+            one_line_field(&self.weighting_label),
+            one_line_field(&self.engine_version),
+            one_line_field(&self.tensor_hash),
+            one_line_field(&self.attribution)
         )
     }
+}
+
+/// Collapse CR/LF in a free-text footer field to a single space so an embedded
+/// newline cannot break out of a single-line footer (the CSV `#` comment block or
+/// the GeoTIFF `ImageDescription` tag) — WR-02.
+fn one_line_field(s: &str) -> String {
+    s.replace(['\r', '\n'], " ")
 }
 
 #[cfg(test)]
@@ -129,5 +141,27 @@ mod tests {
         assert!(s.contains("CRS: EPSG:32631"));
         assert!(s.contains("Weighting: dB(A)"));
         assert!(s.contains("Attribution:"));
+    }
+
+    #[test]
+    fn comment_header_neutralizes_embedded_newlines() {
+        // WR-02: a free-text field carrying a newline must NOT break out of the `#`
+        // comment block — every line of the header must still be a `#` comment.
+        let meta = ExportMeta {
+            epsg: 32631,
+            weighting_label: "dB(A)\n# fake data row,1,2,3".to_string(),
+            engine_version: "e\r\nvil".to_string(),
+            tensor_hash: "abc".to_string(),
+            attribution: "attr".to_string(),
+        };
+        let s = meta.csv_comment_lines();
+        for line in s.lines() {
+            assert!(
+                line.starts_with('#'),
+                "an embedded newline must not escape the comment block: {line:?}"
+            );
+        }
+        // The one-line footer likewise stays a single line.
+        assert_eq!(meta.one_line().lines().count(), 1);
     }
 }

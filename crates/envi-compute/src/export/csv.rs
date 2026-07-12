@@ -32,11 +32,13 @@ pub fn encode_spectra_csv(
     let mut out = String::new();
     out.push_str(&meta.csv_comment_lines());
 
-    // Header row.
+    // Header row. Receiver labels are untrusted free text (the "TS-minted UUID"
+    // contract is documentation, not enforcement), so each is RFC-4180-quoted and
+    // formula-injection-guarded (WR-02) before it joins the header.
     out.push_str("band_index,exact_hz");
     for i in 0..receivers.len() {
         out.push(',');
-        out.push_str(&column_label(labels, i));
+        out.push_str(&csv_field(&column_label(labels, i)));
     }
     out.push('\n');
 
@@ -75,6 +77,46 @@ fn column_label(labels: &[String], i: usize) -> String {
         .get(i)
         .cloned()
         .unwrap_or_else(|| format!("receiver_{i}"))
+}
+
+/// RFC-4180-quote a CSV field AND neutralize spreadsheet formula injection (WR-02).
+///
+/// - **Quoting:** a field containing a comma, `"`, CR, or LF is wrapped in `"…"`
+///   with every internal `"` doubled — so a label like `road, north` cannot inject
+///   an extra column and an embedded newline cannot break the row structure.
+/// - **Formula-injection guard:** a field beginning with `=`, `+`, `-`, `@`, tab, or
+///   CR is prefixed with a `'` so a spreadsheet opens the downloaded cell as text,
+///   never evaluates it as a formula.
+///
+/// Only untrusted TEXT fields (receiver labels) pass through here — the numeric
+/// level columns are program-formatted finite `f64`s and stay bare so the columns
+/// remain parseable (a leading `-` on a number is legitimate numeric data).
+fn csv_field(s: &str) -> String {
+    // Formula-injection guard first (a leading trigger becomes inert text).
+    let guarded = match s.chars().next() {
+        Some('=' | '+' | '-' | '@' | '\t' | '\r') => {
+            let mut g = String::with_capacity(s.len() + 1);
+            g.push('\'');
+            g.push_str(s);
+            g
+        }
+        _ => s.to_string(),
+    };
+    // RFC-4180 quoting when the (guarded) field carries a delimiter/quote/newline.
+    if guarded.contains([',', '"', '\n', '\r']) {
+        let mut out = String::with_capacity(guarded.len() + 2);
+        out.push('"');
+        for ch in guarded.chars() {
+            if ch == '"' {
+                out.push('"'); // double the internal quote
+            }
+            out.push(ch);
+        }
+        out.push('"');
+        out
+    } else {
+        guarded
+    }
 }
 
 /// Format a level with round-trippable precision; a non-finite value (silence
@@ -164,6 +206,49 @@ mod tests {
         let c_row = csv.lines().find(|l| l.starts_with("dBC_total,")).unwrap();
         assert!(a_row.ends_with("120"), "dB(A) total = 30 + 90");
         assert!(c_row.ends_with("122"), "dB(C) total = 30 + 92");
+    }
+
+    #[test]
+    fn labels_are_rfc4180_quoted_and_formula_injection_guarded() {
+        // WR-02: an untrusted label with a comma, an embedded quote, or a leading
+        // formula trigger must not corrupt the CSV or ride as a live spreadsheet
+        // formula. A comma inside a label must not inject a column.
+        let axis = FreqAxis::new();
+        let rcv = [readout(30.0), readout(40.0), readout(50.0)];
+        let labels = [
+            "road, north".to_string(), // comma → quoted
+            "say \"hi\"".to_string(),  // embedded quote → doubled + quoted
+            "=1+2".to_string(),        // formula injection → ' guard
+        ];
+        let csv = encode_spectra_csv(&labels, &rcv, &axis, &meta());
+        let header = csv
+            .lines()
+            .find(|l| l.starts_with("band_index,exact_hz"))
+            .expect("header row present");
+        assert_eq!(
+            header,
+            "band_index,exact_hz,\"road, north\",\"say \"\"hi\"\"\",'=1+2"
+        );
+
+        // Every data row still has exactly 2 + 3 = 5 fields under a proper RFC-4180
+        // parse (the comma inside the quoted label is NOT a delimiter). A naive
+        // comma-split of a data row yields 5 too, since the quoted label sits in the
+        // header only; here we assert the header field count via a minimal parser.
+        assert_eq!(rfc4180_field_count(header), 5, "header has 5 fields");
+    }
+
+    /// A minimal RFC-4180 field counter (quote-aware) for the test above.
+    fn rfc4180_field_count(line: &str) -> usize {
+        let mut fields = 1;
+        let mut in_quotes = false;
+        for ch in line.chars() {
+            match ch {
+                '"' => in_quotes = !in_quotes,
+                ',' if !in_quotes => fields += 1,
+                _ => {}
+            }
+        }
+        fields
     }
 
     #[test]

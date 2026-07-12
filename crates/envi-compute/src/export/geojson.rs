@@ -46,11 +46,49 @@ pub struct IsoBandLonLat {
     pub polygons: Vec<PolygonLonLat>,
 }
 
+/// Encoding an isophone `FeatureCollection` failed (IN-04) — surfaced instead of
+/// silently substituting an empty document (which would drop every band with no
+/// signal to the caller).
+#[derive(Debug, thiserror::Error, PartialEq)]
+pub enum GeoJsonEncodeError {
+    /// A ring carried a non-finite `[lon, lat]` vertex. `serde_json` would encode a
+    /// `NaN`/`inf` as JSON `null`, producing a structurally-invalid position rather
+    /// than erroring — so reject it up front.
+    #[error("non-finite coordinate in an isophone ring: [{lon}, {lat}]")]
+    NonFiniteCoord {
+        /// The offending longitude.
+        lon: f64,
+        /// The offending latitude.
+        lat: f64,
+    },
+    /// The `geojson`/`serde_json` serialization itself failed.
+    #[error("GeoJSON serialization failed: {0}")]
+    Serialize(String),
+}
+
 /// Encode iso-band fill polygons as an RFC-7946 GeoJSON `FeatureCollection` string
 /// (D-21), each feature carrying its band range + fill colour + weighting label,
 /// with the [`ExportMeta`] footer as collection foreign members (D-22).
-#[must_use]
-pub fn encode_isophone_geojson(bands: &[IsoBandLonLat], meta: &ExportMeta) -> String {
+///
+/// # Errors
+/// [`GeoJsonEncodeError::NonFiniteCoord`] if any ring vertex is non-finite (which
+/// `serde_json` would otherwise emit as an invalid `null` position), or
+/// [`GeoJsonEncodeError::Serialize`] if serialization fails — never a silently-empty
+/// `FeatureCollection` that drops every band (IN-04).
+pub fn encode_isophone_geojson(
+    bands: &[IsoBandLonLat],
+    meta: &ExportMeta,
+) -> Result<String, GeoJsonEncodeError> {
+    // Guard non-finite coordinates BEFORE serialization (IN-04).
+    for b in bands {
+        for p in &b.polygons {
+            check_ring_finite(&p.exterior)?;
+            for h in &p.holes {
+                check_ring_finite(h)?;
+            }
+        }
+    }
+
     let features = bands.iter().map(|b| band_feature(b, meta)).collect();
     let fc = FeatureCollection {
         bbox: None,
@@ -58,9 +96,19 @@ pub fn encode_isophone_geojson(bands: &[IsoBandLonLat], meta: &ExportMeta) -> St
         foreign_members: Some(meta_members(meta)),
     };
     // Serialize through the geojson crate's serde impl — never a hand-written JSON
-    // string (the RFC-7946 winding/structure is the crate's responsibility).
-    serde_json::to_string(&fc)
-        .unwrap_or_else(|_| "{\"type\":\"FeatureCollection\",\"features\":[]}".to_string())
+    // string (the RFC-7946 winding/structure is the crate's responsibility). A
+    // serialization failure is PROPAGATED, not swallowed into an empty document.
+    serde_json::to_string(&fc).map_err(|e| GeoJsonEncodeError::Serialize(e.to_string()))
+}
+
+/// Reject any non-finite `[lon, lat]` vertex in a ring (IN-04).
+fn check_ring_finite(ring: &[[f64; 2]]) -> Result<(), GeoJsonEncodeError> {
+    for &[lon, lat] in ring {
+        if !lon.is_finite() || !lat.is_finite() {
+            return Err(GeoJsonEncodeError::NonFiniteCoord { lon, lat });
+        }
+    }
+    Ok(())
 }
 
 /// Build one `MultiPolygon` feature for an iso-band.
@@ -175,7 +223,7 @@ mod tests {
     #[test]
     fn output_is_valid_rfc7946_with_band_props_and_attribution_member() {
         let bands = [band(50.0, 55.0), band(55.0, 60.0)];
-        let s = encode_isophone_geojson(&bands, &meta());
+        let s = encode_isophone_geojson(&bands, &meta()).unwrap();
 
         // Parses as valid GeoJSON via the crate (RFC-7946 structure).
         let gj: GeoJson = s.parse().expect("valid GeoJSON");
@@ -219,7 +267,7 @@ mod tests {
 
     #[test]
     fn empty_bands_encode_to_an_empty_feature_collection() {
-        let s = encode_isophone_geojson(&[], &meta());
+        let s = encode_isophone_geojson(&[], &meta()).unwrap();
         let gj: GeoJson = s.parse().expect("valid GeoJSON");
         let GeoJson::FeatureCollection(fc) = gj else {
             panic!("expected a FeatureCollection");
@@ -227,5 +275,15 @@ mod tests {
         assert!(fc.features.is_empty());
         // The attribution footer is still present on an empty export.
         assert!(fc.foreign_members.is_some());
+    }
+
+    #[test]
+    fn non_finite_coordinate_is_a_typed_error_not_a_null_position() {
+        // IN-04: a NaN/inf vertex must error, never ride out as an invalid JSON
+        // `null` position that a GeoJSON consumer would choke on.
+        let mut b = band(50.0, 55.0);
+        b.polygons[0].exterior[1] = [f64::NAN, 52.40];
+        let err = encode_isophone_geojson(&[b], &meta()).unwrap_err();
+        assert!(matches!(err, GeoJsonEncodeError::NonFiniteCoord { .. }));
     }
 }

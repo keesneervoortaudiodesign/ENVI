@@ -42,20 +42,40 @@ use crate::dto::{
 };
 use crate::{ComputeError, compute_err, from_js};
 
-/// The UTM EPSG code for a zone + hemisphere (`326zz` north / `327zz` south).
-fn utm_epsg(utm_zone: u32, south: bool) -> u32 {
-    (if south { 32700 } else { 32600 }) + utm_zone
+/// Validate a UTM zone to `1..=60` (WR-03) and return it as the `u8` used to build
+/// BOTH the reprojection CRS and the stamped EPSG — so the GeoTIFF GeoKeyDirectory
+/// and the GeoJSON/CSV footers can never disagree with the zone the GeoJSON is
+/// actually reprojected through. An out-of-range zone is a typed [`ComputeError`],
+/// never a silent `as u8` truncation (`287 as u8 == 31`).
+fn validated_zone(utm_zone: u32) -> Result<u8, ComputeError> {
+    u8::try_from(utm_zone)
+        .ok()
+        .filter(|z| (1..=60).contains(z))
+        .ok_or_else(|| {
+            ComputeError::Export(format!("UTM zone {utm_zone} out of range (must be 1..=60)"))
+        })
+}
+
+/// The UTM EPSG code for a validated zone + hemisphere (`326zz` north / `327zz`
+/// south). Takes the already-validated `u8` zone so the EPSG is derived from the
+/// SAME value used to build [`ProjectCrs`] (WR-03).
+fn utm_epsg(zone: u8, south: bool) -> u32 {
+    (if south { 32700 } else { 32600 }) + u32::from(zone)
 }
 
 /// The [`ExportMeta`] footer for a request (D-22).
-fn meta_of(req: &ExportReq) -> ExportMeta {
-    ExportMeta {
-        epsg: utm_epsg(req.crs.utm_zone, req.crs.south),
+///
+/// # Errors
+/// [`ComputeError::Export`] when the CRS UTM zone is out of range (WR-03).
+fn meta_of(req: &ExportReq) -> Result<ExportMeta, ComputeError> {
+    let zone = validated_zone(req.crs.utm_zone)?;
+    Ok(ExportMeta {
+        epsg: utm_epsg(zone, req.crs.south),
         weighting_label: req.weighting_label.clone(),
         engine_version: req.engine_version.clone(),
         tensor_hash: req.tensor_hash.clone(),
         attribution: req.attribution.clone(),
-    }
+    })
 }
 
 /// Reconstruct a [`LevelGrid`] from its wire DTO.
@@ -93,11 +113,11 @@ fn readout_of(dto: &ReceiverReadoutDto) -> ReceiverReadout {
 /// [`ComputeError::Export`] when the format's required payload is absent, the
 /// break scale is invalid, or a reprojection fails at the CRS seam.
 pub fn run_export(req: &ExportReq) -> Result<Vec<u8>, ComputeError> {
-    let meta = meta_of(req);
+    let meta = meta_of(req)?;
     match req.format {
         ExportFormat::GeoTiff => {
             let grid = grid_of(require_grid(req)?);
-            Ok(encode_geotiff(&grid, &meta))
+            encode_geotiff(&grid, &meta).map_err(|e| ComputeError::Export(e.to_string()))
         }
         ExportFormat::GeoJson => {
             let grid = grid_of(require_grid(req)?);
@@ -106,7 +126,9 @@ pub fn run_export(req: &ExportReq) -> Result<Vec<u8>, ComputeError> {
             })?;
             let crs = project_crs(&req.crs)?;
             let lonlat = trace_bands_lonlat(&grid, breaks, &req.band_fills, &crs)?;
-            Ok(encode_isophone_geojson(&lonlat, &meta).into_bytes())
+            let json = encode_isophone_geojson(&lonlat, &meta)
+                .map_err(|e| ComputeError::Export(e.to_string()))?;
+            Ok(json.into_bytes())
         }
         ExportFormat::Csv => {
             let receivers = req.receivers.as_deref().ok_or_else(|| {
@@ -129,7 +151,11 @@ fn require_grid(req: &ExportReq) -> Result<&ExportGridDto, ComputeError> {
 /// Rebuild the project [`ProjectCrs`] from its wire DTO (the ONE reprojection seam,
 /// GEOX-04). Shared by the GeoJSON export arm and the live iso-band tracer.
 fn project_crs(crs: &ExportCrsDto) -> Result<ProjectCrs, ComputeError> {
-    ProjectCrs::from_zone(crs.utm_zone as u8, crs.south)
+    // Validate 1..=60 BEFORE the `as u8` so a large zone can never silently wrap
+    // (WR-03): `287 as u8 == 31` would reproject as UTM 31 while the footer/GeoTIFF
+    // stamped EPSG:32887, making the download internally inconsistent about its CRS.
+    let zone = validated_zone(crs.utm_zone)?;
+    ProjectCrs::from_zone(zone, crs.south)
         .map_err(|e| ComputeError::Export(format!("bad project CRS: {e}")))
 }
 
@@ -179,18 +205,22 @@ fn trace_bands_lonlat(
 /// [`ComputeError::Export`] on an invalid break scale (V5) or a reprojection failure.
 pub fn run_trace_isophones(req: &TraceIsophonesReq) -> Result<String, ComputeError> {
     let grid = grid_of(&req.grid);
-    let crs = project_crs(&req.crs)?;
+    // Validate the zone once (WR-03) and reuse it for BOTH the reprojection CRS and
+    // the stamped EPSG, so the live layer can never disagree with itself.
+    let zone = validated_zone(req.crs.utm_zone)?;
+    let crs = ProjectCrs::from_zone(zone, req.crs.south)
+        .map_err(|e| ComputeError::Export(format!("bad project CRS: {e}")))?;
     let bands = trace_bands_lonlat(&grid, &req.breaks, &req.band_fills, &crs)?;
     // A live-layer meta: only the weighting label is meaningful on screen (the
     // export footer identity fields are for downloadable artifacts, not the map).
     let meta = ExportMeta {
-        epsg: utm_epsg(req.crs.utm_zone, req.crs.south),
+        epsg: utm_epsg(zone, req.crs.south),
         weighting_label: req.weighting_label.clone(),
         engine_version: String::new(),
         tensor_hash: String::new(),
         attribution: String::new(),
     };
-    Ok(encode_isophone_geojson(&bands, &meta))
+    encode_isophone_geojson(&bands, &meta).map_err(|e| ComputeError::Export(e.to_string()))
 }
 
 /// Reproject a SceneXY `[x, y]` ring to WGS84 `[lon, lat]` through the ONE CRS seam.
@@ -414,6 +444,43 @@ mod tests {
         let mut gj = base_req(ExportFormat::GeoJson);
         gj.grid = Some(ramp_grid());
         assert!(matches!(run_export(&gj), Err(ComputeError::Export(_))));
+    }
+
+    #[test]
+    fn out_of_range_utm_zone_is_a_typed_error_never_a_silent_truncation() {
+        // WR-03: `287 as u8 == 31` must NOT slip through. Every export arm (and the
+        // live tracer) rejects an out-of-range zone with a typed Export error, so the
+        // stamped EPSG can never disagree with the reprojection.
+        let mut tif = base_req(ExportFormat::GeoTiff);
+        tif.crs.utm_zone = 287;
+        tif.grid = Some(ramp_grid());
+        assert!(matches!(run_export(&tif), Err(ComputeError::Export(_))));
+
+        let mut gj = base_req(ExportFormat::GeoJson);
+        gj.crs.utm_zone = 61; // just past the valid range
+        gj.grid = Some(ramp_grid());
+        gj.breaks = Some(vec![50.0, 60.0]);
+        assert!(matches!(run_export(&gj), Err(ComputeError::Export(_))));
+
+        let mut csv = base_req(ExportFormat::Csv);
+        csv.crs.utm_zone = 0; // zero is invalid too
+        csv.receivers = Some(vec![readout_dto(30.0)]);
+        assert!(matches!(run_export(&csv), Err(ComputeError::Export(_))));
+
+        let bad_trace = TraceIsophonesReq {
+            grid: ramp_grid(),
+            crs: crate::dto::ExportCrsDto {
+                utm_zone: 999,
+                south: false,
+            },
+            breaks: vec![50.0, 60.0],
+            band_fills: Vec::new(),
+            weighting_label: "dB(A)".to_string(),
+        };
+        assert!(matches!(
+            run_trace_isophones(&bad_trace),
+            Err(ComputeError::Export(_))
+        ));
     }
 
     #[test]
