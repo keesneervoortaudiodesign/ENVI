@@ -30,7 +30,9 @@ use ndarray::ArrayView3;
 use num_complex::Complex;
 use wasm_bindgen::prelude::*;
 
-use envi_compute::readout::{Conditioning, ConditioningDto, default_law, readout_receiver};
+use envi_compute::readout::{
+    Conditioning, ConditioningDto, ReceiverReadout, default_law, readout_receiver,
+};
 
 use crate::dto::{
     PrepareSolveReq, ReadoutResult, ReceiverReadoutDto, ReconditionReq, ReconditionResult,
@@ -56,6 +58,40 @@ pub fn recondition_receivers(
     p_incoh_abs: ArrayView3<'_, f64>,
     axis: &FreqAxis,
 ) -> Result<ReconditionResult, ComputeError> {
+    // Shared hash-gated readout core (IN-01); this entry keeps only the
+    // band-levels-per-receiver projection.
+    let readouts = gated_readout(req, current_tensor_hash, h_coh, p_incoh_abs, axis)?;
+
+    // `stale` is always false: a mismatch is refused in the core (never served
+    // stale), and conditioning is excluded from tensor identity so a match can
+    // never be stale.
+    Ok(ReconditionResult {
+        spectra: readouts.into_iter().map(|ro| ro.band_levels_db).collect(),
+        stale: false,
+    })
+}
+
+/// The shared hash-gated readout core behind [`recondition_receivers`] and
+/// [`readout_all_receivers`] (IN-01) — the validate-and-loop body both entries used
+/// to duplicate verbatim. It refuses a mismatched hash BEFORE any MAC (D-12 / Open
+/// Q1, the honest client-side 409), validates the sub-source/receiver counts,
+/// builds the per-source engine inputs (each filter dense-`[105]` + finiteness
+/// checked, V5), derives the readout law from the conditioning composition (Open
+/// Q2), and drives the FORCE-validated 11-01 [`readout_receiver`] core over every
+/// receiver. Each public entry then projects the returned [`ReceiverReadout`]s into
+/// its own DTO shape.
+///
+/// # Errors
+/// [`ComputeError::HashMismatch`] on a mismatched hash (no spectra produced);
+/// [`ComputeError::Recondition`] on a count/filter validation or engine readout
+/// failure.
+fn gated_readout(
+    req: &ReconditionReq,
+    current_tensor_hash: &str,
+    h_coh: ArrayView3<'_, Complex<f64>>,
+    p_incoh_abs: ArrayView3<'_, f64>,
+    axis: &FreqAxis,
+) -> Result<Vec<ReceiverReadout>, ComputeError> {
     // The hash gate FIRST (D-12 / Open Q1): refuse a mismatched hash BEFORE any MAC
     // so a stale readout is never produced — the honest client-side 409. The
     // {expected, got} fields mirror the server 409 body.
@@ -103,15 +139,9 @@ pub fn recondition_receivers(
     for r in 0..n_rcv {
         let ro = readout_receiver(h_coh, p_incoh_abs, r, &spectra, &conditioning, law, axis)
             .map_err(|e| ComputeError::Recondition(e.to_string()))?;
-        out.push(ro.band_levels_db);
+        out.push(ro);
     }
-
-    // `stale` is always false: a mismatch is refused above (never served stale), and
-    // conditioning is excluded from tensor identity so a match can never be stale.
-    Ok(ReconditionResult {
-        spectra: out,
-        stale: false,
-    })
+    Ok(out)
 }
 
 /// Read out EVERY receiver's FULL two-channel spectrum (WEB-11 / D-05/06/08/09),
@@ -135,54 +165,23 @@ pub fn readout_all_receivers(
     p_incoh_abs: ArrayView3<'_, f64>,
     axis: &FreqAxis,
 ) -> Result<ReadoutResult, ComputeError> {
-    // The hash gate FIRST (D-12 / Open Q1): never produce a stale readout.
-    if req.tensor_hash != current_tensor_hash {
-        return Err(ComputeError::HashMismatch {
-            expected: current_tensor_hash.to_string(),
-            got: req.tensor_hash.clone(),
-        });
-    }
-
-    let (n_sub, n_rcv, _) = h_coh.dim();
-    if req.per_source_conditioning.len() != n_sub {
-        return Err(ComputeError::Recondition(format!(
-            "per_source_conditioning has {} entries, expected one per sub-source (n_sub = {n_sub})",
-            req.per_source_conditioning.len()
-        )));
-    }
-    if req.receiver_ids.len() != n_rcv {
-        return Err(ComputeError::Recondition(format!(
-            "receiver_ids has {} entries, expected the chunk receiver count ({n_rcv})",
-            req.receiver_ids.len()
-        )));
-    }
-
-    let mut spectra = Vec::with_capacity(n_sub);
-    let mut conditioning = Vec::with_capacity(n_sub);
-    for c in &req.per_source_conditioning {
-        let (l_w, cond) = to_engine(c)?;
-        spectra.push(l_w);
-        conditioning.push(cond);
-    }
-    let law = default_law(&conditioning);
-
-    let mut out = Vec::with_capacity(n_rcv);
-    for r in 0..n_rcv {
-        let ro = readout_receiver(h_coh, p_incoh_abs, r, &spectra, &conditioning, law, axis)
-            .map_err(|e| ComputeError::Recondition(e.to_string()))?;
-        out.push(ReceiverReadoutDto {
-            band_levels_db: ro.band_levels_db,
-            coherent_db: ro.coherent_db,
-            incoherent_db: ro.incoherent_db,
-            total_dba: ro.total_dba,
-            total_dbc: ro.total_dbc,
-            total_coherent_db: ro.total_coherent_db,
-            total_incoherent_db: ro.total_incoherent_db,
-        });
-    }
+    // Shared hash-gated readout core (IN-01); this entry projects the FULL
+    // two-channel readout into the wire DTO.
+    let readouts = gated_readout(req, current_tensor_hash, h_coh, p_incoh_abs, axis)?;
 
     Ok(ReadoutResult {
-        receivers: out,
+        receivers: readouts
+            .into_iter()
+            .map(|ro| ReceiverReadoutDto {
+                band_levels_db: ro.band_levels_db,
+                coherent_db: ro.coherent_db,
+                incoherent_db: ro.incoherent_db,
+                total_dba: ro.total_dba,
+                total_dbc: ro.total_dbc,
+                total_coherent_db: ro.total_coherent_db,
+                total_incoherent_db: ro.total_incoherent_db,
+            })
+            .collect(),
         stale: false,
     })
 }
@@ -211,7 +210,9 @@ fn to_engine(c: &ConditioningDto) -> Result<(BandSpectrum, Conditioning), Comput
 
     let filter = if c.muted {
         // A muted source contributes exactly zero to both the coherent and the
-        // incoherent channel — an all-zero complex filter silences it exactly.
+        // incoherent channel — an all-zero complex filter silences it exactly. The
+        // `muted` flag below (CR-01) keeps this mute encoding OUT of law selection:
+        // a silencing filter is not a conditioning filter.
         Some(vec![Complex::new(0.0, 0.0); N_BANDS])
     } else if let Some(f) = &c.filter_band_db {
         if f.len() != N_BANDS {
@@ -239,6 +240,9 @@ fn to_engine(c: &ConditioningDto) -> Result<(BandSpectrum, Conditioning), Comput
         Conditioning {
             filter,
             delay_s: c.delay_ms / 1000.0,
+            // A mute is law-neutral (CR-01): the silencing filter above must not be
+            // read as a conditioning filter that flips the readout to coherent.
+            muted: c.muted,
         },
     ))
 }
@@ -395,6 +399,7 @@ mod tests {
                         .collect(),
                 ),
                 delay_s: c.delay_ms / 1000.0,
+                muted: c.muted,
             })
             .collect();
         let spectra: Vec<BandSpectrum> = cond
@@ -472,6 +477,7 @@ mod tests {
             Conditioning {
                 filter: None,
                 delay_s: 0.0,
+                muted: false,
             };
             n_sub
         ];
@@ -588,5 +594,98 @@ mod tests {
         // Every band level must be finite (a silenced source never produces -inf/NaN
         // that would poison the coherent sum).
         assert!(out.spectra[0].iter().all(|v| v.is_finite()));
+    }
+
+    /// CR-01 regression: muting ONE of several PLAIN omni sub-sources must keep the
+    /// whole readout on the incoherent Annex-A energy sum — it must never silently
+    /// flip the surviving sources to coherent interference. The bundled one-muted,
+    /// one-active case cannot catch this, because a lone active source reads out
+    /// identically under both laws; ≥2 active survivors are needed to distinguish.
+    #[test]
+    fn muting_one_of_several_plain_subs_keeps_incoherent_law() {
+        let axis = FreqAxis::new();
+        let (n_sub, n_rcv) = (3usize, 2usize);
+        let (h, p) = synth_tensor(n_sub, n_rcv);
+        // Three PLAIN omni sub-sources (no filter, no delay); the third is muted and
+        // even carries a stale UI delay to prove the mute is fully law-neutral.
+        let req = ReconditionReq {
+            tensor_hash: "id".to_string(),
+            per_source_conditioning: vec![
+                ConditioningDto {
+                    gain_db: 80.0,
+                    delay_ms: 0.0,
+                    filter_band_db: None,
+                    muted: false,
+                },
+                ConditioningDto {
+                    gain_db: 82.0,
+                    delay_ms: 0.0,
+                    filter_band_db: None,
+                    muted: false,
+                },
+                ConditioningDto {
+                    gain_db: 60.0,
+                    delay_ms: 3.0,
+                    filter_band_db: None,
+                    muted: true,
+                },
+            ],
+            receiver_ids: ids(n_rcv),
+        };
+        let out = recondition_receivers(&req, "id", h.view(), p.view(), &axis).unwrap();
+
+        // Build the engine conditioning the recondition uses, and assert the law it
+        // selects is Incoherent (before the fix the mute encoding flipped it).
+        let spectra: Vec<BandSpectrum> = req
+            .per_source_conditioning
+            .iter()
+            .map(|c| BandSpectrum::uniform(c.gain_db))
+            .collect();
+        let conds: Vec<Conditioning> = req
+            .per_source_conditioning
+            .iter()
+            .map(|c| to_engine(c).unwrap().1)
+            .collect();
+        assert_eq!(default_law(&conds), ReadoutLaw::Incoherent);
+
+        // The recondition output must equal the EXPLICIT incoherent readout, and the
+        // fixture must genuinely distinguish the two laws (so the check is not vacuous).
+        for r in 0..n_rcv {
+            let incoherent = readout_receiver(
+                h.view(),
+                p.view(),
+                r,
+                &spectra,
+                &conds,
+                ReadoutLaw::Incoherent,
+                &axis,
+            )
+            .unwrap();
+            let coherent = readout_receiver(
+                h.view(),
+                p.view(),
+                r,
+                &spectra,
+                &conds,
+                ReadoutLaw::Coherent,
+                &axis,
+            )
+            .unwrap();
+            let mut distinguishes = false;
+            for f in 0..N_BANDS {
+                assert_eq!(
+                    out.spectra[r][f].to_bits(),
+                    incoherent.band_levels_db[f].to_bits(),
+                    "muting a plain sub-source must not change the incoherent readout at r={r} f={f}"
+                );
+                if coherent.band_levels_db[f].to_bits() != incoherent.band_levels_db[f].to_bits() {
+                    distinguishes = true;
+                }
+            }
+            assert!(
+                distinguishes,
+                "fixture must distinguish coherent vs incoherent at r={r}"
+            );
+        }
     }
 }

@@ -91,12 +91,20 @@ impl Default for ConditioningDto {
 /// `SpectrumEditor` (`None` = flat unit filter); `delay_s` is the source delay in
 /// seconds. The source `L_W` amplitude is carried separately by the `spectra`
 /// argument; [`compose_gain`] multiplies the three into `G_s(f)`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Conditioning {
     /// Dense `[N_BANDS]` complex filter gain, or `None` for a flat unit filter.
     pub filter: Option<Vec<Complex<f64>>>,
     /// Source delay in seconds.
     pub delay_s: f64,
+    /// `true` when this sub-source is muted (silenced at readout). A mute is NOT a
+    /// conditioning filter: it MUST NOT drive [`default_law`] (CR-01). Muting one of
+    /// ≥2 plain omni sub-sources must keep the remaining sources on the incoherent
+    /// Annex-A energy sum, never silently flip the whole readout to coherent
+    /// interference. The gain is zeroed separately (via an all-zero `filter`); this
+    /// flag only marks the source law-neutral so law selection reflects the source's
+    /// real composition/type, not the mute encoding.
+    pub muted: bool,
 }
 
 /// Which readout law a source's sub-sources are summed under.
@@ -157,8 +165,13 @@ fn floor_levels(levels: Vec<f64>) -> Vec<f64> {
 /// (any filter present or non-zero delay) is **coherent**, otherwise **incoherent**.
 #[must_use]
 pub fn default_law(conditioning: &[Conditioning]) -> ReadoutLaw {
+    // A muted sub-source is silenced, not conditioned (CR-01): skip it entirely so
+    // muting one of ≥2 plain omni sub-sources cannot flip the whole readout from the
+    // incoherent Annex-A energy sum to coherent interference (a routine UI mute must
+    // not change the physics of the surviving sources).
     let conditioned = conditioning
         .iter()
+        .filter(|c| !c.muted)
         .any(|c| c.filter.is_some() || c.delay_s != 0.0);
     if conditioned {
         ReadoutLaw::Coherent
@@ -273,8 +286,17 @@ pub fn readout_receiver(
         .map(|&e| Complex::new(e.sqrt(), 0.0))
         .collect();
     let ones = vec![1.0_f64; N_BANDS];
-    let band_levels_db =
-        band_levels_db_two_channel(&h_eff, &hff_eff, &ones, &BandSpectrum::uniform(0.0));
+    // Floor the PRIMARY combined output too (WR-01), not only the split channels:
+    // an all-silent/all-muted receiver has zero coherent AND incoherent energy, so
+    // `10·log₁₀(0) = −∞` — clamp it to the finite SILENCE_FLOOR_DB so the wire (and
+    // the derived dB(A)/dB(C) totals) never carry −∞/NaN, upholding the documented
+    // finite-on-the-wire invariant.
+    let band_levels_db = floor_levels(band_levels_db_two_channel(
+        &h_eff,
+        &hff_eff,
+        &ones,
+        &BandSpectrum::uniform(0.0),
+    ));
 
     // Per-channel dB for the D-08 split overlay: drive the SAME two-channel dB law
     // with the other channel zeroed (never a bespoke 10·log10) — coherent-only is
@@ -347,6 +369,7 @@ mod tests {
             .map(|s| Conditioning {
                 filter: Some(vec![Complex::new(0.5 + 0.1 * s as f64, 0.05); N_BANDS]),
                 delay_s: 1.0e-4 * (s as f64 + 1.0),
+                muted: false,
             })
             .collect();
 
@@ -401,16 +424,19 @@ mod tests {
         let cond1 = vec![Conditioning {
             filter: None,
             delay_s: 0.0,
+            muted: false,
         }];
         let spec2 = vec![BandSpectrum::uniform(0.0), BandSpectrum::uniform(0.0)];
         let cond2 = vec![
             Conditioning {
                 filter: None,
                 delay_s: 0.0,
+                muted: false,
             },
             Conditioning {
                 filter: None,
                 delay_s: 0.0,
+                muted: false,
             },
         ];
 
@@ -446,18 +472,59 @@ mod tests {
         let plain = vec![Conditioning {
             filter: None,
             delay_s: 0.0,
+            muted: false,
         }];
         assert_eq!(default_law(&plain), ReadoutLaw::Incoherent);
         let filtered = vec![Conditioning {
             filter: Some(vec![Complex::new(1.0, 0.0); N_BANDS]),
             delay_s: 0.0,
+            muted: false,
         }];
         assert_eq!(default_law(&filtered), ReadoutLaw::Coherent);
         let delayed = vec![Conditioning {
             filter: None,
             delay_s: 1.0e-4,
+            muted: false,
         }];
         assert_eq!(default_law(&delayed), ReadoutLaw::Coherent);
+
+        // CR-01: muting one of ≥2 PLAIN omni sub-sources must NOT flip the readout
+        // law. A muted source carries an all-zero silencing filter (and possibly a
+        // stale delay), but `muted` marks it law-neutral so the surviving plain
+        // sources stay on the incoherent Annex-A energy sum.
+        let plain_with_one_muted = vec![
+            Conditioning {
+                filter: Some(vec![Complex::new(0.0, 0.0); N_BANDS]), // mute encoding
+                delay_s: 5.0e-4,                                     // stale UI delay
+                muted: true,
+            },
+            Conditioning {
+                filter: None,
+                delay_s: 0.0,
+                muted: false,
+            },
+        ];
+        assert_eq!(
+            default_law(&plain_with_one_muted),
+            ReadoutLaw::Incoherent,
+            "muting a plain sub-source must not coherent-ize the survivors"
+        );
+
+        // A genuine loudspeaker array (real filters) with one member muted stays
+        // coherent — the mute is neutral, the surviving real filters still decide.
+        let array_with_one_muted = vec![
+            Conditioning {
+                filter: Some(vec![Complex::new(0.0, 0.0); N_BANDS]),
+                delay_s: 0.0,
+                muted: true,
+            },
+            Conditioning {
+                filter: Some(vec![Complex::new(1.0, 0.0); N_BANDS]),
+                delay_s: 0.0,
+                muted: false,
+            },
+        ];
+        assert_eq!(default_law(&array_with_one_muted), ReadoutLaw::Coherent);
     }
 
     #[test]
@@ -471,6 +538,7 @@ mod tests {
         let cond = vec![Conditioning {
             filter: None,
             delay_s: 0.0,
+            muted: false,
         }];
         let ro = readout_receiver(
             h.view(),
@@ -517,10 +585,12 @@ mod tests {
             Conditioning {
                 filter: Some(vec![Complex::new(0.7, 0.1); N_BANDS]),
                 delay_s: 1.0e-4,
+                muted: false,
             },
             Conditioning {
                 filter: Some(vec![Complex::new(0.6, -0.05); N_BANDS]),
                 delay_s: 2.0e-4,
+                muted: false,
             },
         ];
         let ro = readout_receiver(
@@ -558,6 +628,7 @@ mod tests {
         let cond = vec![Conditioning {
             filter: None,
             delay_s: 0.0,
+            muted: false,
         }];
         let ro = readout_receiver(
             h.view(),
@@ -575,6 +646,64 @@ mod tests {
     }
 
     #[test]
+    fn all_silent_receiver_floors_primary_band_levels_and_totals() {
+        // WR-01: a fully silent receiver (zero H_coh AND zero P_incoh) must still
+        // emit a finite floor on the PRIMARY combined output — never −∞/NaN — so the
+        // wire and both weighted totals stay finite.
+        let axis = FreqAxis::new();
+        let h = Array3::<Complex<f64>>::zeros((1, 1, N_BANDS));
+        let p = Array3::<f64>::zeros((1, 1, N_BANDS));
+        let spectra = vec![BandSpectrum::uniform(90.0)];
+        let cond = vec![Conditioning {
+            filter: None,
+            delay_s: 0.0,
+            muted: false,
+        }];
+        for law in [ReadoutLaw::Coherent, ReadoutLaw::Incoherent] {
+            let ro = readout_receiver(h.view(), p.view(), 0, &spectra, &cond, law, &axis).unwrap();
+            assert!(
+                ro.band_levels_db.iter().all(|v| v.is_finite()),
+                "primary band levels must be finite for an all-silent receiver"
+            );
+            assert!(
+                ro.band_levels_db.iter().all(|&v| v == SILENCE_FLOOR_DB),
+                "an all-silent band clamps to the silence floor"
+            );
+            assert!(
+                ro.total_dba.is_finite() && ro.total_dbc.is_finite(),
+                "both weighted totals stay finite"
+            );
+        }
+    }
+
+    #[test]
+    fn muted_gain_receiver_floors_primary_band_levels() {
+        // WR-01 (the mute path): a live tensor but an all-zero (muted) gain filter
+        // zeroes both channels, so the primary output must floor, not go −∞.
+        let axis = FreqAxis::new();
+        let h = Array3::from_shape_fn((1, 1, N_BANDS), |(s, r, f)| hval(s, r, f));
+        let p = Array3::from_shape_fn((1, 1, N_BANDS), |(s, r, f)| pval(s, r, f));
+        let spectra = vec![BandSpectrum::uniform(90.0)];
+        let cond = vec![Conditioning {
+            filter: Some(vec![Complex::new(0.0, 0.0); N_BANDS]),
+            delay_s: 0.0,
+            muted: true,
+        }];
+        let ro = readout_receiver(
+            h.view(),
+            p.view(),
+            0,
+            &spectra,
+            &cond,
+            ReadoutLaw::Incoherent,
+            &axis,
+        )
+        .unwrap();
+        assert!(ro.band_levels_db.iter().all(|&v| v == SILENCE_FLOOR_DB));
+        assert!(ro.total_dba.is_finite() && ro.total_dbc.is_finite());
+    }
+
+    #[test]
     fn readout_receiver_rejects_bad_receiver_index() {
         let axis = FreqAxis::new();
         let h = Array3::<Complex<f64>>::zeros((1, 2, N_BANDS));
@@ -583,6 +712,7 @@ mod tests {
         let cond = vec![Conditioning {
             filter: None,
             delay_s: 0.0,
+            muted: false,
         }];
         assert!(
             readout_receiver(
