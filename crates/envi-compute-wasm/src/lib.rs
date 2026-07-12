@@ -51,6 +51,12 @@ pub mod identity;
 // the worker-side pre-open-read handles land in 11-05).
 pub mod opfs_reader;
 pub mod opfs_sink;
+// The hash-gated recondition MAC boundary (SVC-06 / D-01 / D-12, 11-03) — decodes
+// the OPFS tensor, re-mints the tensor identity, refuses a mismatched claimed hash
+// with a typed `HashMismatch` (client-side 409), and drives compose_gain +
+// readout_coherent over the reused tensor with no re-propagation. Available on
+// every build (pure decode + engine readout; the worker OPFS glue lands in 11-05).
+pub mod recondition;
 // The caller-side rayon sharding driver (GRID-02). Compiled for every NATIVE build
 // (so `cargo test pool` exercises it) and for the THREADED wasm build; excluded
 // only from the stable, single-threaded wasm build where rayon is absent.
@@ -172,6 +178,11 @@ pub enum ComputeError {
         /// The identity the request claimed to be operating on.
         got: String,
     },
+    /// A recondition MAC request failed validation or readout (dense `[105]` filter
+    /// length / finiteness V5, a sub-source/receiver count mismatch, or an engine
+    /// readout `SinkError`) — a typed error, never a panic on data (T-11-03-02).
+    #[error("recondition failed: {0}")]
+    Recondition(String),
     /// The requested receiver range `[r_offset, r_offset + len)` is not densely
     /// covered by the prepared scene's receivers (`local_receivers` selected fewer
     /// than `len`) — a malformed range that would otherwise slice out of bounds and
