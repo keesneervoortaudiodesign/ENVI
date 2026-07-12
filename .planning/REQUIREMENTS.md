@@ -107,7 +107,7 @@
 - [x] **WEB-02**: Place/edit directional sources on the map (Terra Draw), with sound power / spectrum / SPL-at-reference-point calibration
 - [x] **WEB-03**: Place/edit receiver points and the receiver-grid / calculation-area domain
 - [x] **WEB-04**: Draw/edit buildings, walls, ground-effect (impedance A–H + roughness N/S/M/L) zones, forests, and elevation points/lines with DGM re-triangulation; last-object property inheritance; click-to-select validation messages
-- [ ] **WEB-05**: Configure source input conditioning (per-source gain/filter/delay) in the UI with **interactive fast recalculation** (tensor MAC) and a results-stale badge
+- [x] **WEB-05**: Configure source input conditioning (per-source gain/filter/delay) in the UI with **interactive fast recalculation** (tensor MAC) and a results-stale badge
 - [x] **WEB-06**: Render isophone overlays as fill polygons with an editable color scale + legend (dB weighting from result metadata)
 - [x] **WEB-07**: Submit a calculation job and view progress / abort / results; pre-run cost estimate
 - [x] **WEB-08**: Draw/assign a **semi-transparent screen** and edit its isolation spectrum (SCN-01)
@@ -123,7 +123,7 @@
 - [x] **SVC-03**: Rust HTTP API backend (axum), serving the built frontend bundle
 - [x] **SVC-04**: Single self-hosted deployable service (localhost bind; startup self-check) — *self-check scope adjusted by Phase-6 decision D-08: Phase 6 ships a **pure-Rust CRS landmark round-trip** self-check (zero C toolchain); the **GDAL/PROJ** version / `proj.db` / `GDAL_DATA` self-check lands in Phase 8 with the C `gdal` dependency*
 - [x] **SVC-05**: Project CRUD lifecycle — create / open / save (autosave) / delete / duplicate with metadata; reopen-last
-- [ ] **SVC-06**: API separates **`recondition`** (conditioning-only → tensor MAC) from **`recompute`** (scene/terrain/ground/met → full propagation); tensor cache keyed by content hash; a MAC request with a mismatched hash is rejected, never silently served
+- [x] **SVC-06**: API separates **`recondition`** (conditioning-only → tensor MAC) from **`recompute`** (scene/terrain/ground/met → full propagation); tensor cache keyed by content hash; a MAC request with a mismatched hash is rejected, never silently served
 - [x] **SVC-07**: All acoustic quantities are computed **server-side**; spectra cross the wire keyed by **band index** with the 1/12-octave grid served once (no Hz-based client-side acoustic math)
 
 ### Future imports & BEM (FUT — deferred beyond Milestone 2)
@@ -220,7 +220,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | WEB-02 | Phase 7 | Complete |
 | WEB-03 | Phase 7 | Complete |
 | WEB-04 | Phase 7 | Complete |
-| WEB-05 | Phase 11 | Pending |
+| WEB-05 | Phase 11 | Complete |
 | WEB-06 | Phase 11 | Complete |
 | WEB-07 | Phase 10 | Complete |
 | WEB-08 | Phase 7 | Complete |
@@ -233,7 +233,7 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 | SVC-03 | Phase 6 | Complete |
 | SVC-04 | Phase 6 | Complete |
 | SVC-05 | Phase 6 | Complete |
-| SVC-06 | Phase 11 | Pending |
+| SVC-06 | Phase 11 | Complete |
 | SVC-07 | Phase 6 | Complete |
 
 **Coverage:**
