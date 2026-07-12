@@ -34,9 +34,11 @@
 //! `#![deny(unsafe_code)]` (crate-wide); the encoders never panic on data.
 
 pub mod csv;
+pub mod geojson;
 pub mod geotiff;
 
 pub use csv::encode_spectra_csv;
+pub use geojson::{IsoBandLonLat, PolygonLonLat, encode_isophone_geojson};
 pub use geotiff::encode_geotiff;
 
 /// The metadata + attribution footer stamped onto every export (D-22).

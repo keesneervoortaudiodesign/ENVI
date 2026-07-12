@@ -455,7 +455,7 @@ pub struct ReconditionResult {
 /// panel additionally needs both weighted totals (instant dB(A)⇄dB(C), no
 /// recompute) and the coherent/incoherent split — all precomputed here so the UI
 /// toggles are pure re-render.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export_to = "wire.ts")]
 pub struct ReceiverReadoutDto {
     /// Per-band total level, dB, dense `[105]` band-index order.
@@ -488,6 +488,96 @@ pub struct ReadoutResult {
     pub receivers: Vec<ReceiverReadoutDto>,
     /// Always `false` — a mismatched hash is refused, never served stale.
     pub stale: bool,
+}
+
+// --- export request (GRID-05 / D-20/21/22, browser-download bytes) -----------
+
+/// Which export encoder the [`ExportReq`] targets (D-21). Serialized `snake_case`
+/// so the wire tags are `geo_tiff`/`geo_json`/`csv`. Request-facing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "wire.ts")]
+pub enum ExportFormat {
+    /// Continuous dB(A)/dB(C) level grid → single-strip Float32 GeoTIFF (raster).
+    GeoTiff,
+    /// Isophone fill polygons → RFC-7946 GeoJSON (vector).
+    GeoJson,
+    /// Receiver spectra → CSV (band index + exact Hz columns).
+    Csv,
+}
+
+/// The project's pinned CRS on the export wire: a UTM zone + hemisphere. The
+/// boundary rebuilds `ProjectCrs::from_zone` from it — the ONE reprojection seam
+/// (GEOX-04) — and derives the EPSG (`326zz` north / `327zz` south). Request-facing.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct ExportCrsDto {
+    /// UTM zone `1..=60`.
+    pub utm_zone: u32,
+    /// Southern hemisphere.
+    pub south: bool,
+}
+
+/// The cached level grid on the export wire (SceneXY meters) — the raster source
+/// for GeoTIFF and the field the iso-band tracer contours for GeoJSON.
+/// Request-facing.
+#[derive(Debug, Clone, PartialEq, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct ExportGridDto {
+    /// Lattice rows (y axis).
+    pub rows: u32,
+    /// Lattice columns (x axis).
+    pub cols: u32,
+    /// SceneXY `[x, y]` of node `(row 0, col 0)`.
+    pub origin: [f64; 2],
+    /// Lattice spacing, meters.
+    pub spacing_m: f64,
+    /// Row-major level values; a `NaN` is a no-data hole.
+    pub values: Vec<f64>,
+}
+
+/// `export` request (GRID-05): the format + CRS + metadata footer + the payload the
+/// selected format needs. All bytes are generated in WASM and the browser downloads
+/// them (D-20, nothing leaves the device). Request-facing (`deny_unknown_fields`).
+///
+/// The payload fields are optional and format-selected: `grid` feeds GeoTIFF and
+/// (with `breaks`) GeoJSON; `receivers` (+ `receiver_labels`) feed CSV. A missing
+/// required payload is a typed `Export` error, never a panic.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct ExportReq {
+    /// Which encoder to run.
+    pub format: ExportFormat,
+    /// The project's pinned CRS (EPSG source + reprojection seam).
+    pub crs: ExportCrsDto,
+    /// The dB weighting label the grid/spectra are in (e.g. `"dB(A)"`).
+    pub weighting_label: String,
+    /// The engine version string (scene identity, D-22).
+    pub engine_version: String,
+    /// The frozen tensor-identity hash (scene identity, D-09/D-22).
+    pub tensor_hash: String,
+    /// The open-data attribution string (OSM/Overture/ESA WorldCover/Copernicus).
+    pub attribution: String,
+    /// The cached level grid (GeoTIFF raster + GeoJSON contour source).
+    #[serde(default)]
+    pub grid: Option<ExportGridDto>,
+    /// The colour-scale breaks the iso-band tracer contours for GeoJSON (V5:
+    /// strictly increasing, finite, `≥ 2`).
+    #[serde(default)]
+    pub breaks: Option<Vec<f64>>,
+    /// Optional per-band fill colours (aligned to `breaks.len() - 1` bands), stamped
+    /// into the GeoJSON feature properties.
+    #[serde(default)]
+    pub band_fills: Vec<String>,
+    /// Receiver column labels for the CSV (TS-minted UUIDs), aligned to `receivers`.
+    #[serde(default)]
+    pub receiver_labels: Vec<String>,
+    /// The per-receiver readout spectra for the CSV.
+    #[serde(default)]
+    pub receivers: Option<Vec<ReceiverReadoutDto>>,
 }
 
 #[cfg(test)]

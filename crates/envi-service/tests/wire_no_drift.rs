@@ -83,10 +83,11 @@ use envi_gis_wasm::dto::{
 // above (this crate defines no duplicate).
 use envi_compute_wasm::dto::{
     AtmosphereDto, ChunkSpanDto, CoherenceInputsDto, CostEstimateResult, DirectionalDto,
-    DirectivityBalloonDto, EstimateCostReq, GuardrailLevelDto, PlanTiersReq, PrepareSolveReq,
-    RangeProgressDto, ReadoutResult, ReceiverPlacementDto, ReceiverReadoutDto, ReconditionReq,
-    ReconditionResult, RotationDto, SolveChunkRangeReq, SubSourcePlacementDto, TierComplete,
-    TierDto, TierKindDto, TierPlanResult, TierReceiverDto,
+    DirectivityBalloonDto, EstimateCostReq, ExportCrsDto, ExportFormat, ExportGridDto, ExportReq,
+    GuardrailLevelDto, PlanTiersReq, PrepareSolveReq, RangeProgressDto, ReadoutResult,
+    ReceiverPlacementDto, ReceiverReadoutDto, ReconditionReq, ReconditionResult, RotationDto,
+    SolveChunkRangeReq, SubSourcePlacementDto, TierComplete, TierDto, TierKindDto, TierPlanResult,
+    TierReceiverDto,
 };
 
 /// Provenance banner prepended to the committed `wire.ts` (mirrors the oracle
@@ -241,6 +242,12 @@ fn export_all_wire_types(cfg: &Config) {
     // per-receiver readout DTO are new wire types.
     ReceiverReadoutDto::export_all(cfg).unwrap();
     ReadoutResult::export_all(cfg).unwrap();
+    // Export encoders → browser-download bytes (GRID-05 / D-20/21/22, 11-04). The
+    // ReceiverReadoutDto ExportReq reuses is registered just above — one wire type.
+    ExportFormat::export_all(cfg).unwrap();
+    ExportCrsDto::export_all(cfg).unwrap();
+    ExportGridDto::export_all(cfg).unwrap();
+    ExportReq::export_all(cfg).unwrap();
 }
 
 /// Deterministically regenerate the full `wire.ts` contents (banner + ts-rs

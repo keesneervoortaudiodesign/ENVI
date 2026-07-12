@@ -28,6 +28,12 @@ envi-compute = { path = "../envi-compute" }
 # `tensor::TensorSink` trait and names `Complex<f64>` + `SinkError`; the engine's
 # 3-dep quarantine is untouched — this crate adds nothing to envi-engine.
 envi-engine = { path = "../envi-engine" }
+# envi-geo (the ONE reprojection boundary, GEOX-04): the export boundary (11-04)
+# reprojects the SceneXY level grid / iso-band polygons to WGS84 lon/lat through
+# `ProjectCrs::to_wgs84` — never an inline proj string (the single CRS seam).
+# In-tree pure-Rust crate (proj4rs + thiserror), already in the wasm graph via
+# envi-gis-wasm; adds no new-to-the-repo dependency and builds for wasm32.
+envi-geo = { path = "../envi-geo" }
 # ndarray/num-complex: the sink's `put_chunk` receives `ArrayView3<Complex<f64>>` /
 # `ArrayView3<f64>` chunk views — naming those engine view types at the boundary
 # needs both crates directly (already transitive via envi-engine; no version drift).

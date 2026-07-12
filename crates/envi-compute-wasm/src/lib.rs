@@ -57,6 +57,11 @@ pub mod opfs_sink;
 // readout_coherent over the reused tensor with no re-propagation. Available on
 // every build (pure decode + engine readout; the worker OPFS glue lands in 11-05).
 pub mod recondition;
+// The three WASM export encoders → browser-download bytes (GRID-05 / D-20/21/22,
+// 11-04): GeoTIFF (level-grid raster), GeoJSON (isophone fill polygons), CSV
+// (receiver spectra). Reprojects SceneXY→LonLat through envi-geo (the one CRS
+// seam) and returns Vec<u8> for a Blob download; nothing leaves the device.
+pub mod export;
 // The caller-side rayon sharding driver (GRID-02). Compiled for every NATIVE build
 // (so `cargo test pool` exercises it) and for the THREADED wasm build; excluded
 // only from the stable, single-threaded wasm build where rayon is absent.
@@ -178,6 +183,12 @@ pub enum ComputeError {
         /// The identity the request claimed to be operating on.
         got: String,
     },
+    /// An export request (GRID-05, 11-04) was malformed — a format's required
+    /// payload was absent (e.g. GeoTIFF/GeoJSON without a grid, CSV without
+    /// receivers), invalid break scale, or a reprojection failure at the one CRS
+    /// seam. A typed error, never a panic on data (T-11-04-03).
+    #[error("export failed: {0}")]
+    Export(String),
     /// A recondition MAC request failed validation or readout (dense `[105]` filter
     /// length / finiteness V5, a sub-source/receiver count mismatch, or an engine
     /// readout `SinkError`) — a typed error, never a panic on data (T-11-03-02).

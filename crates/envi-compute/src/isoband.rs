@@ -93,6 +93,33 @@ pub struct IsoBand {
     pub rings: Vec<Vec<[f64; 2]>>,
 }
 
+/// One classified fill polygon: an exterior ring plus its hole rings, SceneXY
+/// `[x, y]`. The [`IsoBand::fill_polygons`] grouping of a band's flat rings.
+pub type FillPolygon = (Vec<[f64; 2]>, Vec<Vec<[f64; 2]>>);
+
+impl IsoBand {
+    /// Group this band's flat [`Self::rings`] into `(exterior, holes)` fill
+    /// polygons via the SAME signed-area/containment classification the tracer
+    /// uses internally ([`rings_to_multipolygon`]).
+    ///
+    /// [`Self::rings`] is a flat exterior-then-holes list across possibly several
+    /// disconnected components; this reconstructs which holes belong to which
+    /// exterior so an exporter (GeoJSON `MultiPolygon`, GRID-05) gets correct
+    /// polygon/hole nesting rather than treating every ring as a solid fill. Rings
+    /// are SceneXY `[x, y]`; the caller reprojects to lon/lat at the one CRS seam.
+    #[must_use]
+    pub fn fill_polygons(&self) -> Vec<FillPolygon> {
+        let mp = rings_to_multipolygon(self.rings.clone());
+        mp.0.iter()
+            .map(|poly| {
+                let exterior = ls_to_ring(poly.exterior());
+                let holes = poly.interiors().iter().map(ls_to_ring).collect();
+                (exterior, holes)
+            })
+            .collect()
+    }
+}
+
 /// A break-scale validation error (V5) — the tracer never panics on user input.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum IsobandError {

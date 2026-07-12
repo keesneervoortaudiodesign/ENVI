@@ -605,6 +605,111 @@ n_workers: number,
 budget_bytes: number, };
 
 /**
+ * The project's pinned CRS on the export wire: a UTM zone + hemisphere. The
+ * boundary rebuilds `ProjectCrs::from_zone` from it — the ONE reprojection seam
+ * (GEOX-04) — and derives the EPSG (`326zz` north / `327zz` south). Request-facing.
+ */
+export type ExportCrsDto = { 
+/**
+ * UTM zone `1..=60`.
+ */
+utm_zone: number, 
+/**
+ * Southern hemisphere.
+ */
+south: boolean, };
+
+/**
+ * Which export encoder the [`ExportReq`] targets (D-21). Serialized `snake_case`
+ * so the wire tags are `geo_tiff`/`geo_json`/`csv`. Request-facing.
+ */
+export type ExportFormat = "geo_tiff" | "geo_json" | "csv";
+
+/**
+ * The cached level grid on the export wire (SceneXY meters) — the raster source
+ * for GeoTIFF and the field the iso-band tracer contours for GeoJSON.
+ * Request-facing.
+ */
+export type ExportGridDto = { 
+/**
+ * Lattice rows (y axis).
+ */
+rows: number, 
+/**
+ * Lattice columns (x axis).
+ */
+cols: number, 
+/**
+ * SceneXY `[x, y]` of node `(row 0, col 0)`.
+ */
+origin: [number, number], 
+/**
+ * Lattice spacing, meters.
+ */
+spacing_m: number, 
+/**
+ * Row-major level values; a `NaN` is a no-data hole.
+ */
+values: Array<number>, };
+
+/**
+ * `export` request (GRID-05): the format + CRS + metadata footer + the payload the
+ * selected format needs. All bytes are generated in WASM and the browser downloads
+ * them (D-20, nothing leaves the device). Request-facing (`deny_unknown_fields`).
+ *
+ * The payload fields are optional and format-selected: `grid` feeds GeoTIFF and
+ * (with `breaks`) GeoJSON; `receivers` (+ `receiver_labels`) feed CSV. A missing
+ * required payload is a typed `Export` error, never a panic.
+ */
+export type ExportReq = { 
+/**
+ * Which encoder to run.
+ */
+format: ExportFormat, 
+/**
+ * The project's pinned CRS (EPSG source + reprojection seam).
+ */
+crs: ExportCrsDto, 
+/**
+ * The dB weighting label the grid/spectra are in (e.g. `"dB(A)"`).
+ */
+weighting_label: string, 
+/**
+ * The engine version string (scene identity, D-22).
+ */
+engine_version: string, 
+/**
+ * The frozen tensor-identity hash (scene identity, D-09/D-22).
+ */
+tensor_hash: string, 
+/**
+ * The open-data attribution string (OSM/Overture/ESA WorldCover/Copernicus).
+ */
+attribution: string, 
+/**
+ * The cached level grid (GeoTIFF raster + GeoJSON contour source).
+ */
+grid: ExportGridDto | null, 
+/**
+ * The colour-scale breaks the iso-band tracer contours for GeoJSON (V5:
+ * strictly increasing, finite, `≥ 2`).
+ */
+breaks: Array<number> | null, 
+/**
+ * Optional per-band fill colours (aligned to `breaks.len() - 1` bands), stamped
+ * into the GeoJSON feature properties.
+ */
+band_fills: Array<string>, 
+/**
+ * Receiver column labels for the CSV (TS-minted UUIDs), aligned to `receivers`.
+ */
+receiver_labels: Array<string>, 
+/**
+ * The per-receiver readout spectra for the CSV.
+ */
+receivers: Array<ReceiverReadoutDto> | null, };
+
+/**
  * Serde twin of the **authored subset** of `envi_engine::forest::ForestCrossing`
  * (D-01, SCN-04).
  *
