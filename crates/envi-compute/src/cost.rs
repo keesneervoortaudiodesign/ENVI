@@ -38,7 +38,9 @@ pub const DEFAULT_T_PAIR_MS: f64 = 0.05;
 
 /// Soft warn threshold on tensor bytes: the engine's 256 MiB streaming budget
 /// (D-06 / 10-UI-SPEC "warn ~256 MiB"). Above this the OPFS footprint is large.
-pub const WARN_TENSOR_BYTES: usize = DEFAULT_TENSOR_BUDGET_BYTES;
+/// `u64` so the comparison against the (widened) `tensor_bytes` is 64-bit on
+/// wasm32 too (WR-02 — `usize` is 32-bit there).
+pub const WARN_TENSOR_BYTES: u64 = DEFAULT_TENSOR_BUDGET_BYTES as u64;
 
 /// Soft warn threshold on the time estimate: 5 minutes (10-RESEARCH §Guardrail).
 pub const WARN_TIME_MS: f64 = 5.0 * 60.0 * 1000.0;
@@ -53,11 +55,14 @@ pub struct CostEstimate {
     /// Coarse tiers add none (subset of fine, D-05).
     pub receiver_count: usize,
     /// Full OPFS on-disk tensor footprint, bytes
-    /// (`n_sub · N · N_BANDS · BYTES_PER_CELL_PAIR`).
-    pub tensor_bytes: usize,
+    /// (`n_sub · N · N_BANDS · BYTES_PER_CELL_PAIR`). `u64` (not `usize`) so the
+    /// product cannot wrap on wasm32's 32-bit `usize` and silently defeat the
+    /// `Block` guardrail (WR-02); the boundary DTO already carries it as `f64`.
+    pub tensor_bytes: u64,
     /// Resident RAM working set, bytes
     /// (`n_workers · chunk_receivers · n_sub · N_BANDS · BYTES_PER_CELL_PAIR`, SC3).
-    pub working_set_bytes: usize,
+    /// `u64` for the same wasm32 no-overflow reason as [`tensor_bytes`](Self::tensor_bytes).
+    pub working_set_bytes: u64,
     /// Wall-clock time estimate, milliseconds (`n_sub · N · t_pair / n_workers`).
     pub time_estimate_ms: f64,
 }
@@ -90,11 +95,18 @@ pub fn estimate(
     };
     let receiver_count = discrete_points + n_fine;
 
-    let per_receiver = n_sub * N_BANDS * BYTES_PER_CELL_PAIR;
-    let tensor_bytes = receiver_count * per_receiver;
+    // Byte products in u64 with saturating multiplies: on wasm32 `usize` is 32-bit,
+    // so a `usize` product would wrap for a large grid and hand the guardrail a tiny
+    // (under-budget) `tensor_bytes` — silently bypassing the SC1 hard `Block`. u64
+    // holds the true size regardless of `budget_bytes`; an overflow saturates to
+    // `u64::MAX`, which always trips `Block` (WR-02).
+    let per_receiver = (n_sub as u64) * (N_BANDS as u64) * (BYTES_PER_CELL_PAIR as u64);
+    let tensor_bytes = (receiver_count as u64).saturating_mul(per_receiver);
 
     let chunk = chunk_receivers(n_sub, receiver_count);
-    let working_set_bytes = n_workers * chunk * per_receiver;
+    let working_set_bytes = (n_workers as u64)
+        .saturating_mul(chunk as u64)
+        .saturating_mul(per_receiver);
 
     let time_estimate_ms =
         (n_sub as f64 * receiver_count as f64 * DEFAULT_T_PAIR_MS) / n_workers as f64;
@@ -134,7 +146,7 @@ pub struct Guardrail {
 /// [`WARN_RECEIVERS`]). The detail always expresses the exact "halving the
 /// spacing quadruples the cost" relation (since `N ∝ 1/spacing²`).
 #[must_use]
-pub fn guardrail(estimate: &CostEstimate, budget_bytes: usize) -> Guardrail {
+pub fn guardrail(estimate: &CostEstimate, budget_bytes: u64) -> Guardrail {
     // The exact multiplicative relation, always surfaced (SC1).
     let scaling = "halving the final spacing quadruples the cost (receivers ∝ 1/spacing²)";
 
@@ -182,7 +194,7 @@ mod tests {
         // 4 sub-sources, exactly 1000 receivers (area/spacing² = 1000, no discrete).
         let est = estimate(1000.0, 1.0, 0, 4, 8);
         assert_eq!(est.receiver_count, 1000);
-        let expected = 4 * 1000 * N_BANDS * BYTES_PER_CELL_PAIR;
+        let expected = 4u64 * 1000 * N_BANDS as u64 * BYTES_PER_CELL_PAIR as u64;
         assert_eq!(
             est.tensor_bytes, expected,
             "tensor_bytes must be n_sub·N·N_BANDS·BYTES_PER_CELL_PAIR"
@@ -218,10 +230,36 @@ mod tests {
     }
 
     #[test]
+    fn large_grid_byte_math_does_not_overflow_u32_and_still_blocks() {
+        // WR-02: a grid whose tensor exceeds u32::MAX bytes. On wasm32 `usize` is
+        // 32-bit, so the OLD `usize` product would wrap to a small value and the
+        // guardrail would return Ok/Warn under a real quota. The u64 arithmetic must
+        // report the true size and still `Block`. 500_000 receivers × (4·105·24 =
+        // 10_080) B ≈ 5.04 GB — well past u32::MAX (~4.29 GB).
+        let est = estimate(500_000.0, 1.0, 0, 4, 8);
+        assert_eq!(est.receiver_count, 500_000);
+        let per_receiver = 4u64 * N_BANDS as u64 * BYTES_PER_CELL_PAIR as u64;
+        assert_eq!(est.tensor_bytes, 500_000u64 * per_receiver);
+        assert!(
+            est.tensor_bytes > u32::MAX as u64,
+            "the tensor must exceed u32::MAX bytes (the wasm32 overflow trigger)"
+        );
+        // Against CalcPanel's 2 GiB budget the hard Block must fire — never wrap under.
+        let budget = 2u64 * 1024 * 1024 * 1024;
+        let g = guardrail(&est, budget);
+        assert_eq!(
+            g.level,
+            GuardrailLevel::Block,
+            "an overflowing grid must Block, never wrap under budget (WR-02)"
+        );
+        assert!(g.detail.contains("exceeds"));
+    }
+
+    #[test]
     fn guardrail_ok_warn_block_transitions() {
         // Small grid, huge budget → Ok.
         let small = estimate(1000.0, 10.0, 0, 1, 4); // 10 receivers
-        let g_ok = guardrail(&small, usize::MAX);
+        let g_ok = guardrail(&small, u64::MAX);
         assert_eq!(g_ok.level, GuardrailLevel::Ok);
         assert!(
             g_ok.detail.contains("quadruples"),
@@ -232,7 +270,7 @@ mod tests {
         // generous hard budget → Warn (not Block).
         let big = estimate(1_000_000.0, 3.0, 0, 4, 8);
         assert!(big.tensor_bytes > WARN_TENSOR_BYTES);
-        let g_warn = guardrail(&big, usize::MAX);
+        let g_warn = guardrail(&big, u64::MAX);
         assert_eq!(g_warn.level, GuardrailLevel::Warn, "under budget → Warn");
         assert!(g_warn.detail.contains("quadruples"));
 

@@ -177,7 +177,7 @@ pub fn estimate_cost(req: JsValue) -> Result<JsValue, JsValue> {
         req.n_sub as usize,
         req.n_workers as usize,
     );
-    let guard = envi_compute::cost::guardrail(&est, req.budget_bytes as usize);
+    let guard = envi_compute::cost::guardrail(&est, req.budget_bytes as u64);
     to_js(&CostEstimateResult {
         receiver_count: est.receiver_count as u32,
         tensor_bytes: est.tensor_bytes as f64,
