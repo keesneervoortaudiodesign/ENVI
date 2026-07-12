@@ -266,6 +266,28 @@ async function bootstrapWorker(scope: WorkerScope): Promise<void> {
   const isolated = scope.crossOriginIsolated === true;
   const hasSAB = typeof SharedArrayBuffer !== "undefined";
 
+  // Install the inbound handler SYNCHRONOUSLY — before the first `await` below —
+  // so a `submit` posted immediately after `new Worker()` (the client posts it on
+  // the same tick, client.ts) is never dropped. `await glue.default()` /
+  // `initThreadPool()` yield the worker event loop; a message dispatched during
+  // that yield would be LOST if `onmessage` were only bound afterwards (it stalled
+  // the job at `queued` forever). Messages that arrive before the job machine
+  // exists are buffered here and replayed in order once it is ready.
+  let machine: { submit(spec: CalcJobSpec): Promise<void>; cancel(): void } | null = null;
+  const pending: WorkerInbound[] = [];
+  const handle = (msg: WorkerInbound): void => {
+    if (machine === null) {
+      pending.push(msg);
+      return;
+    }
+    if (msg.type === "submit") {
+      void machine.submit(msg.spec);
+    } else if (msg.type === "cancel") {
+      machine.cancel();
+    }
+  };
+  scope.onmessage = (ev: MessageEvent<WorkerInbound>) => handle(ev.data);
+
   // The threaded glue is imported dynamically so the static module graph (and thus
   // the Vitest import) never pulls the wasm/worker snippets.
   const glue = await import("../generated/wasm-compute/envi_compute_wasm");
@@ -298,21 +320,18 @@ async function bootstrapWorker(scope: WorkerScope): Promise<void> {
     reset_cancel: () => glue.reset_cancel(),
   };
 
-  const machine = createJobMachine({
+  machine = createJobMachine({
     wasm,
     post: (msg) => scope.postMessage(msg),
     crossOriginIsolated: isolated,
     hasSharedArrayBuffer: hasSAB,
   });
 
-  scope.onmessage = (ev: MessageEvent<WorkerInbound>) => {
-    const msg = ev.data;
-    if (msg.type === "submit") {
-      void machine.submit(msg.spec);
-    } else if (msg.type === "cancel") {
-      machine.cancel();
-    }
-  };
+  // Replay any messages that arrived while the pool was initialising (in order).
+  const buffered = pending.splice(0, pending.length);
+  for (const msg of buffered) {
+    handle(msg);
+  }
 }
 
 if (inDedicatedWorker()) {

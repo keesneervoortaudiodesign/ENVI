@@ -115,7 +115,11 @@ test("WEB-07/SC2: a genuine threaded solve shows tiered progress and aborts to C
 
   // Spacing 3 m keeps the fine tier large (many chunks) so Abort reliably lands mid-solve after the coarse
   // tier completes.
-  await page.getByTestId("calc-spacing").fill("3");
+  // A fine 0.5 m spacing makes the FINE tier large (several thousand receivers => many chunk boundaries, a
+  // multi-second tier) so the post-coarse Abort reliably lands mid-solve. Because we abort early (during the
+  // fine tier), the full fine set is never computed — the large tier only widens the abort window, it does not
+  // lengthen the test. The tensor stays tens of MiB (well under the 256 MiB budget => Run stays enabled).
+  await page.getByTestId("calc-spacing").fill("0.5");
   await expect(page.getByTestId("calc-estimate")).toBeVisible({ timeout: 30_000 });
 
   const solveEgress: string[] = [];

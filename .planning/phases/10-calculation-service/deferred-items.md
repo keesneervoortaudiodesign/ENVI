@@ -1,6 +1,29 @@
 # Phase 10 — Deferred Items
 
-## [10-05] Threaded compute wasm ships a NON-shared `WebAssembly.Memory` (pool cannot start in-browser)
+## [10-05] Threaded compute wasm ships a NON-shared `WebAssembly.Memory` (pool cannot start in-browser) — ✅ RESOLVED (2026-07-12)
+
+**Status:** RESOLVED. The `build:wasm:compute` recipe now emits a **shared, imported** memory and
+wasm-bindgen thread-prep succeeds, so `initThreadPool` starts the pool in headless Chromium and the
+`calc.spec.ts` **Test 2** (genuine tiered threaded solve → coarse `done` → Abort → `cancelled`) runs
+and passes — no longer self-skips.
+
+**Final working recipe** (`web/package.json` `build:wasm:compute` rustflags), on top of
+`-C target-feature=+atomics,+bulk-memory,+mutable-globals`:
+`-C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=1073741824`
+plus explicit exports so wasm-bindgen's rayon thread-prep can find its symbols:
+`--export=__heap_base --export=__wasm_init_tls --export=__tls_size --export=__tls_align --export=__tls_base`.
+Verified: the generated glue constructs `new WebAssembly.Memory({initial:18,maximum:16384,shared:true})`.
+The `--export=__heap_base` (+ TLS exports) is what cleared the earlier
+`failed to prepare module for threading: failed to find __heap_base`. The stable `envi-gis-wasm`
+build is unaffected (isolation intact — no root `rust-toolchain.toml`, no global `.cargo` atomics).
+
+**Secondary fix (worker race):** `web/src/compute/worker.ts` now installs its `onmessage` handler
+**before** the first `await` (pool init) and buffers+replays messages, so a `submit` posted on the
+same tick as `new Worker()` is no longer dropped during `initThreadPool` (which previously stalled
+the job at `queued`).
+
+---
+_Original report (kept for provenance):_
 
 **Discovered:** 10-05 (first plan to load the threaded compute glue in a real browser).
 
