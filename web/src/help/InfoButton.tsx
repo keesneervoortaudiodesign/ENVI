@@ -15,7 +15,16 @@
 // so `renderToStaticMarkup` in the Node unit test renders the closed button without a DOM. The
 // docked panel uses a portal, which is only mounted when opened (never during a closed SSR render).
 
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactElement,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 
 import { svgIcon } from "../icons";
@@ -181,26 +190,81 @@ export function HelpPopover({
   );
 }
 
+// Collect the tabbable descendants of a container (D-23 focus-trap helper). Order is
+// DOM order; disabled / `tabindex="-1"` elements are excluded.
+function tabbables(root: HTMLElement): HTMLElement[] {
+  const sel =
+    'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  return Array.from(root.querySelectorAll<HTMLElement>(sel));
+}
+
 // The docked right-rail HELP PANEL: the full multi-paragraph body + every citation.
+// A modal dialog (`aria-modal`) with full keyboard focus management (D-23): focus moves
+// to the close button on open, Tab is trapped within the dock while it is open, and
+// focus is restored to the trigger on close.
 function HelpDock({
   controlId,
   entry,
   onClose,
+  restoreFocusRef,
 }: {
   readonly controlId: ControlId;
   readonly entry: HelpEntry;
   readonly onClose: () => void;
+  // The trigger to restore focus to when the dock unmounts (D-23 focus restore).
+  readonly restoreFocusRef: RefObject<HTMLButtonElement | null>;
 }): ReactElement {
+  const dockRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  // On open, move focus into the dock (its close button); on close/unmount, restore
+  // focus to the trigger so keyboard/SR users are never stranded (D-23).
+  useEffect(() => {
+    closeRef.current?.focus();
+    const trigger = restoreFocusRef.current;
+    return () => {
+      trigger?.focus();
+    };
+  }, [restoreFocusRef]);
+
+  // Trap Tab within the dock while it is open (a proper modal dialog). With a single
+  // focusable (the close button) this simply keeps focus on it; the pattern generalises
+  // if the dock ever gains more controls.
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLElement>): void => {
+    if (e.key !== "Tab" || !dockRef.current) {
+      return;
+    }
+    const focusables = tabbables(dockRef.current);
+    if (focusables.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || !dockRef.current.contains(active))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
     <aside
+      ref={dockRef}
       className="help-dock"
       role="dialog"
+      aria-modal="true"
       aria-label={`Help: ${entry.title}`}
       data-testid={`help-dock-${controlId}`}
+      onKeyDown={onKeyDown}
     >
       <div className="help-dock-head">
         <h2 className="help-dock-title">{entry.title}</h2>
         <button
+          ref={closeRef}
           type="button"
           className="help-dock-close"
           aria-label="Close help"
@@ -325,7 +389,12 @@ export function InfoButton({ controlId }: { readonly controlId: ControlId }): Re
 
       {docked && typeof document !== "undefined"
         ? createPortal(
-            <HelpDock controlId={controlId} entry={entry} onClose={() => setDocked(false)} />,
+            <HelpDock
+              controlId={controlId}
+              entry={entry}
+              onClose={() => setDocked(false)}
+              restoreFocusRef={btnRef}
+            />,
             document.body,
           )
         : null}
