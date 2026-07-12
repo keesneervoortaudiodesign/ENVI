@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 11
 current_phase_name: results-fast-recalc
 status: executing
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-07-12T12:00:00.000Z"
+stopped_at: Completed 11-02-PLAN.md
+last_updated: "2026-07-12T12:28:00.000Z"
 last_activity: 2026-07-12
-last_activity_desc: 11-01 readout foundation complete (A/C weighting + OPFS reader + MAC≡engine readout)
+last_activity_desc: 11-02 isophone contouring core complete (level-grid reconstruction + interpolated marching-squares iso-band tracer)
 progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 64
-  completed_plans: 54
-  percent: 84
+  completed_plans: 55
+  percent: 86
 ---
 
 # Project State
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: 11 (results-fast-recalc) — EXECUTING
 Plan: 2 of 11
-Status: Executing Phase 11 — 11-01 complete (readout foundation), 11-02/11-03 (wave 2) ready
-Last activity: 2026-07-12 — 11-01 readout foundation complete
+Status: Executing Phase 11 — 11-01 (readout) + 11-02 (isophone contouring core) complete; 11-03 (wave 2) ready
+Last activity: 2026-07-12 — 11-02 isophone contouring core complete (level grid + iso-band tracer)
 
 Progress: [██████████] Phase 10 — 6/6 plans complete (10-01 compute core · 10-02 COOP/COEP · 10-03 wasm boundary+OPFS sink · 10-04 pool+worker · 10-05 CalcPanel+Playwright · 10-06 real solve seam closed)
 
