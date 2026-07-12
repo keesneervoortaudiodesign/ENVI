@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 11
 current_phase_name: results-fast-recalc
 status: executing
-stopped_at: Completed 11-10-PLAN.md
-last_updated: "2026-07-12T16:11:45.045Z"
+stopped_at: Completed 11-11-PLAN.md
+last_updated: "2026-07-12T16:46:31.247Z"
 last_activity: 2026-07-12
-last_activity_desc: "11-09 results Export menu (GRID-05, D-20/21/22): the Export… .menu downloads the level grid (GeoTIFF), isophone polygons (GeoJSON), and receiver spectra (CSV) — every byte generated in WASM by the 11-04 encoders and saved via a Blob/objectURL (nothing leaves the device, D-20), every file carrying the full CRS + dB-weighting + engine/scene-identity + open-data-attribution footer (D-22); export runs main-thread via an injectable client seam (worker.ts untouched); CSV gathers every receiver via the results ReadoutClient (D-01 zero TS acoustic math); menu disabled until a result exists + while stale; offline Playwright UAT captures all 3 downloads with attribution, zero network egress; web/dist rebuilt"
+last_activity_desc: "11-11 app-wide Info-Button help system (D-23/24/25): a reusable <InfoButton controlId> — glance popover (portalled, position:fixed above the map stacking) + docked right-rail help panel — backed by a STRUCTURED typed catalog (Record<ControlId, HelpEntry>, data not JSX-scattered text) whose ~78-id ControlId union is the single coverage source of truth (a missing key fails tsc). Help is extensive, English-only, units-shown, band-identity=index+Hz, own-words prose citing Nord2000 AV 1106/07 BY REPORT NUMBER + NoizCalc TI 386 — never pasting the copyrighted standard (structural anti-paste guard). coverage.test.ts FAILS if any control lacks a multi-paragraph cited entry (D-25 backbone). Retrofitted an InfoButton onto every interactive control across ALL panels (Palette/ProjectBar/Inspector+fields/Facade/Import/Weather/Calc + Spectrum/ColorScale/Conditioning/Scenario/Export) — additive, zero behaviour change. Offline Playwright UAT (real bundle, mocked /api/*, zero egress): an InfoButton in every panel, click→popover, More→docked panel with cited help. Gates: typecheck + 158 vitest (incl. coverage) + build:web + 30 Playwright (no regression) green; zero Rust/wire change (engine 3-dep tree + no-drift unchanged, fmt clean); web/dist rebuilt"
 progress:
   total_phases: 11
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 64
-  completed_plans: 63
-  percent: 91
+  completed_plans: 64
+  percent: 100
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 11 (results-fast-recalc) — EXECUTING
-Plan: 10 of 11 complete
-Status: Ready to execute
-Last activity: 2026-07-12 — 11-09 results Export menu (GRID-05, D-20/21/22): the Export… .menu downloads the level grid (GeoTIFF), isophone polygons (GeoJSON), and receiver spectra (CSV) — every byte generated in WASM by the 11-04 encoders and saved via a Blob/objectURL (nothing leaves the device, D-20), every file carrying the full CRS + dB-weighting + engine/scene-identity + open-data-attribution footer (D-22); export runs main-thread via an injectable client seam (worker.ts untouched); CSV gathers every receiver via the results ReadoutClient (D-01 zero TS acoustic math); menu disabled until a result exists + while stale; offline Playwright UAT captures all 3 downloads with attribution, zero network egress; web/dist rebuilt
+Phase: 11 (results-fast-recalc) — CODE-COMPLETE (11/11 plans; 5 completion gates pending)
+Plan: 11 of 11 complete
+Status: Phase code-complete — run the 5 phase-completion gates (code-review / simplify / secure / verify / doc-consistency)
+Last activity: 2026-07-12 — 11-11 app-wide Info-Button help system (D-23/24/25): reusable <InfoButton controlId> (glance popover + docked help panel) + structured typed help catalog (Record<ControlId, HelpEntry>, ~78 ids) + coverage test that FAILS on any gap + own-words standards-cited help (AV 1106/07 by report number + TI 386, never pasted) + an InfoButton retrofit onto every interactive control across all panels (additive); offline Playwright UAT green; web/dist rebuilt; zero Rust/wire change
 
-Progress: [██████████] Phase 10 — 6/6 plans complete (10-01 compute core · 10-02 COOP/COEP · 10-03 wasm boundary+OPFS sink · 10-04 pool+worker · 10-05 CalcPanel+Playwright · 10-06 real solve seam closed)
+Progress: [██████████] Phase 11 — 11/11 plans complete (…09 export · 10 object styling · 11 app-wide info-button help + panel retrofit)
 
 ## Performance Metrics
 
@@ -111,6 +111,7 @@ Progress: [██████████] Phase 10 — 6/6 plans complete (10-0
 | Phase 11 P08 | 28 | 3 tasks | 16 files |
 | Phase 11 P09 | ~30 min | 3 tasks | 6 files |
 | Phase 11 P10 | 14 min | 3 tasks | 10 files |
+| Phase 11 P11 | ~45min | 4 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -229,6 +230,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-12T16:11:37.317Z
-Stopped at: Completed 11-10-PLAN.md
+Last session: 2026-07-12T16:46:31.237Z
+Stopped at: Completed 11-11-PLAN.md
 Resume file: None

@@ -160,7 +160,7 @@ Architecture per `.planning/research/ARCHITECTURE.md`: three new crates (`envi-g
 - [x] **Phase 8: GIS Ingestion & DGM** - Viewport import of GLO-30/LiDAR terrain, WorldCover ground cover, and Overture/OSM buildings onto a triangulated DGM; local-cache compute path; check-and-complete editability (completed 2026-07-11)
 - [x] **Phase 9: Path Extraction & Weather** - DEM cut-profile extractor (GRASS oracle), impedance segmentation, screening edges, CDT receiver grids; Open-Meteo import → per-azimuth A/B/C; ERA5 groundwork (completed 2026-07-11)
 - [x] **Phase 10: Calculation Service** - Chunked tensor store + job runner wiring the promoted engine solver: submit/progress/abort with pre-run cost estimate, hash-keyed manifests, memory-bounded large grids (completed 2026-07-12)
-- [ ] **Phase 11: Results & Fast Recalc** - Receiver spectra, isophone noise maps with editable color scale, interactive source conditioning via the tensor MAC, named weather scenarios + difference maps, exports
+- [x] **Phase 11: Results & Fast Recalc** - Receiver spectra, isophone noise maps with editable color scale, interactive source conditioning via the tensor MAC, named weather scenarios + difference maps, exports (completed 2026-07-12)
 
 ## Milestone 2 Phase Details
 
@@ -407,7 +407,7 @@ Plans:
   4. Weather what-if works end-to-end: manual overrides (T/RH/p, Beaufort wind + direction, downwind worst-case toggle, temperature gradient, per-azimuth A/B/C) recompute as a scenario; named scenarios switch instantly via per-scenario cached tensors; difference maps render between two scenarios
   5. Results export as GeoTIFF/GeoJSON and spectra as CSV, carrying band index + exact frequency columns and data attribution metadata
 
-**Plans**: 10/11 plans executed
+**Plans**: 11/11 plans complete
 
 Plans:
 **Wave 1**
@@ -437,7 +437,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 11-11-PLAN.md — App-wide info-button help system + structured catalog + coverage check + panel retrofit (D-23/24/25) [wave 6]
+- [x] 11-11-PLAN.md — App-wide info-button help system + structured catalog + coverage check + panel retrofit (D-23/24/25) [wave 6]
 
 **UI hint**: yes
 
@@ -480,7 +480,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 8. GIS Ingestion & DGM | 8/8 | Complete (all 5 completion gates closed) | 2026-07-11 |
 | 9. Path Extraction & Weather | 6/6 | Complete (all 5 completion gates closed) | 2026-07-11 |
 | 10. Calculation Service | 6/6 | Complete (all 5 completion gates closed) | 2026-07-12 |
-| 11. Results & Fast Recalc | 4/11 | In Progress | - |
+| 11. Results & Fast Recalc | 11/11 | Plans complete — completion gates pending | - |
 
 ---
 *Roadmap created: 2026-07-07 — Milestone 1 (validated core Nord2000 engine)*
