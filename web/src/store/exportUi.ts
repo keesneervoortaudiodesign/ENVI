@@ -180,7 +180,9 @@ export function browserDownloadSink(): DownloadSink {
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(url);
+      // Defer the revoke: revoking synchronously right after click() can truncate the
+      // download before the browser's download manager has read the Blob.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
     },
   };
 }
