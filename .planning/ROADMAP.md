@@ -417,7 +417,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 11-02-PLAN.md — Level-grid reconstruction + hand-rolled interpolated marching-squares iso-band tracer (GRID-04/WEB-06) [wave 2]
-- [ ] 11-03-PLAN.md — Recondition MAC boundary + client-side 409/HashMismatch + stale-hash identity (SVC-06/WEB-05) [wave 2]
+- [x] 11-03-PLAN.md — Recondition MAC boundary + client-side 409/HashMismatch + stale-hash identity (SVC-06/WEB-05) [wave 2]
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -480,7 +480,7 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 8. GIS Ingestion & DGM | 8/8 | Complete (all 5 completion gates closed) | 2026-07-11 |
 | 9. Path Extraction & Weather | 6/6 | Complete (all 5 completion gates closed) | 2026-07-11 |
 | 10. Calculation Service | 6/6 | Complete (all 5 completion gates closed) | 2026-07-12 |
-| 11. Results & Fast Recalc | 2/11 | In Progress | - |
+| 11. Results & Fast Recalc | 3/11 | In Progress | - |
 
 ---
 *Roadmap created: 2026-07-07 — Milestone 1 (validated core Nord2000 engine)*

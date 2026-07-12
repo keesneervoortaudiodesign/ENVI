@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 11
 current_phase_name: results-fast-recalc
 status: executing
-stopped_at: Completed 11-02-PLAN.md
-last_updated: "2026-07-12T12:28:00.000Z"
+stopped_at: Completed 11-03-PLAN.md
+last_updated: "2026-07-12T13:30:00.000Z"
 last_activity: 2026-07-12
-last_activity_desc: 11-02 isophone contouring core complete (level-grid reconstruction + interpolated marching-squares iso-band tracer)
+last_activity_desc: 11-03 hash-gated recondition MAC boundary complete (client-side 409/HashMismatch + compose_gain/readout_coherent over the OPFS tensor)
 progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 64
-  completed_plans: 55
-  percent: 86
+  completed_plans: 56
+  percent: 88
 ---
 
 # Project State
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 11 (results-fast-recalc) — EXECUTING
-Plan: 2 of 11
-Status: Executing Phase 11 — 11-01 (readout) + 11-02 (isophone contouring core) complete; 11-03 (wave 2) ready
-Last activity: 2026-07-12 — 11-02 isophone contouring core complete (level grid + iso-band tracer)
+Plan: 3 of 11
+Status: Executing Phase 11 — 11-01 (readout) + 11-02 (isophone contouring core) + 11-03 (recondition MAC boundary) complete; wave 2 done, wave 3 (11-04/11-05) ready
+Last activity: 2026-07-12 — 11-03 hash-gated recondition MAC boundary complete (client-side 409/HashMismatch, MAC ≡ recompute bit-exact, conditioning never stales)
 
 Progress: [██████████] Phase 10 — 6/6 plans complete (10-01 compute core · 10-02 COOP/COEP · 10-03 wasm boundary+OPFS sink · 10-04 pool+worker · 10-05 CalcPanel+Playwright · 10-06 real solve seam closed)
 
@@ -103,6 +103,7 @@ Progress: [██████████] Phase 10 — 6/6 plans complete (10-0
 | Phase 10 P04 | 40min | 3 tasks | 11 files |
 | Phase 10 P06 | 90min | 3 tasks | 17 files |
 | Phase 10 P05 | 150 | 2 tasks | 6 files |
+| Phase 11 P03 | ~40min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -185,6 +186,7 @@ Recent decisions affecting current work:
 - [Phase 10, 10-01] envi-compute = the pure-Rust, WASM-safe compute core: the tensor-identity closure (tensor_hash/CalcManifest/chunk_receivers + identity DTOs + geometry_positions) factored byte-for-byte out of envi-store and re-exported (source-compatible, wire.ts byte-stable) + the SC1 cost model/Ok/Warn/Block guardrail + the hierarchical points⊂coarse⊂fine tier partition (no receiver recomputed) + the SolveJob assembly that is the FIRST site to populate SolveJob::directivity_phase_rad (SRC-03; phase-free stays bit-identical). Depends on envi-engine, adds NOTHING to its 3-dep quarantine (engine byte-identical, D-02); std::fs manifest I/O stays in envi-store
 - [Phase 10, 10-06] solve_chunk_range seam CLOSED (supersedes the 10-04 typed stub): PrepareSolveReq marshals the whole transfer scene ONCE per submit into an owned PreparedScene (engine validating constructors) in a static RwLock keyed by tensor_hash; the real hash-gated, cancel-aware range-solve runs the UNCHANGED envi_engine::solver::solve rayon-sharded via pool::solve_tier into one [s][r_local][f] OPFS chunk pair — f64::to_bits-equal to a direct engine solve (forest ENG-09 + isolation ENG-10 + phase-carrying balloon SC4; two-shard == single-range; hash-mismatch typed error). WASM-safe scene DTOs factored into envi-compute, re-exported at original paths
 - [Phase 10, HI-01/build-fix] OPFS tensor store keyed by the REAL blake3 marshalled tensor identity (not an ad-hoc 32-bit FNV hash) — HI-01 code-review fix. Shared-memory threaded-wasm build recipe (1099b24): build:wasm:compute emits a SHARED WebAssembly.Memory (--shared-memory --import-memory --max-memory + exported __heap_base/__wasm_init_tls/__tls_*) so wasm-bindgen-rayon initThreadPool can postMessage it to the pool workers; the in-browser threaded solve now runs (offline Playwright 21 passed)
+- [Phase 11, 11-03] SVC-06 recondition MAC realized CLIENT-SIDE (D-01/Open Q1): `envi_compute_wasm::recondition` re-mints `marshalled_tensor_hash` from the CURRENT scene, refuses a mismatched claimed hash with a typed `ComputeError::HashMismatch { expected, got }` (mirrors the server 409 body) BEFORE any MAC — the honest client 409, never a silently-served stale readout (D-12). On a match it maps each `ConditioningDto` → (`L_W` = gain_db, complex filter = 10^{dB/20}, delay_s) and drives the FORCE-validated 11-01 `readout_receiver` (compose_gain + readout_coherent) over the OPFS-read tensor — reconditioned spectra with NO re-propagation. Law derived from composition (Open Q2): a default (no-op) conditioning reads out identically to the plain 11-01 readout, so conditioning-excluded-from-identity (D-07) means a conditioning edit never stales. `ConditioningDto` MOVED envi-store→envi-compute::readout (re-exported, wire.ts byte-stable) so the wasm boundary reuses it without dragging std::fs into wasm; `ReconditionReq`/`ReconditionResult` ts-rs-generated (no-drift green). MAC ≡ recompute bit-exact (f64::to_bits). Engine 3-dep quarantine untouched.
 
 ### Pending Todos
 
@@ -214,6 +216,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-12T03:00:00.000Z
-Stopped at: Phase 10 CLOSED — 6/6 plans + all 5 completion gates green (offline Playwright 21 passed); Phase 11 (results-fast-recalc) not yet started
-Resume file: .planning/ROADMAP.md (Phase 11 — Results & Fast Recalc — not yet planned)
+Last session: 2026-07-12T13:30:00.000Z
+Stopped at: Completed 11-03-PLAN.md — hash-gated recondition MAC boundary (SVC-06/WEB-05 backend); wave 2 of Phase 11 done
+Resume file: None (wave 3 ready — 11-04 export encoders + 11-05 spectrum panel/OPFS read glue)
