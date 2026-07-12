@@ -103,6 +103,14 @@ export interface ResultsState {
 
   attachReadoutClient(client: ReadoutClient): void;
   setManifest(manifest: ResultsManifest): void;
+  // Apply a reconditioned batch (11-07): update the manifest's per-source
+  // conditioning drive and merge the freshly reconditioned readouts (keyed by
+  // receiver id). A pure state merge — the WASM MAC produced every dB (D-01); this
+  // only swaps the cached readouts so the spectrum panel re-renders live.
+  applyConditioning(
+    perSourceConditioning: readonly ConditioningDto[],
+    readouts: Readonly<Record<string, ReceiverReadoutDto>>,
+  ): void;
   selectReceiver(id: string | null): void;
   setDisplayMode(mode: DisplayMode): void;
   setWeighting(weighting: Weighting): void;
@@ -134,6 +142,19 @@ export const useResultsStore = create<ResultsState>((set, get) => ({
       loadingReceiverId: null,
       readoutError: null,
     }),
+
+  // Apply a reconditioned batch (11-07): swap the manifest's conditioning drive and
+  // merge the reconditioned readouts. No-op when no manifest is present.
+  applyConditioning: (perSourceConditioning, readouts) =>
+    set((s) =>
+      s.manifest
+        ? {
+            manifest: { ...s.manifest, perSourceConditioning: [...perSourceConditioning] },
+            readouts: { ...s.readouts, ...readouts },
+            readoutError: null,
+          }
+        : {},
+    ),
 
   // The SINGLE selection entry point — a map-marker click AND the synced list both
   // call this. If the receiver's readout is not cached yet, fetch it (read the
