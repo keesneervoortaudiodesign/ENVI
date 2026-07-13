@@ -6,24 +6,28 @@ per-band, phase-preserving complex transfer values over terrain; a sibling
 harness validates it against the FORCE road-traffic test cases and committed
 independent oracles.
 
-The repository currently holds the **Milestone 1 core engine** — no map, no UI, no
-live GIS ingestion yet (geometry comes from FORCE test-case files). **Milestone 2
-— an interactive, NoizCalc-style web application around the engine — is now fully
-planned** (requirements + roadmap, phases 5–11); the engine (Milestone 1 Phases
-3–4) remains the current execution priority. See
-[Milestone 2](#milestone-2--interactive-calculation-ui-planned) below.
+The repository holds **both milestones**: the validated Milestone-1 core engine and
+the Milestone-2 interactive, NoizCalc-style web application built around it — draw
+a scene on an OSM/terrain map, import open GIS and weather data, run a real
+Nord2000 solve, and read back receiver spectra, isophone noise maps, and exports.
+All 11 phases have shipped. The one architectural surprise worth knowing up front:
+**the Nord2000 solve runs client-side as threaded WebAssembly**, not on the server —
+see [Where the compute runs](#where-the-compute-runs).
 
 ## Workspace layout
 
 | Crate | Role |
 |-------|------|
-| `envi-engine` | Pure-math Nord2000 core: `#![deny(unsafe_code)]`, `f64`/`Complex<f64>` only, **no I/O**. Deps: `ndarray`, `num-complex`, `thiserror`. |
-| `envi-harness` | All I/O: FORCE `.xls` parsing, synthetic TOML cases, capability gating, reference comparison, reporting. |
-| `envi-geo` | The one pure-Rust CRS reprojection seam (GEOX-04): WGS84 ↔ project-local UTM via `proj4rs` (no C toolchain). `LonLat`/`SceneXY` newtypes. |
+| `envi-engine` | Pure-math Nord2000 core: `#![deny(unsafe_code)]`, `f64`/`Complex<f64>` only, **no I/O**. Deps: `ndarray`, `num-complex`, `thiserror` — and nothing else, enforced by a `cargo tree` gate. |
+| `envi-harness` | All FORCE I/O: `.xls` parsing, synthetic TOML cases, capability gating, reference comparison, the `report` CLI. |
+| `envi-geo` | The one CRS reprojection seam (GEOX-04): WGS84 ↔ project-local UTM (and RD New / EPSG:28992 for AHN import) via pure-Rust `proj4rs` — no C toolchain. `LonLat`/`SceneXY` newtypes. |
 | `envi-store` | serde DTO mirror (keeps serde **out** of `envi-engine`) + project-as-folder flat-file persistence + the frozen tensor-identity hash (conditioning excluded, D-07). |
-| `envi-dgm` | The server-side Digital Ground Model boundary (D-08): a pure-Rust constrained-Delaunay TIN (`spade`) from elevation points + breaklines. Deps: `spade`, `thiserror`. **No** `envi-engine` edge (keeps `spade` out of the engine quarantine), no C toolchain, no I/O. Backs `POST /dgm/triangulate`. |
-| `envi-service` | The single deployable **axum** binary: `/api/v1` + the committed `web/dist` bundle, localhost-bound, refuse-to-start CRS self-check, job/SSE state machine, recondition/recompute split. Thin HTTP layer — no acoustics. |
-| `web/` | Vite + React 19 + TSX single-page scene editor (MapLibre GL JS 5 + react-map-gl 8 + Terra Draw). Imports the generated wire-DTO mirror (D-10); Playwright-driven offline. The production build is committed at `web/dist/` and served by `envi-service`. |
+| `envi-dgm` | The Digital Ground Model boundary: a pure-Rust constrained-Delaunay TIN (`spade`) from elevation points + breaklines. **No** `envi-engine` edge (keeps `spade` out of the engine quarantine). Backs `POST /dgm/triangulate`. |
+| `envi-gis` | **Sans-I/O, WASM-safe** GIS-ingestion core: COG/BigTIFF decode over cached tile bytes, source registry + tile planning, terrain decimation, WorldCover→σ table + land-cover vectorization (hand-rolled marching squares), Overpass buildings + height-fallback chain, re-import merge, and the Open-Meteo/ERA5 weather derivation. No network, no OPFS, no browser deps. |
+| `envi-compute` | **Pure-Rust, WASM-safe compute core**: the tensor-identity closure, the pre-run cost model + guardrail, the hierarchical points ⊂ coarse ⊂ fine receiver tiers, `SolveJob` assembly (the site that populates the directional-phase seam), the recondition MAC readout, and the GeoTIFF/GeoJSON/CSV export encoders. |
+| `envi-gis-wasm`, `envi-compute-wasm` | Thin `wasm-bindgen` cdylibs — marshalling only, all math delegated to the cores above. `envi-compute-wasm` is the **threaded** one (`wasm-bindgen-rayon` over a shared `WebAssembly.Memory`) that runs the real solve in the browser. |
+| `envi-service` | The single deployable **axum** binary: `/api/v1` + the committed `web/dist` bundle, localhost-bound, refuse-to-start CRS self-check, job/SSE state machine, the allowlisted byte proxy for the two CORS-blocked S3 sources. Thin HTTP layer — **no acoustics**. |
+| `web/` | Vite + React 19 + TSX single-page app (MapLibre GL JS 5 + react-map-gl 8 + Terra Draw): scene editor, GIS/weather import, calculation panel, spectra, isophone map, exports, app-wide help. Imports the generated wire-DTO mirror (D-10); Playwright-driven offline. The production build is committed at `web/dist/` and served by `envi-service`. |
 | `tools/nord2000_oracle` | Committed, independent Python (`scipy.special.wofz`) reference implementation that generates the pinned fixture curves. **Not** a build dependency. |
 
 See [`crates/README.md`](crates/README.md) for each crate's boundary rule, entry
@@ -126,10 +130,13 @@ the magnitude-only path. Engine seam: `DirectivityBalloon::eval_phase` /
 - **Honest-green scope.** The weather-route A/B/C scaling constants are
   `[ASSUMED]` (AV 1106/07 does not specify them) and validated by
   structure/direction property tests and the committed scipy oracle only — no
-  false FORCE numeric pass. Wind/gradient FORCE cases stay
-  `Skipped(requires: emission-model)` until the Phase-4 road-emission model.
-  Segmented-ground and screened refraction are typed `NotImplemented` errors
-  (deferred to Phase 4), never a silent partial result.
+  false FORCE numeric pass.
+- **Remaining refraction gap.** Segmented-ground refraction was wired in Phase 4
+  (Sub-model 3 + the frequency-dependent segmented collapse). **Screen diffraction
+  under a weather profile** is still a typed `WeatherScreenNotImplemented` error —
+  the ξ<0 screen-shadow branches (§5.13–5.15) are not wired, so the engine refuses
+  to return an *unrefracted* screen result rather than risk a false pass. The
+  ground channel is refracted; only the screen-diffraction branch is missing.
 
 ### Phase 5 — engine extensions (forest & semi-transparent partitions)
 
@@ -227,13 +234,14 @@ serves both the `/api/v1` JSON/GeoJSON API and the `web/dist` frontend bundle:
 
 ```sh
 cargo run -p envi-service
-# then browse http://127.0.0.1:8080/  (the Phase-7 MapLibre/React scene editor)
+# then browse http://127.0.0.1:8080/  (the full map/import/calculate/results app)
 ```
 
-It binds `127.0.0.1:8080` by default and **refuses to start** unless the D-08
-pure-Rust CRS self-check passes (a WGS84→UTM→WGS84 landmark round-trip within
-1 m; the GDAL/PROJ self-check is deferred to Phase 8 with the C dependency).
-Environment overrides:
+It binds `127.0.0.1:8080` by default and **refuses to start** unless the pure-Rust
+CRS self-check passes (a WGS84→UTM→WGS84 landmark round-trip within 1 m). There is
+**no GDAL/PROJ C toolchain anywhere in the project** — the Phase-8 pivot moved GIS
+ingestion to a sans-I/O Rust core compiled to WASM, so the originally-planned
+C-linked `gdal`/`proj` dependency was never adopted. Environment overrides:
 
 | Var | Default | Purpose |
 |-----|---------|---------|
@@ -243,19 +251,38 @@ Environment overrides:
 
 ### Build the frontend
 
-The `web/` scene editor is built with Vite; the output is committed at
-`web/dist/` and served by `envi-service`, so a plain `cargo run -p envi-service`
-needs no Node step. To rebuild the bundle after changing `web/src`:
+The `web/` app is built with Vite; the output is committed at `web/dist/` and served
+by `envi-service`, so a plain `cargo run -p envi-service` needs **no Node step**. To
+rebuild the bundle after changing `web/src` or either WASM crate:
 
 ```sh
 cd web
 npm install          # first time only
-npm run build        # emits the committed web/dist/ (shell + map + panels + spectrum)
+npm run build        # both wasm crates + typecheck + vite build → web/dist/
+```
+
+`npm run build` chains three things:
+
+| Script | What it does |
+|--------|--------------|
+| `build:wasm` | `envi-gis-wasm` on **stable** — the GIS/weather import boundary. |
+| `build:wasm:compute` | `envi-compute-wasm` on **`nightly-2026-07-11`** — the *threaded* solve. Needs `-Zbuild-std` plus `+atomics`/`--shared-memory`/`--import-memory` link args, because `wasm-bindgen-rayon` must `postMessage` a **shared** `WebAssembly.Memory` to its pool workers. The nightly and the flags live only in this one npm script (no `rust-toolchain.toml`, no `.cargo/config.toml`), so `cargo build` at the root stays on stable. |
+| `build:web` | `tsc --noEmit && vite build` — use this alone when only TS/TSX changed. |
+
+`wasm-bindgen-cli` must match the pinned `wasm-bindgen` version (`=0.2.126`) in
+lockstep, or the generated glue will not load.
+
+Frontend tests:
+
+```sh
+npm run test:unit    # Vitest (incl. the help-coverage and no-acoustic-math gates)
+npm run test:e2e     # Playwright — drives the REAL bundle + real WASM, fully offline
 ```
 
 The dark OpenFreeMap basemap (MIT, no API key) is fetched from the network **at
 runtime** in the browser; the Playwright UAT, by contrast, route-intercepts the
-basemap + every `/api/v1` call so `npx playwright test` runs **fully offline**.
+basemap and every `/api/v1` call, so the suite runs with **zero egress** — including
+a real threaded-WASM solve whose results feed the spectrum panel and isophone map.
 All frontend tooling is a `devDependency` only — none of it ships in `web/dist`.
 
 ## Why phase-preserving? (the fast-recalc tensor)
@@ -275,65 +302,75 @@ the frozen forward contract for that Phase-4 recalculation path.
 | 1 | FORCE harness, semantic 2.5D scene, complex 1/12-octave direct path (divergence + ISO 9613-1) | ✅ complete |
 | 2 | Ground effect (segmented impedance, Q̂) + single/multi-edge diffraction + two-channel combination | ✅ complete |
 | 3 | Meteorology & refraction: log-lin A/B/C profile, equivalent-linear collapse (guarded ξ/Δτ), weather routes, turbulence coherence | ✅ complete |
-| 4 | Dense `H[s,r,f]` transfer tensor + filter/delay recalculation, directional multi-sub-source composition, full FORCE-suite pass + NoiseModelling cross-check | ⏳ next |
+| 4 | Dense `H[s,r,f]` transfer tensor + filter/delay recalculation, directional multi-sub-source composition (+ complex directional phase), NoiseModelling cross-check; FORCE road chain wired, numeric Pass deferred on the external coefficient blocker | ✅ complete |
 
-## Milestone 2 — Interactive Calculation UI (planned)
+## Milestone 2 — Interactive Calculation UI (delivered)
 
 A self-hosted web application wrapped around the engine, with the workflow modeled
-on **d&b NoizCalc** (single integrated app, **Nord2000-only**). At the end of this
-milestone a user can:
+on **d&b NoizCalc** (single integrated app, **Nord2000-only**). What a user can do
+today:
 
-1. **CRUD an ENVI model** — projects created / opened / saved (autosave) / deleted / duplicated (project-as-folder, scene + settings + cached tensors).
-2. **Get GIS data** — viewport import of terrain (Copernicus GLO-30 + national LiDAR DTM), ground cover (ESA WorldCover → impedance), and buildings (Overture/OSM) onto a triangulated Digital Ground Model, then check-and-complete editing.
-3. **Get weather data** — Open-Meteo import deriving the per-azimuth A/B/C meteorology (ERA5/CDS groundwork).
-4. **Manual weather what-if** — override wind (Beaufort + direction), downwind worst-case, temperature gradient, A/B/C; **named scenarios** with per-scenario cached tensors, instant switching, and **difference maps**.
-5. **Draw scene objects** — directional sources, walls, buildings, forests, ground-effect (damping/impedance) zones, elevation points/lines, receivers, calculation area.
-6. **Run a calculation** — submit from the UI with a pre-run cost estimate (receiver count, tensor bytes) and a grid-spacing guardrail, watch tiered progress, and abort cleanly. The real Nord2000 solve runs **client-side as threaded WebAssembly** (COOP/COEP cross-origin isolation), streamed to a chunked **OPFS** tensor store within a stated memory budget.
-7. **Spectral results at points** — per-band readout (1/12-oct expert + 1/3-oct by band index), dB(A)/dB(C) totals, coherent/incoherent split, CSV export.
-8. **Noise map in dB(A) & dB(C)** — server-side isophone **fill polygons** (not a heatmap) with an editable color scale + legend.
+1. **CRUD an ENVI model** — projects created / opened / saved (autosave) / deleted / duplicated (project-as-folder: scene + settings + cached tensors), with reopen-last on boot.
+2. **Import GIS data** — viewport import of terrain (Copernicus GLO-30 + Dutch AHN LiDAR DTM), ground cover (ESA WorldCover → impedance zones), and OSM/Overpass buildings onto a triangulated Digital Ground Model; everything lands as an ordinary editable object ("check and complete"), with per-feature provenance and a documented building-height fallback chain.
+3. **Import weather** — Open-Meteo fetch deriving the per-azimuth A/B/C meteorology, cached per (site, time window); ERA5/CDS Obukhov + occurrence-statistics groundwork.
+4. **Weather what-if** — manual overrides (T/RH/p, Beaufort wind + direction, downwind worst-case, temperature gradient, raw A/B/C), **named scenarios** that switch instantly via per-scenario cached tensors, and **difference maps** between two scenarios.
+5. **Draw scene objects** — directional sources, walls, buildings (per-façade isolation), forests, ground-effect zones, elevation points/lines, receivers, calculation area — with draw-time validation and last-object property inheritance.
+6. **Run a calculation** — submit with a pre-run cost estimate (receiver count, tensor bytes) and a grid-spacing guardrail, watch tiered progress, abort cleanly.
+7. **Read spectral results** — per-band readout (1/12-oct expert + 1/3-oct aggregated **by band index**), dB(A)/dB(C) totals, the coherent/incoherent split. The frontend does **zero acoustic arithmetic** (a grep gate enforces it).
+8. **Interactive conditioning** — gain / delay / filter edits on a source re-read the **cached tensor** by complex MAC (~150 ms debounced), updating the spectrum *and* re-contouring the noise map with **no re-propagation**.
+9. **Noise map** — isophone **fill polygons** (not a heatmap) in dB(A)/dB(C) with an editable color scale where legend breaks ≡ contour breaks ≡ class colors; editing the scale re-contours the cached grid.
+10. **Export** — GeoTIFF (hand-rolled, zero new deps), isophone GeoJSON, and spectra CSV carrying band index + exact Hz, each with an attribution footer. Bytes are generated in WASM and downloaded locally — nothing leaves the device.
+11. **Help everywhere** — a typed help catalog behind an info button on every control, whose coverage is enforced by a test.
 
-### New engine extensions (beyond stock Nord2000)
+### Engine extensions delivered (beyond stock Nord2000)
 
-- **ENG-09 — Forest attenuation.** The Nord2000 `A = d·a(f)` term (mean tree density, mean stem radius, `kp`, mean absorption) so drawn forests actually attenuate.
-- **ENG-10 — Semi-transparent partitions.** A **finite-transmission** screen/façade: the standard opaque-screen diffraction/reflection **plus** a straight-through transmission path (direction preserved) attenuated by a per-band **isolation spectrum** `R(f)` (amplitude ×`10^(−R(f)/20)`), combined as **phase-preserving complex pressure**. The opaque limit `R(f)→∞` reproduces the standard screen bit-for-bit. Buildings carry a **per-façade** `R(f)`. Isolation spectra are entered on the 1/12-octave grid, or as 1/1-/1/3-octave values linearly interpolated (in dB across band index) onto the grid.
+- **ENG-09 — Forest attenuation.** Nord2000 **Sub-Model 10** (Eqs. 288–291), not the `A = d·a(f)` paraphrase — see [Phase 5](#phase-5--engine-extensions-forest--semi-transparent-partitions) above.
+- **ENG-10 — Semi-transparent partitions.** A finite-transmission screen/façade whose per-band isolation spectrum `R(f)` becomes a complex **minimum-phase** filter; the opaque limit is the structural absence of a spectrum and reproduces the standard screen **bit-for-bit**.
+- **Complex directional phase** on directivity balloons (see [above](#directional-phase--beyond-stock-nord2000)).
 
-### Planned architecture (three new crates + a web frontend)
+### Where the compute runs
 
-| Piece | Role |
-|-------|------|
-| `envi-gis` + `envi-gis-wasm` | **Pure-Rust, sans-I/O** GIS-ingestion core + a thin `wasm-bindgen` cdylib (Phase-8 pivot, 08-CONTEXT D-01): COG/BigTIFF decode over cached tile bytes, source registry + tile planning, terrain decimation, WorldCover→σ table + land-cover vectorization, Overpass buildings, re-import merge. **No GDAL/PROJ-C** — the client runs as WASM in the browser; TypeScript owns `fetch`+OPFS and reads cached tiles back with the network off. Later geometry derivation (DEM cut-profile, impedance segmentation, screening edges, CDT receiver grids, contouring) and weather (Open-Meteo/ERA5) land in Phases 9–11. Cross-origin S3 sources go through `envi-service`'s allowlisted byte proxy. |
-| `envi-store` | serde DTO mirror of the engine scene types (keeps serde **out** of `envi-engine`), project-folder layout, **receiver-axis-chunked** tensor store. |
-| `envi-compute` + `envi-compute-wasm` | **Pure-Rust, WASM-safe compute core** + a thin **threaded** `wasm-bindgen` cdylib (Phase-10): the transfer-tensor identity, the pre-run cost model + guardrail, the hierarchical points⊂coarse⊂fine receiver tiers, and `SolveJob` assembly (directional-phase seam). A real Nord2000 solve runs **client-side as threaded WebAssembly** — `wasm-bindgen-rayon` pool over a shared `WebAssembly.Memory`, cross-origin-isolated via COOP/COEP credentialless — streamed to an **OPFS chunked tensor store** (keyed by the blake3 tensor identity) inside a memory budget, with cooperative abort at chunk boundaries. The engine solver is **unchanged** (one solve path, `f64::to_bits`-equal to a native run). |
-| `envi-service` | axum HTTP API + job registry (SSE progress, cancellation) + the **recondition/recompute** recalc router; serves the built frontend as one deployable binary. |
-| `web/` | Vite + React, **MapLibre GL JS 5 + react-map-gl 8 + Terra Draw** scene editor, property panels, weather what-if, job status, spectra charts, isophone overlay. |
+The load-bearing architectural decision: **`envi-service` contains no acoustics.**
+The real Nord2000 solve runs **client-side as threaded WebAssembly** —
+a `wasm-bindgen-rayon` pool over a shared `WebAssembly.Memory`, cross-origin-isolated
+via COOP `same-origin` + COEP `credentialless`, streaming the transfer tensor to a
+chunked **OPFS** store keyed by the blake3 tensor identity, inside a memory budget,
+with cooperative abort at chunk boundaries. The engine solver is **unchanged** — one
+solve path, `f64::to_bits`-equal to a native `cargo test` run, so the FORCE suite
+validates the exact code the browser executes.
 
-`envi-engine` stays byte-identical (dependency quarantine preserved). The one
-load-bearing engine refactor is promoting the Scene→level solver out of
-`envi-harness` into `envi_engine::solver` (during Phase 4) so the FORCE suite
-validates the exact code the web app runs.
+The server is therefore a thin shell: static bundle, project persistence, the
+DGM/spectrum-interpolation endpoints, and **one** outbound network surface — an
+allowlisted, bytes-only byte relay for the two CORS-blocked S3 sources (GLO-30,
+WorldCover), SSRF-proof by construction (hardcoded source table, no redirects,
+size cap). Everything else the browser fetches directly.
 
-### Roadmap — Milestone 2 (phases 5–11, appended non-destructively)
+### Roadmap — Milestone 2 (phases 5–11)
 
-| Phase | Scope | Engine gate |
-|-------|-------|-------------|
-| 5 | **Engine extensions** — forest (ENG-09) + semi-transparent partitions (ENG-10), phase-preserving, opaque-limit regression | needs Phase 2 (done) |
-| 6 | **Service foundation & persistence** — project store, one CRS boundary, band-index wire contract, recondition/recompute split, job state machine | parallel-safe |
-| 7 | **Frontend shell & scene editing** — MapLibre/Terra Draw editor for all objects incl. semi-transparent screens/buildings + isolation-spectrum editor | parallel-safe |
-| 8 | **GIS ingestion & DGM** — viewport import onto an editable DGM; offline compute path | parallel-safe |
-| 9 | **Path extraction & weather** — cut-profile (GRASS `r.profile` oracle), segmentation, screening edges, CDT grids; Open-Meteo → A/B/C | weather half gates on engine **Phase 3** |
-| 10 | **Calculation service** — submit/progress/abort + cost estimate; chunked, memory-bounded tensor store | hard gate engine **Phase 4** |
-| 11 | **Results & fast recalc** — spectra, isophone maps, interactive MAC conditioning, named what-if scenarios + diff maps, exports | hard gate engine **Phases 3–4** |
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 5 | **Engine extensions** — forest (ENG-09) + semi-transparent partitions (ENG-10), phase-preserving, opaque-limit regression | ✅ complete |
+| 6 | **Service foundation & persistence** — project store, one CRS boundary, band-index wire contract, recondition/recompute split, job state machine | ✅ complete |
+| 7 | **Frontend shell & scene editing** — MapLibre/Terra Draw editor for all 9 object kinds + isolation-spectrum editor | ✅ complete |
+| 8 | **GIS ingestion & DGM** — viewport import onto an editable DGM; OPFS cache, offline compute path | ✅ complete |
+| 9 | **Path extraction & weather** — cut-profile (GRASS `r.profile` oracle), segmentation, screening edges, CDT grids; Open-Meteo → A/B/C | ✅ complete |
+| 10 | **Calculation service** — submit/progress/abort + cost estimate; chunked, memory-bounded OPFS tensor store; threaded-WASM solve | ✅ complete |
+| 11 | **Results & fast recalc** — spectra, isophone maps, interactive MAC conditioning, named what-if scenarios + diff maps, exports, help | ✅ code-complete (completion gates pending) |
 
-Phases 5–8 are parallel-safe with the engine finish; the calculation/results
-phases wait on the engine's transfer tensor. **Deferred beyond Milestone 2:** L_den
-weather-class statistics, variable wall height, road/rail emission, DXF/SketchUp
-import, 2.5D BEM barrier corrections (Bempp), SOFA directivity.
+**Known refinements (open, non-blocking).** A solve currently produces
+**propagation-transfer** levels with auto-fitted colour breaks; absolute EU-END
+`L_den` bands await a source **emission/SWL** model (deferred with the FORCE
+coefficient blocker). The solved scene is a flat-homogeneous approximation of the
+drawn terrain/impedance — per-path terrain derivation from the DGM is deferred — and
+the scenario **difference map** is still fixture-driven pending the same. Also
+deferred beyond Milestone 2: `L_den` weather-class statistics, variable wall height,
+rail emission, DXF/SketchUp import, 2.5D BEM barrier corrections, SOFA directivity.
 
-**Stack (all versions verified 2026-07-08):** axum 0.8 / tokio / rayon backend,
-`ndarray-npy` + `memmap2` tensor chunks, `gdal` 0.19 / `proj` 0.31 (quarantined)
-+ pure-Rust `geoparquet` / `contour`, MapLibre GL JS 5 + react-map-gl 8 +
-Terra Draw + Vite 8 + React 19 frontend, Playwright for UAT. See `.planning/` for
-the full project context, requirements, research (`.planning/research/`), and roadmap.
+**Stack:** axum 0.8 / tokio / rayon backend; pure-Rust `proj4rs` / `spade` / `geo` /
+`tiff` (no GDAL/PROJ C toolchain anywhere); MapLibre GL JS 5 + react-map-gl 8 +
+Terra Draw + Vite + React 19 frontend; `wasm-bindgen` + `wasm-bindgen-rayon` for the
+browser solve; Vitest + Playwright for UAT. See `.planning/` for the full project
+context, requirements, research (`.planning/research/`), and roadmap.
 
 ## Licensing note
 
