@@ -4,6 +4,16 @@ Web-based, self-hosted **Nord2000** environmental sound-propagation engine, impl
 
 > Toolchain / workflow / GitHub conventions below are adopted from an established sibling repo's engineering practices. They are general engineering rules — none of that project's domain specifics apply here.
 
+## HAND-OFF — read this before anything else (written 2026-07-13 for the next session, ~1 month later)
+
+Three things carried forward. They are not background colour; they are the difference between finishing this project and thinking you finished it.
+
+**1. The through-line of every bug found on 2026-07-13: the offline suite proved we parse what we RECORDED, not that we ask REALITY the right question.** Five defects were live in the running app while the entire test suite was green — a fabricated AHN tile index, a grayscale fixture standing in for a palette TIFF, a 330 MB whole-tile fetch, a colour test that never asserted a colour, a height the UI never displayed. Every one of them was invisible to a green suite. Two counterweights now exist and must be kept: **`npm run test:e2e:live`** (the one opt-in spec that hits the real network — run it whenever a data source misbehaves in the real app but the offline suite is green), and **`full-journey.spec.ts`**, which **hard-fails rather than skips** when the threaded-WASM pool won't start. Do not "fix" a flaky live test by deleting it, and do not turn that hard-fail back into a skip — a skip is how the shared-memory WASM bug hid once already.
+
+**2. `.planning/OPEN-ITEMS.md` is the single ledger — read it FIRST, before planning anything.** It is the work list, verified against the tree, not reconstructed from memory or commit messages. Writing it immediately caught **OPEN-08**: a WASM crash on re-import into a populated scene, deferred into a phase `deferred-items.md` file in Phase 08 and then **silently forgotten for two months while sitting live in the repo**. That is precisely the failure mode the no-open-ends rule exists to kill. An item parked anywhere other than that ledger is an item that will be lost.
+
+**3. One honest caveat on "everything finished, no open ends": OPEN-01 CANNOT be closed by effort.** The FORCE numeric Pass needs the definitive **Dec-2006** emission coefficients — a document we do not have. The public (intermediate DK Nord 2005) set over-predicts by a measured ~2.3 dBA. It can only be "finished" by loosening a tolerance or flipping a capability flag, which would convert an honest skip into a **false green** — strictly forbidden. **Do not close it. Do not let a future session quietly tidy it away to make the list look clean.** If the user obtains that document, the item dies for real. Everything else in the ledger is enumerated, ordered, and genuinely finishable.
+
 ## Session Start (do this at the beginning of EVERY new session)
 1. **Pull from GitHub first** — `git pull --ff-only origin main` so you start from the latest. Do this before planning or editing.
 2. **Check GSD state** — read `.planning/STATE.md` (and `ROADMAP.md`) to see the current phase/position before doing GSD work. Run `/gsd-progress` if unsure where things stand.
