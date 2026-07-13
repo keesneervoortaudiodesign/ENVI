@@ -105,6 +105,16 @@ export default defineConfig({
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "credentialless",
     },
+    // DEV-ONLY: forward the same-origin `/api/v1` surface to a locally-running `envi-service`
+    // (`cargo run -p envi-service`, 127.0.0.1:8080). Without this the dev server has no backend, so
+    // `/api/v1/proxy/**` — the byte relay for the two CORS-blocked S3 sources (GLO-30, WorldCover) —
+    // 404s, and a GIS import silently loses its land-cover/terrain layers in dev while working in the
+    // built bundle. If envi-service is not running the proxy just errors per-request (Vite logs it) and
+    // the dev server still boots — the API is simply unavailable, which is the honest state.
+    // Affects the dev server ONLY: `vite build` emits the same bundle, served by envi-service itself.
+    proxy: {
+      "/api": { target: "http://127.0.0.1:8080", changeOrigin: false },
+    },
   },
   // The wasm-bindgen `.wasm` artifacts are explicit assets the Vite build consumes:
   // `src/generated/wasm/` is the stable single-threaded GIS boundary (build:wasm);

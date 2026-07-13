@@ -16,6 +16,7 @@
 import init, {
   plan_import as wasmPlanImport,
   plan_tiles as wasmPlanTiles,
+  plan_cog_reads as wasmPlanCogReads,
   window_for_bbox as wasmWindowForBbox,
   reproject_ring as wasmReprojectRing,
   terrain_features as wasmTerrainFeatures,
@@ -46,6 +47,8 @@ import type {
   MergeReq,
   MergeResult,
   ParseBuildingsReq,
+  PlanCogReadsReq,
+  PlanCogReadsResult,
   PlanTilesReq,
   PlanTilesResult,
   ReceiverGridReq,
@@ -118,6 +121,20 @@ export function planImport(req: ImportPlanReq): Promise<ImportPlanResult> {
 /** Enumerate the covering source tiles for a viewport (terrain + land cover). */
 export function planTiles(req: PlanTilesReq): Promise<PlanTilesResult> {
   return call<PlanTilesReq, PlanTilesResult>(wasmPlanTiles, req);
+}
+
+/**
+ * Plan the WINDOWED RANGE READ of a COG tile: given its fetched header prefix, return the viewport's pixel
+ * window AND exactly the byte ranges of the internal COG tiles that window overlaps, minus the ranges the
+ * caller's OPFS cache already holds. This is what replaced the whole-tile GET (330 MB for a 1 km² Amsterdam
+ * window). ALL of the reasoning — header-fit, geotransform, chunk grid, cache subtraction, fetch budget —
+ * is `envi_gis`'s; TypeScript only issues the `Range` GETs the plan asks for.
+ */
+export function planCogReads(
+  headerBytes: Uint8Array,
+  req: PlanCogReadsReq,
+): Promise<PlanCogReadsResult> {
+  return callBytes<PlanCogReadsReq, PlanCogReadsResult>(wasmPlanCogReads, headerBytes, req);
 }
 
 /** Resolve the pixel window of a viewport within a cached tile (`null` = no overlap). */

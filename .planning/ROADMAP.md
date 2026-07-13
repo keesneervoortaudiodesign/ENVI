@@ -445,6 +445,116 @@ Plans:
 
 **UI hint**: yes
 
+## Milestone 3: Solve the Real Scene
+
+Milestone 2 shipped the whole application — draw, import, solve, read back. But the solve does not
+actually read the scene: `marshalScene.ts` fabricates a flat homogeneous corridor, so **a drawn wall,
+forest, ground zone, terrain or imported weather cannot change the numbers**. Milestone 3 closes that,
+and pays the two engine debts that closing it honestly requires.
+
+The wire is not the blocker — `PrepareSolveReq` already carries terrain/weather/forest/isolation and
+`PreparedScene` already threads them into the engine. The Phase-9 extractors (`cut_profile`,
+`segment_ground`, `inject_screens`, `receiver_grid`, per-azimuth A/B/C) all exist and are wasm-exported.
+They are **dangling** — reachable today only from a debug overlay. The two real gaps: the marshaller
+never reads the scene, and the wire carries **one profile per tensor** where the physics needs **one per
+path**.
+
+**Architecture decision (D-26).** Per-path extraction lives in `envi-compute-wasm`, NOT TypeScript.
+`envi-gis` and `envi-dgm` are pure-Rust and WASM-safe, so the compute crate may depend on them:
+`PrepareSolveReq` gains a `scene` block carrying the features once, `PreparedScene` builds the TIN +
+rstar index **once**, and each path's `PropagationPathInputs` is derived lazily per chunk (rayon-parallel
+for free, bounded working set). Shipping N×M pre-extracted profiles from TS is rejected — it would
+rebuild the TIN per call, cross the boundary N times, and move multi-MB payloads.
+
+**Honesty constraint (binding).** A silent unrefracted screen under weather — or a mixed tensor with
+weather on ground paths but not screen paths — is a **false result**. Forbidden. There is no cheap path
+through ENG-12: implement it, or refuse the solve loudly.
+
+## Milestone 3 Phases
+
+- [ ] **Phase 12: Scene → Solver Foundation** - Real coordinates through the one CRS seam; the scene on the wire; per-path input derivation inside the WASM boundary; receiver plan reconciled (polygon + footprint exclusion + TIN z) so cost/tier/solved-set are one truth; identity hashing completeness. No acoustic change — a flat empty scene must solve **bit-identically** to today.
+- [ ] **Phase 13: Screens, Ground & Partitions** - A drawn wall/building actually attenuates (screening edges → profile vertices); ground zones segment the impedance; a semi-transparent partition applies its `R(f)` on the path it actually screens, attached from edge provenance. **This is the phase that makes "my wall changes the numbers" true.**
+- [ ] **Phase 14: Terrain & the Convex Wedge** - DGM terrain feeds each path's real cut profile — which immediately requires **ENG-11**, the Sub-Model 3 convex/equivalent-wedge path (§5.12, Eqs. 141–151): real undulating terrain trips `ConvexSegmentNotImplemented` on any hillcrest, so "import terrain and solve" fails until it exists.
+- [ ] **Phase 15: Forest Path Extraction** - Per-path through-forest length `d` in the cut plane → the existing Sub-Model 10 (ENG-09). The Fig.-29 rubber-band path over screens is a documented approximation; forest+screen either bounds `d` conservatively or refuses — never a silent wrong `d`.
+- [ ] **Phase 16: Refracted Screen Diffraction (ENG-12)** - **The long pole.** The shadow-zone branches under a sound-speed profile: Sub-Model 4 (Eqs. 184–186) and the same pattern recurring in Sub-Models 5 and 6, plus threading curved-ray variables through the straight-ray screen path. Replaces the `WeatherScreenNotImplemented` refusal. Independent engine track — **parallel-safe with Phases 12–15**.
+- [ ] **Phase 17: Weather in the Solve** - Imported/what-if weather drives each path's `SoundSpeedProfile` by source→receiver bearing, with per-path `d_m` and turbulence inputs. **Hard-gates on Phase 16.**
+
+### Milestone 3 Phase Details
+
+#### Phase 12: Scene → Solver Foundation
+
+**Goal**: The solve reads the REAL scene — real projected coordinates, the scene carried on the wire, and per-path inputs derived inside the WASM compute boundary — with no acoustic change yet, proven by a bit-identical solve of a flat empty scene
+**Depends on**: Milestone 2 (complete). Prerequisite landed in the 2026-07-13 debug session: walls/buildings now carry a real height (a wall with no height can never screen anything, and `collectScreens` silently dropped them)
+**Requirements**: SOLV-01
+**Success Criteria** (what must be TRUE):
+
+  1. Sources, receivers and objects are projected through `project_to_utm` (GEOX-04) — the one CRS seam, never the debug equirect frame; a known survey pair round-trips within tolerance
+  2. `PrepareSolveReq` carries the scene ONCE; `PreparedScene` builds the TIN + rstar index once per solve and derives each `(sub_source, receiver)` path's inputs per chunk
+  3. The cost estimate, tier plan and solved receiver set are ONE source of truth — receivers respect calc-area polygon membership, exclude building footprints, and take z from the TIN (today's square lattice and `receiver_grid` disagree, so cost and progress would lie)
+  4. A flat, empty scene solves **`f64::to_bits`-identically** to the pre-change corridor — the refactor is proven inert before any physics rides on it
+  5. Every new scene field participates in `marshalled_tensor_hash`, pinned by a field-sensitivity test (two requests differing in ANY single field must hash differently) — a field that reaches the solve but not the hash makes the stale badge lie and serves a cached tensor for an edited scene
+
+#### Phase 13: Screens, Ground & Partitions
+
+**Goal**: A drawn wall attenuates, a drawn ground zone changes the ground effect, and a semi-transparent partition transmits through the screen it actually is — the payoff phase
+**Depends on**: Phase 12
+**Requirements**: SOLV-02, SOLV-03, SOLV-06
+**Success Criteria** (what must be TRUE):
+
+  1. A 4 m wall drawn between source and receiver **lowers** the received level; the same wall moved behind the receiver does not change it; moving the wall changes the tensor identity
+  2. Ground-effect zones segment each path's impedance (drawn > imported > default); a class-H pad under the path differs measurably from class-A; σ is resolved only via `impedance_class` (never a σ literal), and the roughness class→metres mapping lands at the resolution point
+  3. A semi-transparent screen applies its `R(f)` on the path it screens, attached from the screening edge's **provenance** — not a proximity guess. Attaching a partition's spectrum to a path screened by a different object is physically wrong and the engine cannot detect it, so this must be structural
+  4. An isolation spectrum on a path with no screen remains a typed `IsolationWithoutScreen` error, never a silent no-op; the opaque limit stays bit-for-bit
+
+#### Phase 14: Terrain & the Convex Wedge
+
+**Goal**: Imported DGM terrain feeds each path's real cut profile — and real terrain no longer hard-errors, because the Sub-Model 3 convex/equivalent-wedge path exists
+**Depends on**: Phase 12 (per-path plumbing), Phase 13 (screens compose with terrain)
+**Requirements**: SOLV-04, ENG-11
+**Success Criteria** (what must be TRUE):
+
+  1. Each path's cut profile is sampled from the DGM TIN (GEOX-01), matching the GRASS `r.profile` oracle within the documented TIN-vs-bilinear tolerance
+  2. **ENG-11**: convex and transition segments compute via the §5.12 equivalent-wedge path (Eqs. 141–151) instead of returning `ConvexSegmentNotImplemented` — validated against a committed oracle + an anchor where the convex weight → 0 recovers the concave result
+  3. A real imported Amsterdam terrain solves end-to-end without a typed refusal (today any hillcrest kills the solve)
+  4. Receiver acoustic height is **TIN ground + 1.5 m** (AGL, not AMSL), and source/receiver heights enter via `TerrainProfile::endpoints` — never baked into profile z (the hSv/hRv double-count trap silently doubles the height)
+
+#### Phase 15: Forest Path Extraction
+
+**Goal**: A drawn forest actually attenuates — the Sub-Model 10 math (ENG-09) finally gets a real per-path through-forest length
+**Depends on**: Phase 12 (per-path plumbing); Phase 14 for forest-over-terrain
+**Requirements**: SOLV-05
+**Success Criteria** (what must be TRUE):
+
+  1. The per-path through-forest length `d` is extracted in the cut plane (ray ∩ forest polygon × [ground, ground+height]) and drives ENG-09; a path crossing more forest attenuates more, and a path that misses the forest is unchanged
+  2. The Fig.-29 rubber-band path (over screens/under refraction) is a **documented approximation** — forest+screen combinations either bound `d` conservatively or refuse with a typed error; never a silently wrong `d`
+
+#### Phase 16: Refracted Screen Diffraction (ENG-12)
+
+**Goal**: The engine can diffract a screen under a sound-speed profile — removing the `WeatherScreenNotImplemented` refusal that makes weather + any urban scene unsolvable
+**Depends on**: Milestone-1 Phase 3 (refraction) + Phase 2 (screens). **Independent of Phases 12–15 — parallel-safe engine track**
+**Requirements**: ENG-12
+**Success Criteria** (what must be TRUE):
+
+  1. Sub-Model 4's shadow-zone branch (Eqs. 184–186) computes: per screen side, `d′ᵢ` vs `d_SZ,i`, the grazing-incidence `Q̂`, and the shadow-zone shielding substitution into the four-ray ground factor
+  2. The same branch pattern lands in **Sub-Model 5 and Sub-Model 6** (the repo's "the ξ<0 branches" shorthand undersells this — it is three sub-models, ~10 substitution equations)
+  3. The screen path carries **curved-ray** segment variables (it is straight-ray throughout today)
+  4. Validated by committed scipy oracles + branch-boundary anchors: continuity at `d′ = 0.95·d_SZ`, and `ξ → 0` recovers the homogeneous screen result **bit-for-bit**
+  5. `WeatherScreenNotImplemented` is deleted, not bypassed — and no path silently returns an unrefracted screen
+
+#### Phase 17: Weather in the Solve
+
+**Goal**: Imported and what-if weather actually changes the map — per-path, per-azimuth, with no false results
+**Depends on**: **Hard gate: Phase 16** (else every screened path hard-errors). Phase 13 (screens), Phase 12 (per-path plumbing)
+**Requirements**: SOLV-07
+**Success Criteria** (what must be TRUE):
+
+  1. Each path's `SoundSpeedProfile` is derived from the per-azimuth A/B/C by its source→receiver bearing (METX-01); a downwind receiver differs from an upwind receiver in the expected direction
+  2. Per-path `d_m` (real distance) and turbulence inputs replace today's shared hardcoded constants — a shared `d_m` makes the coherence F-factors quietly wrong for long paths
+  3. A weather edit re-solves (weather IS part of the tensor identity) while a conditioning edit still does not (D-07)
+  4. The scenario **difference map** is finally driven by two genuinely different solves rather than fixtures
+
+**UI hint**: no (engine/compute milestone; the UI already exists)
+
 ## Requirement Coverage
 
 | Phase | Requirements | Count |
@@ -460,8 +570,16 @@ Plans:
 | 9 | GEOX-01, GEOX-02, GEOX-03, GRID-01, METX-01, METX-02 | 6 |
 | 10 | SVC-02, GRID-02, WEB-07 | 3 |
 | 11 | SVC-06, WEB-05, WEB-06, WEB-11, WEB-12, METX-03, METX-04, GRID-04, GRID-05 | 9 |
+| 12 | SOLV-01 | 1 |
+| 13 | SOLV-02, SOLV-03, SOLV-06 | 3 |
+| 14 | SOLV-04, ENG-11 | 2 |
+| 15 | SOLV-05 | 1 |
+| 16 | ENG-12 | 1 |
+| 17 | SOLV-07 | 1 |
 
 **Coverage check:** 30/30 v1 requirements mapped (ENG 8, OUT 6, MET 6, SRC 4, GEO 3, VAL 3). No orphans, no duplicates. v2 groups (DATA, GEOX, METX, GRID, WEB, SVC, FUT) deferred by design.
+
+**Milestone 3 coverage check:** 9/9 Milestone-3 requirements mapped (SOLV 7, ENG 2) across Phases 12–17. No orphans, no duplicates.
 
 **Milestone 2 coverage check:** 41/41 Milestone-2 requirements mapped (ENG 2, SCN 4, DATA 4, GEOX 4, METX 4, GRID 4, WEB 12, SVC 7). No orphans, no duplicates. GRID-03 (L_den weather-class combination) and FUT-01..05 are deferred beyond Milestone 2 by design and intentionally unmapped.
 
@@ -485,7 +603,19 @@ Milestone 2 (5 → 6 → 7 → 8 → 9 → 10 → 11) is planned ahead: Phase 5 
 | 9. Path Extraction & Weather | 6/6 | Complete (all 5 completion gates closed) | 2026-07-11 |
 | 10. Calculation Service | 6/6 | Complete (all 5 completion gates closed) | 2026-07-12 |
 | 11. Results & Fast Recalc | 11/11 | Plans complete — completion gates pending | - |
+| 12. Scene → Solver Foundation | 0/? | Planned | - |
+| 13. Screens, Ground & Partitions | 0/? | Planned | - |
+| 14. Terrain & the Convex Wedge | 0/? | Planned | - |
+| 15. Forest Path Extraction | 0/? | Planned | - |
+| 16. Refracted Screen Diffraction (ENG-12) | 0/? | Planned | - |
+| 17. Weather in the Solve | 0/? | Planned | - |
+
+**Milestone 3 execution order:** 12 → 13 → (14, 15 parallel) → 17, with **16 running as an independent
+engine track in parallel from the start** — it is the long pole and nothing in 12–15 depends on it, while
+17 hard-gates on it. Phase 13 is the earliest point at which the user-visible promise ("my wall changes
+the numbers") comes true, so it is the one to reach fastest.
 
 ---
 *Roadmap created: 2026-07-07 — Milestone 1 (validated core Nord2000 engine)*
 *Milestone 2 phases appended: 2026-07-08 — Interactive Calculation UI (Phases 5–11; engine Phases 3–4 remain the execution priority)*
+*Milestone 3 phases appended: 2026-07-13 — Solve the Real Scene (Phases 12–17). Triggered by the 2026-07-13 debug session, which found that the drawn scene never reaches the solver (`marshalScene` fabricates a flat homogeneous corridor) and that two engine branches — convex terrain segments (ENG-11) and refracted screens (ENG-12) — must be paid to close it honestly.*

@@ -177,6 +177,30 @@ export const catalog: Record<ControlId, HelpEntry> = {
     ],
     citations: [envi("Kind-dispatched property inspector over the canonical scene store")],
   },
+  "building.eaves_height": {
+    title: "Eaves height (m)",
+    body: [
+      "The height of the building's eaves above local ground, in metres. It is the property that makes a building act as a screen: the footprint is extruded to this height and its top edge is injected into the terrain profile, so the diffracted path over the roof line — and the shadow behind it — follow directly from this number. A building without a usable eaves height carries no screening at all.",
+      "Alongside the value the inspector shows its PROVENANCE — where the number came from. An imported building is tagged 'OSM height tag' when the source carried an explicit height, 'OSM building levels' when the height was derived from a storey count, and 'import fallback default' when neither was present and a generic value had to be assumed. 'Measured' marks a surveyed height, and editing the field yourself re-tags it 'user-edited'. A block of buildings that all read 'import fallback default' is telling you the source data had no heights, not that the model is broken.",
+      "Editing an imported building here also flags it as user-modified, so a later re-import of the same area cannot overwrite the height you corrected. Accepted entries are finite metres between 0 and 500 m; a negative or implausibly large entry is refused rather than silently stored.",
+    ],
+    citations: [
+      av("Screening object: footprint extruded to eaves height; roof edge as a diffracting profile vertex, AV 1106/07"),
+      envi("DATA-03 height provenance (height tag / levels / fallback) stamped at GIS import; D-09 re-import merge guard"),
+    ],
+  },
+  "wall.height": {
+    title: "Wall height (m)",
+    body: [
+      "The height of the wall or screen above local ground, in metres. This is the only reason a wall exists acoustically: its top edge becomes the diffracting edge in the propagation path, and the screening effect at a receiver follows from how far that edge rises above the direct source-receiver line. A wall with no height diffracts nothing and is dropped from the screening set entirely.",
+      "Typical values are around 2–3 m for a garden or site wall and 3–6 m for a purpose-built noise barrier; the acoustic benefit grows with how deep the receiver sits in the geometric shadow, not with height alone. Combine the height with the semi-transparent flag and an isolation spectrum when the screen also transmits sound through its body.",
+      "Accepted entries are finite metres between 0 and 500 m; a negative or implausibly large entry is refused rather than silently stored. The value inherits to the next wall you draw, so a run of identical barriers only has to be typed once.",
+    ],
+    citations: [
+      av("Screen diffraction sub-model; the screen top as a terrain-profile vertex, AV 1106/07"),
+      ti("Barriers as height-bearing screening objects in the propagation scene"),
+    ],
+  },
   "wall.semi_transparent": {
     title: "Semi-transparent (acoustic screen)",
     body: [

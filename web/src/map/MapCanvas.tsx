@@ -238,6 +238,30 @@ function ImportAttribution(): null {
   return null;
 }
 
+// DEV-ONLY map probe: publish the live MapLibre instance on `window.__enviMap` so the offline UAT can
+// observe what the map ACTUALLY renders — the resolved per-kind paint expressions, the real rendered
+// features, and the canvas pixels (the D-17 "each kind renders its own colour" assertion cannot be made
+// from telemetry alone). Mirrors `testBridge`'s DEV gate: the production `vite build` bundle never
+// defines it. Torn down on unmount.
+function DevMapProbe(): null {
+  const map = useMap();
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+    const instance = map.current?.getMap() as unknown as MapLibreMap | undefined;
+    if (!instance) {
+      return;
+    }
+    const w = window as unknown as { __enviMap?: MapLibreMap };
+    w.__enviMap = instance;
+    return () => {
+      delete w.__enviMap;
+    };
+  }, [map]);
+  return null;
+}
+
 // A one-shot resize nudge: the map mounts into a flex/grid slot whose final size settles after first
 // paint; without this the canvas can render at 0px. Torn down on unmount (subscription discipline).
 function ResizeOnMount(): null {
@@ -501,8 +525,13 @@ export function MapCanvas(): ReactElement {
       mapStyle={DARK_BASEMAP_STYLE}
       attributionControl={false}
       reuseMaps
+      // DEV-only: keep the WebGL drawing buffer readable so the offline UAT can sample the ACTUAL
+      // rendered pixels of each scene object (the D-17 per-kind-colour assertion). MapLibre's default is
+      // `false`, which is exactly what the production bundle keeps — no shipped rendering cost.
+      canvasContextAttributes={{ preserveDrawingBuffer: import.meta.env.DEV }}
       style={{ position: "absolute", inset: 0 }}
     >
+      <DevMapProbe />
       <ResizeOnMount />
       <ZoomController />
       <ViewportTracker />

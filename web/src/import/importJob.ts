@@ -15,6 +15,13 @@
 //   Post-import the compute path reads tiles from OPFS (bytes are read back from the cache after write,
 //   DATA-04). Terrain retains its decoded tiles in memory so the buildings layer can sample footprint base
 //   elevation (typed `null`/absent, never `0.0`, when terrain is missing — D-07).
+//
+// # Raster tiles are RANGE-READ, never downloaded whole (see `cogWindow.ts`)
+//
+// Each covering COG tile goes through `loadCogWindow`: fetch the header, plan the internal tiles the
+// viewport overlaps, fetch only those byte ranges. The previous whole-tile GET pulled 330 MB of AHN (and
+// 54 MB of WorldCover) for a ~1 km² viewport and hung the import. A layer therefore carries a `CogWindow`
+// — the fetched byte parts + the pixel window — into every WASM decode call, not a whole tile.
 
 import { ApiError, errorText, toStatusError, type SceneCollection } from "../api/client";
 import { useSceneStore } from "../store/sceneStore";
@@ -24,8 +31,8 @@ import {
   type LayerError,
   type LayerKey,
 } from "../store/import";
-import { fetchOverpass, fetchTile, overpassQuery } from "./fetchers";
-import { fitsQuota, estimateQuota, getTile, putTile } from "./opfs";
+import { fetchOverpass, overpassQuery } from "./fetchers";
+import { loadCogWindow, type CogWindow } from "./cogWindow";
 import {
   mapLandcover,
   mergeFeatures,
@@ -35,15 +42,11 @@ import {
   reprojectRing,
   sampleBaseElevation,
   terrainFeatures,
-  windowForBbox,
 } from "./wasm";
 import type {
   BboxDto,
-  CorsDto,
-  PixelWindowDto,
   SourceDescriptorDto,
   TerrainSourceCrsDto,
-  TileRefDto,
   VerticalDatumDto,
 } from "../generated/wire";
 
@@ -60,11 +63,11 @@ interface RawFeatureCollection {
   features: RawFeature[];
 }
 
-// The terrain tiles retained in memory after a terrain import, so the buildings layer can sample
-// footprint-boundary base elevation off them (SC4). Keyed per project.
+// The terrain windows retained in memory after a terrain import, so the buildings layer can sample
+// footprint-boundary base elevation off them (SC4). Keyed per project. This is the RANGE-READ window (the
+// fetched byte parts + the pixel window), not a whole tile.
 interface TerrainBaseSource {
-  readonly bytes: Uint8Array;
-  readonly window: PixelWindowDto;
+  readonly cog: CogWindow;
   readonly sourceCrs: TerrainSourceCrsDto;
 }
 
@@ -175,31 +178,6 @@ function assignIds(features: RawFeature[]): RawFeatureCollection {
   return { type: "FeatureCollection", features };
 }
 
-// Cache-first tile bytes: read OPFS, else fetch (Direct/proxy) then persist, then READ BACK from OPFS so
-// the compute path reads the cache (DATA-04). Falls back to the fetched bytes only if the write was
-// skipped (quota/no-OPFS).
-async function loadTileBytes(
-  projectId: string,
-  tile: TileRefDto,
-  cors: CorsDto,
-  signal: AbortSignal,
-): Promise<Uint8Array> {
-  const cached = await getTile(projectId, tile.source_id, tile.tile);
-  if (cached) {
-    return new Uint8Array(cached);
-  }
-  const fetched = await fetchTile(tile, cors, signal);
-  const estimate = await estimateQuota();
-  if (fitsQuota(estimate, fetched.byteLength)) {
-    await putTile(projectId, tile.source_id, tile.tile, fetched);
-    const readBack = await getTile(projectId, tile.source_id, tile.tile);
-    if (readBack) {
-      return new Uint8Array(readBack);
-    }
-  }
-  return new Uint8Array(fetched);
-}
-
 // The read→merge→load→save commit of a layer's features into the scene (D-09 merge preserves user edits).
 // Returns the committed feature count. Runs inside the commit mutex so concurrent layers don't clobber.
 //
@@ -280,18 +258,15 @@ async function runTerrain(projectId: string, bbox: BboxDto, retrievedAt: string)
     for (let i = 0; i < tiles.length; i++) {
       const tile = tiles[i];
       store.setLayerProgress("terrain", 0.1 + 0.6 * (i / tiles.length), `tile ${i + 1}/${tiles.length}`);
-      const bytes = await loadTileBytes(projectId, tile, descriptor.cors, signal);
+      // Windowed range read: the header, then only the COG tiles this viewport overlaps.
+      const cog = await loadCogWindow(projectId, tile, descriptor.cors, bbox, sourceCrs, signal);
       if (signal.aborted) return;
-      const { window } = await windowForBbox(bytes, {
-        bbox,
-        source_crs: sourceCrs,
-        max_decoded_px: null,
-      });
-      if (!window) {
-        continue; // this tile is adjacent, not overlapping — nothing to decode
+      if (!cog) {
+        continue; // this tile is adjacent, not overlapping — nothing fetched, nothing to decode
       }
-      const res = await terrainFeatures(bytes, {
-        window,
+      const res = await terrainFeatures(cog.bytes, {
+        window: cog.window,
+        parts: cog.parts,
         target_points: TERRAIN_TARGET_POINTS,
         source_crs: sourceCrs,
         provenance: {
@@ -304,7 +279,7 @@ async function runTerrain(projectId: string, bbox: BboxDto, retrievedAt: string)
       });
       if (signal.aborted) return;
       features.push(...(res.features as RawFeatureCollection).features);
-      baseSources.push({ bytes, window, sourceCrs });
+      baseSources.push({ cog, sourceCrs });
     }
 
     store.setLayerProgress("terrain", 0.85, "committing");
@@ -338,18 +313,15 @@ async function runLandcover(projectId: string, bbox: BboxDto, retrievedAt: strin
     for (let i = 0; i < tiles.length; i++) {
       const tile = tiles[i];
       store.setLayerProgress("landcover", 0.1 + 0.6 * (i / tiles.length), `tile ${i + 1}/${tiles.length}`);
-      const bytes = await loadTileBytes(projectId, tile, descriptor.cors, signal);
+      // Windowed range read (the 54 MB WorldCover tile is never downloaded whole).
+      const cog = await loadCogWindow(projectId, tile, descriptor.cors, bbox, "wgs84", signal);
       if (signal.aborted) return;
-      const { window } = await windowForBbox(bytes, {
-        bbox,
-        source_crs: "wgs84",
-        max_decoded_px: null,
-      });
-      if (!window) {
+      if (!cog) {
         continue;
       }
-      const res = await mapLandcover(bytes, {
-        window,
+      const res = await mapLandcover(cog.bytes, {
+        window: cog.window,
+        parts: cog.parts,
         min_area_px: null,
         simplify_tol_px: null,
         provenance: {
@@ -395,14 +367,20 @@ async function populateBaseElevations(
       const spacing = source.sourceCrs === "rd_new" ? BASE_ELEV_SPACING_M : BASE_ELEV_SPACING_DEG;
       const { ring: sourceRing } = await reprojectRing({ ring, source_crs: source.sourceCrs });
       if (signal.aborted) return;
-      const { base_elevation_m } = await sampleBaseElevation(source.bytes, {
-        window: source.window,
+      const res = await sampleBaseElevation(source.cog.bytes, {
+        window: source.cog.window,
+        parts: source.cog.parts,
         ring: sourceRing,
         max_spacing_m: spacing,
         max_decoded_px: null,
       });
-      if (base_elevation_m !== null) {
-        building.properties = { ...(building.properties ?? {}), base_elevation_m };
+      // `serde_wasm_bindgen` marshals `Option::None` as `undefined`, not `null` (wire.ts types it
+      // `number | null`). Normalise, or a footprint with NO terrain coverage reads as "a value", writes
+      // `base_elevation_m: undefined`, and stops the search at the first non-covering tile (D-07 says the
+      // property must be ABSENT, never fabricated).
+      const baseElevation = res.base_elevation_m ?? null;
+      if (baseElevation !== null) {
+        building.properties = { ...(building.properties ?? {}), base_elevation_m: baseElevation };
         break; // first covering terrain tile wins
       }
     }

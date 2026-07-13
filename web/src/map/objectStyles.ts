@@ -17,6 +17,15 @@
 //   `web/src/theme.css` (added this phase); the literal hex is the source of truth for MapLibre paint
 //   because MapLibre GL cannot consume CSS custom properties (same pattern as the isophone `colorScale`
 //   hex). The 8-slot categorical set is the dataviz-validated dark palette from 11-UI-SPEC §Palettes #3.
+//
+// # Paint ownership (load-bearing — see `draw/modes.ts`)
+// These display layers own the pixels of a COMMITTED scene object. Terra Draw's MapLibre adapter renders
+// the very same store features through its own `td-*` layers, which it appends ABOVE these — and at TD's
+// stock defaults every mode paints in ONE hex (`#3f97e0` for points, lines AND polygon fills alike), so a
+// stock Terra Draw silently covers this entire palette and every object renders identically blue. The
+// modes in `draw/modes.ts` therefore paint a committed feature at ZERO opacity and keep their colour for
+// the shape being drawn / selected only. Do not re-enable TD's committed-feature paint (`objectStyling`
+// e2e asserts the rendered pixels + TD's zero opacity, and `draw/modes.test.ts` pins the rule).
 
 import type { Kind } from "../draw/kinds";
 

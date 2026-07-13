@@ -10,6 +10,10 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // The live-network smoke NEVER runs in the default suite — it is opt-in via its own config
+  // (`npm run test:e2e:live` → playwright.live.config.ts). Ignoring it here is structural, not a
+  // convention: the default run cannot touch the internet even if someone forgets the env gate.
+  testIgnore: /live-smoke\.spec\.ts$/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
@@ -36,7 +40,30 @@ export default defineConfig({
       ],
     },
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // Two projects, deliberately SEQUENCED (not two ways to run the same thing).
+  //
+  // `full-journey` drives a genuine threaded-WASM solve — a `wasm-bindgen-rayon` pool that saturates every
+  // core. Run concurrently with the focused specs it starves their software-WebGL (SwiftShader) map
+  // contexts into spurious timeouts: `objectStyling` fails with featureCount 0 while passing standalone.
+  // That is the same over-subscription the `workers: 4` cap above guards against, except the journey brings
+  // its own thread pool, so no worker count makes them safe neighbours.
+  //
+  // `dependencies` makes Playwright finish `specs` completely before `journey` starts, so the solve gets the
+  // machine to itself. Cost: a failure in `specs` skips `journey` (fix the unit-level break first — which is
+  // the right order anyway). To run the journey alone, bypass the dependency: `npm run test:e2e:journey`.
+  projects: [
+    {
+      name: "specs",
+      testIgnore: /full-journey\.spec\.ts$/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "journey",
+      testMatch: /full-journey\.spec\.ts$/,
+      dependencies: ["specs"],
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ],
   webServer: {
     command: "npm run dev -- --port 5174 --strictPort",
     url: "http://localhost:5174",

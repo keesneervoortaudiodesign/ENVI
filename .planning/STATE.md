@@ -10,11 +10,11 @@ last_updated: "2026-07-12T16:46:31.247Z"
 last_activity: 2026-07-12
 last_activity_desc: "11-11 app-wide Info-Button help system (D-23/24/25): a reusable <InfoButton controlId> — glance popover (portalled, position:fixed above the map stacking) + docked right-rail help panel — backed by a STRUCTURED typed catalog (Record<ControlId, HelpEntry>, data not JSX-scattered text) whose ~78-id ControlId union is the single coverage source of truth (a missing key fails tsc). Help is extensive, English-only, units-shown, band-identity=index+Hz, own-words prose citing Nord2000 AV 1106/07 BY REPORT NUMBER + NoizCalc TI 386 — never pasting the copyrighted standard (structural anti-paste guard). coverage.test.ts FAILS if any control lacks a multi-paragraph cited entry (D-25 backbone). Retrofitted an InfoButton onto every interactive control across ALL panels (Palette/ProjectBar/Inspector+fields/Facade/Import/Weather/Calc + Spectrum/ColorScale/Conditioning/Scenario/Export) — additive, zero behaviour change. Offline Playwright UAT (real bundle, mocked /api/*, zero egress): an InfoButton in every panel, click→popover, More→docked panel with cited help. Gates: typecheck + 158 vitest (incl. coverage) + build:web + 30 Playwright (no regression) green; zero Rust/wire change (engine 3-dep tree + no-drift unchanged, fmt clean); web/dist rebuilt"
 progress:
-  total_phases: 11
+  total_phases: 17
   completed_phases: 11
   total_plans: 64
   completed_plans: 64
-  percent: 100
+  percent: 65
 ---
 
 # Project State
@@ -31,6 +31,17 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 Phase: 11 (results-fast-recalc) — CODE-COMPLETE (11/11 plans; 5 completion gates pending)
 Plan: 11 of 11 complete
 Status: Phase code-complete — run the 5 phase-completion gates (code-review / simplify / secure / verify / doc-consistency)
+
+**Milestone 3 planned (2026-07-13) — "Solve the Real Scene", Phases 12–17.** A debug session driven from
+the running app found that the drawn scene never reaches the solver: `marshalScene.ts` fabricates a flat
+homogeneous corridor (`weather/forest/isolation: null`, no screens, hardcoded σ=200), so a drawn wall,
+forest, ground zone, terrain or imported weather **cannot change the computed numbers**. The wire and the
+Phase-9 extractors already exist — they are dangling. Closing this honestly also requires paying two
+engine debts: **ENG-11** (Sub-Model 3 convex/equivalent-wedge segments — real terrain hard-errors on any
+hillcrest today) and **ENG-12** (refracted screen diffraction across Sub-Models 4/5/6 — weather + any
+screened path hard-errors by design). Next execution target: **Phase 12** (per-path plumbing, provably
+inert), then Phase 13 (the "my wall changes the numbers" payoff), with Phase 16 (ENG-12) as a parallel
+engine track from the start.
 Last activity: 2026-07-12 — 11-11 app-wide Info-Button help system (D-23/24/25): reusable <InfoButton controlId> (glance popover + docked help panel) + structured typed help catalog (Record<ControlId, HelpEntry>, ~78 ids) + coverage test that FAILS on any gap + own-words standards-cited help (AV 1106/07 by report number + TI 386, never pasted) + an InfoButton retrofit onto every interactive control across all panels (additive); offline Playwright UAT green; web/dist rebuilt; zero Rust/wire change
 
 Progress: [██████████] Phase 11 — 11/11 plans complete (…09 export · 10 object styling · 11 app-wide info-button help + panel retrofit)

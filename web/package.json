@@ -17,6 +17,8 @@
     "preview": "vite preview",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:journey": "playwright test --project=journey --no-deps",
+    "test:e2e:live": "playwright test --config=playwright.live.config.ts",
     "test:e2e:install": "playwright install --with-deps chromium"
   },
   "dependencies": {

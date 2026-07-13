@@ -6,15 +6,20 @@ journey serves these bytes from `page.route` mocks so a full viewport import
 (terrain + land cover + buildings) runs FULLY OFFLINE against real decode paths:
 
 * ``ahn_dtm_fixture.tif``    — an AHN-analog terrain COG: EPSG:28992 (RD New)
-  float32, tiled DEFLATE predictor 1. Its geotransform sits inside the committed
-  AHN kaartblad ``M_25GN1`` so ``plan_tiles`` selects that tile and
-  ``window_for_bbox`` resolves a real pixel window for the reprojected viewport.
-  Coarse 10 m pixels (NOT real AHN 0.5 m — this is a synthetic E2E crop) keep the
-  decimated point count small.
+  float32, tiled DEFLATE predictor 1. Its geotransform sits inside a real
+  committed AHN kaartblad — **resolved from the index at generation time**, never
+  hardcoded — so ``plan_tiles`` selects that tile and ``window_for_bbox``
+  resolves a real pixel window for the reprojected viewport. Coarse 10 m pixels
+  (NOT real AHN 0.5 m — this is a synthetic E2E crop) keep the decimated point
+  count small.
 * ``worldcover_fixture.tif`` — an ESA-WorldCover-analog class raster: EPSG:4326
-  uint8 class codes (grassland 30, built-up 50, water 80), tiled DEFLATE. Covers
-  the same WGS84 viewport so ``map_landcover`` vectorizes it into ``ground_zone``
-  polygons carrying the reviewed Nord2000 impedance class letters.
+  uint8 class codes (grassland 30, built-up 50, water 80), tiled DEFLATE, and —
+  like the REAL product — **palette-encoded** (``PhotometricInterpretation =
+  RGBPalette`` + a ColorMap). The class code is the sample value; the colour table
+  is presentation only. A grayscale fixture here is what let the palette-decode
+  bug ship: it passed offline while every live WorldCover tile was rejected.
+  Covers the same WGS84 viewport so ``map_landcover`` vectorizes it into
+  ``ground_zone`` polygons carrying the reviewed Nord2000 impedance class letters.
 * ``overpass_buildings.json`` — a minimal Overpass ``out geom`` response with two
   building ways near the viewport, parsed by ``parse_buildings`` into editable
   ``building`` features.
@@ -33,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -49,12 +55,37 @@ GEN_SHA = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
 GDAL_VER = rasterio.__gdal_version__
 RIO_VER = rasterio.__version__
 
-# --- geometry: an RD-New viewport box inside the committed kaartblad M_25GN1 ---
-# M_25GN1 committed index bbox: RD x[115000, 120000], y[455000, 461250].
-# The import viewport (RD) — a ~100 m box well inside that kaartblad.
+# --- geometry: an RD-New viewport box inside a real committed kaartblad --------
+# The import viewport (RD) — a ~100 m box, deliberately well inside one kaartblad.
 RD_VIEW = (117050.0, 458050.0, 117150.0, 458150.0)  # min_x, min_y, max_x, max_y
-KAARTBLAD = "M_25GN1"
+# The kaartblad name is RESOLVED FROM THE COMMITTED INDEX, never hardcoded: the
+# previous hardcoded "M_25GN1" came from an index whose RD bboxes were wrong, so
+# the e2e cache-key assertion pinned a tile that does not contain this viewport.
+# Deriving it means the fixture can never drift from the index again.
+AHN_INDEX = ROOT / "crates/envi-gis/src/registry/ahn_index.toml"
 WORLDCOVER_TILE = "N51E003"  # 3-degree SW corner (3E, 51N) covers the viewport
+
+
+def _kaartblad_for(rd_view: tuple[float, float, float, float]) -> str:
+    """The single committed kaartblad whose RD bbox contains ``rd_view``."""
+    text = AHN_INDEX.read_text(encoding="utf-8")
+    rows = re.findall(
+        r'name = "(\S+)"\s*\nrd_min_x = ([\d.]+)\s*\nrd_min_y = ([\d.]+)\s*\n'
+        r"rd_max_x = ([\d.]+)\s*\nrd_max_y = ([\d.]+)",
+        text,
+    )
+    min_x, min_y, max_x, max_y = rd_view
+    hits = [
+        name
+        for name, a, b, c, d in rows
+        if float(a) <= min_x and float(c) >= max_x and float(b) <= min_y and float(d) >= max_y
+    ]
+    if len(hits) != 1:
+        raise SystemExit(f"RD viewport {rd_view} must sit inside exactly one kaartblad, got {hits}")
+    return hits[0]
+
+
+KAARTBLAD = _kaartblad_for(RD_VIEW)
 
 # The AHN terrain fixture geotransform (RD New), a 400 m box around the viewport
 # with generous margin so the reprojected window always lands inside the tile.
@@ -85,7 +116,8 @@ def _wgs84_viewport() -> dict[str, float]:
 
 
 def _write_tif(name: str, data: np.ndarray, transform: Affine, epsg: int, dtype: str,
-               *, predictor: int, blocksize: int) -> None:
+               *, predictor: int, blocksize: int,
+               colormap: dict[int, tuple[int, int, int]] | None = None) -> None:
     path = OUT / name
     height, width = data.shape
     profile = {
@@ -103,8 +135,16 @@ def _write_tif(name: str, data: np.ndarray, transform: Affine, epsg: int, dtype:
         "predictor": predictor,
         "BIGTIFF": "NO",
     }
+    if colormap is not None:
+        # PhotometricInterpretation = RGBPalette. `write_colormap` ALONE does not
+        # do this (GDAL keeps interpretation 1 and merely appends the ColorMap
+        # tag) — and a grayscale WorldCover fixture is precisely what hid the
+        # palette-decode bug: the real ESA product IS palette-encoded.
+        profile["photometric"] = "palette"
     with rasterio.open(path, "w", **profile) as dst:
         dst.write(data.astype(dtype), 1)
+        if colormap is not None:
+            dst.write_colormap(1, {c: (*rgb, 255) for c, rgb in colormap.items()})
 
 
 def gen_ahn_terrain() -> None:
@@ -135,8 +175,11 @@ def gen_worldcover(view: dict[str, float]) -> None:
     data[height // 4: height // 2, width // 4: width // 2] = 50
     data[height // 2: 3 * height // 4, width // 2: 3 * width // 4] = 80
     transform = Affine(pixel, 0.0, origin_lon, 0.0, -pixel, origin_lat)
+    # PALETTE-encoded, like the real WorldCover product (the class code is the
+    # sample value; the colour table is presentation only).
     _write_tif("worldcover_fixture.tif", data, transform, 4326, "uint8",
-               predictor=1, blocksize=32)
+               predictor=1, blocksize=32,
+               colormap={30: (255, 255, 76), 50: (250, 0, 0), 80: (0, 100, 200)})
 
 
 def gen_overpass(view: dict[str, float]) -> None:

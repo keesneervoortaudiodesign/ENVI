@@ -89,6 +89,11 @@ ring: Array<[number, number]>,
  */
 max_spacing_m: number, 
 /**
+ * How the `&[u8]` parameter splits into file-offset parts (the range-read
+ * path). `null`/absent ⇒ the bytes are the WHOLE tile from offset 0.
+ */
+parts: Array<BytePartDto> | null, 
+/**
  * Optional decoded-pixel budget override.
  */
 max_decoded_px: number | null, };
@@ -150,6 +155,35 @@ features: unknown,
  * Elements skipped (invalid geometry), never failing the whole layer.
  */
 skipped: Array<SkipReportDto>, };
+
+/**
+ * One contiguous piece of a tile the client has fetched: the bytes at file offset
+ * `offset`, `len` of them. The bytes themselves ride the `&[u8]` parameter (the
+ * concatenation of every part, in order) — never a serde field.
+ */
+export type BytePartDto = { 
+/**
+ * File offset of this part's first byte.
+ */
+offset: number, 
+/**
+ * Byte length of this part.
+ */
+len: number, };
+
+/**
+ * A half-open byte range `[start, end)` of a source tile — what the client must
+ * `Range`-GET, and what an OPFS cache records as already held.
+ */
+export type ByteRangeDto = { 
+/**
+ * First byte (inclusive).
+ */
+start: number, 
+/**
+ * One past the last byte (exclusive).
+ */
+end: number, };
 
 /**
  * Where one tier's data lives in OPFS — a receiver-axis span in a chunk file
@@ -383,6 +417,11 @@ export type DecodeWindowReq = {
  * The pixel window to decode.
  */
 window: PixelWindowDto, 
+/**
+ * How the `&[u8]` parameter splits into file-offset parts (the range-read
+ * path). `null`/absent ⇒ the bytes are the WHOLE tile from offset 0.
+ */
+parts: Array<BytePartDto> | null, 
 /**
  * Optional decoded-pixel budget override (defaults to `MAX_DECODED_PX`).
  */
@@ -1043,6 +1082,11 @@ simplify_tol_px: number | null,
  */
 provenance: ProvenanceReqDto, 
 /**
+ * How the `&[u8]` parameter splits into file-offset parts (the range-read
+ * path). `null`/absent ⇒ the bytes are the WHOLE tile from offset 0.
+ */
+parts: Array<BytePartDto> | null, 
+/**
  * Optional decoded-pixel budget override.
  */
 max_decoded_px: number | null, };
@@ -1136,6 +1180,68 @@ width: number,
  * Window height in pixels (`> 0`).
  */
 height: number, };
+
+/**
+ * `plan_cog_reads` request: given the tile's fetched header prefix (the `&[u8]`
+ * parameter, always from file offset 0), which byte ranges does this viewport
+ * actually need?
+ */
+export type PlanCogReadsReq = { 
+/**
+ * The WGS84 import viewport to window into this tile.
+ */
+bbox: BboxDto, 
+/**
+ * The tile raster's source CRS (RD New reprojects through `envi_geo`).
+ */
+source_crs: TerrainSourceCrsDto, 
+/**
+ * Byte ranges the caller already holds (its OPFS cache). Ranges already
+ * covered are omitted from the returned `fetch` list, so a warm cache plans
+ * ZERO network reads (DATA-04).
+ */
+have: Array<ByteRangeDto>, 
+/**
+ * Optional decoded-pixel budget override (defaults to `MAX_DECODED_PX`).
+ */
+max_decoded_px: number | null, 
+/**
+ * Optional fetch-byte budget override (defaults to `DEFAULT_MAX_FETCH_BYTES`).
+ */
+max_fetch_bytes: number | null, };
+
+/**
+ * `plan_cog_reads` result: the two-pass fetch instruction.
+ */
+export type PlanCogReadsResult = { 
+/**
+ * `n` ⇒ the header prefix supplied was too short: re-fetch bytes `0..n` and
+ * plan again (the ask converges, and is capped at `MAX_HEADER_BYTES`).
+ */
+need_header: number | null, 
+/**
+ * The pixel window of the viewport in this tile — `null` when the viewport
+ * does not overlap it (nothing to fetch, nothing to decode).
+ */
+window: PixelWindowDto | null, 
+/**
+ * The byte ranges still to fetch: sorted, disjoint, coalesced, and already
+ * minus everything `have` covers. Each entry is ONE single-range GET.
+ */
+fetch: Array<ByteRangeDto>, 
+/**
+ * Bytes in `fetch`.
+ */
+fetch_bytes: number, 
+/**
+ * Bytes of every chunk the window needs (cached or not) — the honest size of
+ * the window's footprint in the file, for progress + diagnostics.
+ */
+window_bytes: number, 
+/**
+ * How many COG chunks the window overlaps.
+ */
+chunks: number, };
 
 /**
  * `plan_tiers` request: the grid spec the hierarchical partition consumes. The
@@ -1927,6 +2033,11 @@ source_crs: TerrainSourceCrsDto,
  */
 provenance: ProvenanceReqDto, 
 /**
+ * How the `&[u8]` parameter splits into file-offset parts (the range-read
+ * path). `null`/absent ⇒ the bytes are the WHOLE tile from offset 0.
+ */
+parts: Array<BytePartDto> | null, 
+/**
  * Optional decoded-pixel budget override.
  */
 max_decoded_px: number | null, };
@@ -2216,6 +2327,11 @@ bbox: BboxDto,
  * The tile raster's source CRS (RD New reprojects through `envi_geo`).
  */
 source_crs: TerrainSourceCrsDto, 
+/**
+ * How the `&[u8]` parameter splits into file-offset parts (the range-read
+ * path). `null`/absent ⇒ the bytes are the WHOLE tile from offset 0.
+ */
+parts: Array<BytePartDto> | null, 
 /**
  * Optional decoded-pixel budget override (defaults to `MAX_DECODED_PX`).
  */

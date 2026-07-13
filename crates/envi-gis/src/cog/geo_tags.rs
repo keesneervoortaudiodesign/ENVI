@@ -12,12 +12,10 @@
 //!   their longitudinal pixel size differs from the latitudinal one). Missing or
 //!   malformed tags yield a typed [`GisError`]; this module never panics.
 
-use std::io::Cursor;
-
-use tiff::decoder::Decoder;
 use tiff::tags::Tag;
 
 use crate::GisError;
+use crate::cog::header::CogDecoder;
 
 /// A north-up affine geotransform recovered from the GeoTIFF tie-point + pixel
 /// scale tags. Maps a pixel `(col, row)` (top-left origin) to map coordinates:
@@ -54,7 +52,7 @@ impl GeoTransform {
 /// - [`GisError::InvalidGeoTransform`] if the tags have too few components or a
 ///   non-positive / non-finite pixel scale (a degenerate transform).
 /// - [`GisError::Tiff`] on a tag-read failure.
-pub fn read_geotransform(dec: &mut Decoder<Cursor<&[u8]>>) -> Result<GeoTransform, GisError> {
+pub fn read_geotransform(dec: &mut CogDecoder<'_>) -> Result<GeoTransform, GisError> {
     let scale = dec
         .find_tag(Tag::ModelPixelScaleTag)?
         .ok_or(GisError::MissingGeoTag {
@@ -113,7 +111,7 @@ pub fn read_geotransform(dec: &mut Decoder<Cursor<&[u8]>>) -> Result<GeoTransfor
 ///
 /// # Errors
 /// [`GisError::Tiff`] only on an underlying tag-read failure.
-pub fn read_nodata(dec: &mut Decoder<Cursor<&[u8]>>) -> Result<Option<f64>, GisError> {
+pub fn read_nodata(dec: &mut CogDecoder<'_>) -> Result<Option<f64>, GisError> {
     let Some(val) = dec.find_tag(Tag::GdalNodata)? else {
         return Ok(None);
     };

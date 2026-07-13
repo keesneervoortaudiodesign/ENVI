@@ -39,7 +39,9 @@ use geo::{Coord, LineString, Polygon};
 use envi_dgm::tin::{Tin, build_tin};
 use envi_gis::GisError;
 use envi_gis::buildings::buildings_from_overpass;
-use envi_gis::cog::{MAX_DECODED_PX, PixelWindow, Raster, decode_window_u8};
+use envi_gis::cog::plan::DEFAULT_MAX_FETCH_BYTES;
+use envi_gis::cog::sparse::{BytePart, ByteRange, CogBytes};
+use envi_gis::cog::{MAX_DECODED_PX, PixelWindow, Raster, decode_window_cog, decode_window_u8_cog};
 use envi_gis::era5::{Era5Hour, N_STABILITY, occurrence_stats_with_inv_l};
 use envi_gis::grid;
 use envi_gis::impedance::{DrawnZone, GroundSegmentation, ImportedZone, segment_ground};
@@ -57,17 +59,17 @@ use envi_gis::weather::{
 };
 
 use dto::{
-    BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, ClassOccurrenceDto, CorsDto,
-    CutProfileReq, CutProfileResult, DecodeWindowReq, DecodeWindowResult, DrawnZoneDto,
-    Era5DeriveReq, Era5DeriveResult, Era5HourDto, FriendlyWeatherReq, GeoTransformDto,
-    GroundSegmentationDto, ImportPlanReq, ImportPlanResult, ImportedZoneDto, InjectScreensReq,
-    LandcoverResult, MapLandcoverReq, MergeReq, MergeResult, ParseBuildingsReq, PixelWindowDto,
-    PlanTilesReq, PlanTilesResult, ProfileSegmentDto, ProvenanceReqDto, RawProfileDto,
-    ReceiverGridReq, ReceiverGridResult, ReprojectRingReq, ReprojectRingResult, ScreenObjectDto,
-    SegmentGroundReq, SkipReportDto, SoundSpeedProfileDto, SourceDescriptorDto, SourceKindDto,
-    TerrainFeaturesReq, TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto,
-    WeatherComponentsDto, WeatherDeriveReq, WeatherDeriveResult, WindowForBboxReq,
-    WindowForBboxResult, profile_dto,
+    BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, BytePartDto, ByteRangeDto,
+    ClassOccurrenceDto, CorsDto, CutProfileReq, CutProfileResult, DecodeWindowReq,
+    DecodeWindowResult, DrawnZoneDto, Era5DeriveReq, Era5DeriveResult, Era5HourDto,
+    FriendlyWeatherReq, GeoTransformDto, GroundSegmentationDto, ImportPlanReq, ImportPlanResult,
+    ImportedZoneDto, InjectScreensReq, LandcoverResult, MapLandcoverReq, MergeReq, MergeResult,
+    ParseBuildingsReq, PixelWindowDto, PlanCogReadsReq, PlanCogReadsResult, PlanTilesReq,
+    PlanTilesResult, ProfileSegmentDto, ProvenanceReqDto, RawProfileDto, ReceiverGridReq,
+    ReceiverGridResult, ReprojectRingReq, ReprojectRingResult, ScreenObjectDto, SegmentGroundReq,
+    SkipReportDto, SoundSpeedProfileDto, SourceDescriptorDto, SourceKindDto, TerrainFeaturesReq,
+    TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto, WeatherComponentsDto,
+    WeatherDeriveReq, WeatherDeriveResult, WindowForBboxReq, WindowForBboxResult, profile_dto,
 };
 
 // --- Marshalling helpers (the ONLY glue; no domain logic) -----------------
@@ -104,6 +106,85 @@ fn gis_err(e: GisError) -> JsValue {
 /// The effective decoded-pixel budget (override or the core default).
 fn budget(max_decoded_px: Option<u32>) -> usize {
     max_decoded_px.map_or(MAX_DECODED_PX, |v| v as usize)
+}
+
+/// The effective fetch-byte budget (override or the core default).
+fn fetch_budget(max_fetch_bytes: Option<f64>) -> Result<u64, JsValue> {
+    match max_fetch_bytes {
+        None => Ok(DEFAULT_MAX_FETCH_BYTES),
+        Some(v) => byte_count(v, "max_fetch_bytes"),
+    }
+}
+
+/// A wire `f64` byte offset/length back to an exact `u64`.
+///
+/// Byte offsets cross the wire as `f64` (a Rust `u64` would marshal as a JS
+/// `BigInt`); every COG offset in play is far below 2^53, so the value is exact —
+/// but a non-finite / negative / fractional number is a boundary error, never a
+/// silently truncated offset that would make us fetch the wrong bytes.
+fn byte_count(v: f64, what: &str) -> Result<u64, JsValue> {
+    if !v.is_finite() || v < 0.0 || v.fract() != 0.0 || v > 9_007_199_254_740_992.0 {
+        return Err(js_err(&format!(
+            "{what} must be a non-negative whole number of bytes, got {v}"
+        )));
+    }
+    Ok(v as u64)
+}
+
+/// Rebuild the sparse [`CogBytes`] view from the concatenated part bytes + the
+/// part manifest — the range-read boundary.
+///
+/// `bytes` is the parts' payloads laid end to end **in the manifest's order**
+/// (that is the contract with TS: one typed-array copy, no per-part marshalling).
+/// `parts` is `None` for the legacy whole-tile call, which is exactly the
+/// single-part-at-offset-0 case.
+fn cog_bytes<'a>(bytes: &'a [u8], parts: Option<&[BytePartDto]>) -> Result<CogBytes<'a>, JsValue> {
+    let Some(parts) = parts else {
+        return Ok(CogBytes::whole(bytes));
+    };
+    let mut cursor = 0usize;
+    let mut out = Vec::with_capacity(parts.len());
+    for p in parts {
+        let offset = byte_count(p.offset, "part offset")?;
+        let len = byte_count(p.len, "part len")? as usize;
+        let end = cursor
+            .checked_add(len)
+            .ok_or_else(|| js_err("part overflow"))?;
+        let slice = bytes.get(cursor..end).ok_or_else(|| {
+            js_err(&format!(
+                "byte parts declare {end} bytes but only {} were supplied",
+                bytes.len()
+            ))
+        })?;
+        out.push(BytePart {
+            offset,
+            bytes: slice,
+        });
+        cursor = end;
+    }
+    if cursor != bytes.len() {
+        return Err(js_err(&format!(
+            "byte parts declare {cursor} bytes but {} were supplied",
+            bytes.len()
+        )));
+    }
+    CogBytes::new(out).map_err(gis_err)
+}
+
+/// A core [`ByteRange`] from its DTO.
+fn byte_range(r: &ByteRangeDto) -> Result<ByteRange, JsValue> {
+    Ok(ByteRange {
+        start: byte_count(r.start, "range start")?,
+        end: byte_count(r.end, "range end")?,
+    })
+}
+
+/// A [`ByteRangeDto`] from a core [`ByteRange`].
+fn byte_range_dto(r: &ByteRange) -> ByteRangeDto {
+    ByteRangeDto {
+        start: r.start as f64,
+        end: r.end as f64,
+    }
 }
 
 /// A core [`PixelWindow`] from its DTO.
@@ -389,14 +470,17 @@ pub fn plan_tiles(req: JsValue) -> Result<JsValue, JsValue> {
 #[wasm_bindgen]
 pub fn window_for_bbox(tile_bytes: &[u8], req: JsValue) -> Result<JsValue, JsValue> {
     let req: WindowForBboxReq = from_js(req)?;
+    let cog = cog_bytes(tile_bytes, req.parts.as_deref())?;
     let BboxDto {
         min_lon,
         min_lat,
         max_lon,
         max_lat,
     } = req.bbox;
+    // The window resolution only reads the IFD, which always lives in the header
+    // prefix — so it works identically on a whole tile and on a range-read pack.
     let window = tiles::window_for_bbox(
-        tile_bytes,
+        cog.header_prefix(),
         Bbox {
             min_lon,
             min_lat,
@@ -409,6 +493,58 @@ pub fn window_for_bbox(tile_bytes: &[u8], req: JsValue) -> Result<JsValue, JsVal
     .map_err(gis_err)?;
     to_js(&WindowForBboxResult {
         window: window.map(pixel_window_dto),
+    })
+}
+
+/// **Plan the windowed range read of a COG tile** (the fix for the whole-tile GET):
+/// given the tile's fetched header prefix, return the pixel window of the viewport
+/// AND exactly the byte ranges of the internal COG tiles that window overlaps,
+/// minus whatever the caller's OPFS cache already holds (delegates to
+/// `envi_gis::tiles::plan_cog_reads`).
+///
+/// `envi-gis` performs no I/O: this says *which bytes*; TypeScript issues the
+/// `Range` GETs and caches them. A header prefix too short to hold the IFD comes
+/// back as `need_header: n` — fetch `0..n` and call again (the ask converges and is
+/// capped, so it can never degenerate into downloading the file).
+///
+/// # Errors
+/// A shape error, or any [`GisError`] — notably `FetchBudgetExceeded` (the window's
+/// chunks exceed the byte budget) and `HeaderTooLarge`.
+#[wasm_bindgen]
+pub fn plan_cog_reads(header_bytes: &[u8], req: JsValue) -> Result<JsValue, JsValue> {
+    let req: PlanCogReadsReq = from_js(req)?;
+    let BboxDto {
+        min_lon,
+        min_lat,
+        max_lon,
+        max_lat,
+    } = req.bbox;
+    let have: Vec<ByteRange> = req
+        .have
+        .iter()
+        .map(byte_range)
+        .collect::<Result<_, JsValue>>()?;
+    let plan = tiles::plan_cog_reads(
+        header_bytes,
+        Bbox {
+            min_lon,
+            min_lat,
+            max_lon,
+            max_lat,
+        },
+        terrain_source_crs(req.source_crs),
+        budget(req.max_decoded_px),
+        fetch_budget(req.max_fetch_bytes)?,
+        &have,
+    )
+    .map_err(gis_err)?;
+    to_js(&PlanCogReadsResult {
+        need_header: plan.need_header.map(|n| n as f64),
+        window: plan.window.map(pixel_window_dto),
+        fetch: plan.fetch.iter().map(byte_range_dto).collect(),
+        fetch_bytes: plan.fetch_bytes as f64,
+        window_bytes: plan.window_bytes as f64,
+        chunks: plan.chunks as u32,
     })
 }
 
@@ -434,12 +570,9 @@ pub fn reproject_ring(req: JsValue) -> Result<JsValue, JsValue> {
 #[wasm_bindgen]
 pub fn decode_window(tile_bytes: &[u8], req: JsValue) -> Result<JsValue, JsValue> {
     let req: DecodeWindowReq = from_js(req)?;
-    let raster = envi_gis::cog::decode_window(
-        tile_bytes,
-        pixel_window(req.window),
-        budget(req.max_decoded_px),
-    )
-    .map_err(gis_err)?;
+    let cog = cog_bytes(tile_bytes, req.parts.as_deref())?;
+    let raster = decode_window_cog(&cog, pixel_window(req.window), budget(req.max_decoded_px))
+        .map_err(gis_err)?;
     to_js(&raster_dto(&raster))
 }
 
@@ -451,12 +584,9 @@ pub fn decode_window(tile_bytes: &[u8], req: JsValue) -> Result<JsValue, JsValue
 #[wasm_bindgen]
 pub fn terrain_features(tile_bytes: &[u8], req: JsValue) -> Result<JsValue, JsValue> {
     let req: TerrainFeaturesReq = from_js(req)?;
-    let raster = envi_gis::cog::decode_window(
-        tile_bytes,
-        pixel_window(req.window),
-        budget(req.max_decoded_px),
-    )
-    .map_err(gis_err)?;
+    let cog = cog_bytes(tile_bytes, req.parts.as_deref())?;
+    let raster = decode_window_cog(&cog, pixel_window(req.window), budget(req.max_decoded_px))
+        .map_err(gis_err)?;
     let provenance = build_provenance(&req.provenance)?;
     let crs = terrain_source_crs(req.source_crs);
     let feats =
@@ -476,12 +606,9 @@ pub fn terrain_features(tile_bytes: &[u8], req: JsValue) -> Result<JsValue, JsVa
 #[wasm_bindgen]
 pub fn sample_base_elevation(tile_bytes: &[u8], req: JsValue) -> Result<JsValue, JsValue> {
     let req: BaseElevationReq = from_js(req)?;
-    let raster = envi_gis::cog::decode_window(
-        tile_bytes,
-        pixel_window(req.window),
-        budget(req.max_decoded_px),
-    )
-    .map_err(gis_err)?;
+    let cog = cog_bytes(tile_bytes, req.parts.as_deref())?;
+    let raster = decode_window_cog(&cog, pixel_window(req.window), budget(req.max_decoded_px))
+        .map_err(gis_err)?;
     let base = base_elevation_on_raster(&req.ring, req.max_spacing_m, &raster);
     to_js(&BaseElevationResult {
         base_elevation_m: base,
@@ -497,12 +624,9 @@ pub fn sample_base_elevation(tile_bytes: &[u8], req: JsValue) -> Result<JsValue,
 #[wasm_bindgen]
 pub fn map_landcover(tile_bytes: &[u8], req: JsValue) -> Result<JsValue, JsValue> {
     let req: MapLandcoverReq = from_js(req)?;
-    let raster = decode_window_u8(
-        tile_bytes,
-        pixel_window(req.window),
-        budget(req.max_decoded_px),
-    )
-    .map_err(gis_err)?;
+    let cog = cog_bytes(tile_bytes, req.parts.as_deref())?;
+    let raster = decode_window_u8_cog(&cog, pixel_window(req.window), budget(req.max_decoded_px))
+        .map_err(gis_err)?;
     let provenance = build_provenance(&req.provenance)?;
     let feats = vectorize_landcover(
         &raster,

@@ -37,6 +37,8 @@ export const CONTROL_IDS = [
 
   // --- Property inspector + per-kind fields (Phase 7/8 — WEB-02/04/08/09) ---
   "inspector.panel",
+  "building.eaves_height",
+  "wall.height",
   "wall.semi_transparent",
   "wall.isolation_spectrum",
   "elevation_point.z",

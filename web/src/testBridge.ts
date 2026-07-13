@@ -269,6 +269,11 @@ export interface EnviTestBridge {
   };
   // Merge a non-geometric property patch into a feature (a committed inspector edit path).
   update(id: string, patch: Record<string, unknown>): void;
+  // Select a feature (the same store selection a map click sets) so the inspector renders IT. Lets a spec
+  // switch between two committed objects and assert each shows its OWN properties.
+  select(id: string | null): void;
+  // A feature's non-geometric properties (assertions on what an inspector edit actually committed).
+  properties(id: string): Record<string, unknown>;
   // Open a project (id + display name) — the Delete-project dialog compares the typed name to this.
   openProject(id: string, name: string): void;
   // Close the current project (route to the empty/no-project state) — the SC4 close-before-reopen step.
@@ -461,6 +466,12 @@ export function installTestBridge(): void {
     },
     update(id, patch) {
       useSceneStore.getState().updateProperties(id, patch);
+    },
+    select(id) {
+      useSceneStore.getState().select(id);
+    },
+    properties(id) {
+      return { ...(useSceneStore.getState().features[id]?.properties ?? {}) } as Record<string, unknown>;
     },
     openProject(id, name) {
       useSceneStore.getState().setProject(id, name);

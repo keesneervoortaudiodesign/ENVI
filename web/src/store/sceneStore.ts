@@ -420,11 +420,17 @@ export const useSceneStore = create<SceneState>((set, get) => ({
       if (!existing) {
         return {};
       }
+      // D-09 merge guard: an inspector edit of an IMPORTED feature flags it `user_modified`, so a later
+      // re-import cannot overwrite the value the user just fixed (e.g. a corrected building eaves height
+      // whose imported provenance was the guessed `default` tier). Purely additive — a hand-drawn feature
+      // (no `imported` flag) is untouched.
+      const wasImported = (existing.properties as Record<string, unknown> | null)?.["imported"] === true;
+      const guard: KindProps = wasImported ? { user_modified: true } : {};
       const features: Record<string, GeoJSONStoreFeatures> = {
         ...state.features,
         [id]: {
           ...existing,
-          properties: { ...existing.properties, ...patch },
+          properties: { ...existing.properties, ...patch, ...guard },
         } as GeoJSONStoreFeatures,
       };
       // Clear the "inherited" marker on every edited field (the chip clears on edit, WEB-04).

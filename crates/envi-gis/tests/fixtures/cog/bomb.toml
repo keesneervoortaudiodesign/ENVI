@@ -2,7 +2,7 @@
 # Decompression bomb: huge IFD dims, tiny file. Reject-before-decode case.
 
 [meta]
-provenance = "gen_cog_fixtures.py sha256:72d73dea76118304"
+provenance = "gen_cog_fixtures.py sha256:b720b5d995f02a8e"
 fixture = "bomb.tif"
 width = 2048
 height = 2048

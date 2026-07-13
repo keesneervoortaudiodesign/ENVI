@@ -15,19 +15,26 @@
 //!   pixel (never a guessed clamp).
 //! - **Invariant (load-bearing):** sans-I/O and no-panic. Tile names for the
 //!   integer-grid sources (GLO-30 1°, WorldCover 3°) are computed here; AHN
-//!   kaartblad names come from the committed [`registry::AHN_INDEX_TOML`] parsed
-//!   by a tiny hand-rolled line reader — **no `toml`/`serde` runtime dependency**
-//!   (the dep-quarantine banner in `Cargo.toml` stays intact; the parse is pure
-//!   over an `include_str!`ed blob, WASM-safe). Buildings (Overpass) are a
+//!   kaartblad names come from the committed index ([`registry::ahn_tiles_for`],
+//!   parsed from [`registry::AHN_INDEX_TOML`] with a hand-rolled line reader —
+//!   **no `toml`/`serde` runtime dependency**). Buildings (Overpass) are a
 //!   bbox-query, not a tile grid, so they carry no [`TileRef`] here — TS builds
 //!   the Overpass query from the viewport directly.
+//! - **Invariant (load-bearing, DATA-01):** the terrain tiles [`plan_tiles`]
+//!   returns ALWAYS belong to [`registry::terrain_source`] for the same viewport —
+//!   one selection, used by both. That is what keeps the descriptor TS reads (CRS,
+//!   CORS mode, DTM/DSM badge) in step with the tiles it is handed, and it is why
+//!   the GLO-30 fallback lives in `terrain_source` (which gates on a real
+//!   kaartblad) rather than being patched in here.
 
 use envi_geo::{LonLat, RdNewCrs};
 
 use crate::GisError;
+use crate::cog::plan::{self, ReadPlan};
+use crate::cog::sparse::{ByteRange, CogBytes};
 use crate::cog::window::{PixelWindow, bbox_to_pixel_window};
 use crate::cog::{MAX_DECODED_PX, geo_tags, header};
-use crate::registry::{self, Bbox, SourceDescriptor};
+use crate::registry::{self, Bbox, SourceDescriptor, reproject_bbox_to_rd};
 use crate::terrain::TerrainSourceCrs;
 
 /// One covering source tile: everything TS needs to fetch + provenance-stamp it.
@@ -60,9 +67,10 @@ pub struct ImportTiles {
 
 /// Enumerate the covering source tiles for a WGS84 viewport `bbox` (D-04 / D-06).
 ///
-/// Terrain uses [`registry::terrain_source`] (AHN inside its coverage hull, else
-/// GLO-30); land cover is always WorldCover. Names for the integer-grid sources
-/// are computed here; AHN names come from the committed kaartblad index.
+/// Terrain uses [`registry::terrain_source`] (AHN where a real kaartblad covers
+/// the viewport, else the global GLO-30 DSM); land cover is always WorldCover.
+/// Names for the integer-grid sources are computed here; AHN names come from the
+/// committed kaartblad index.
 #[must_use]
 pub fn plan_tiles(bbox: Bbox) -> ImportTiles {
     let terrain_src = registry::terrain_source(bbox);
@@ -102,9 +110,10 @@ pub fn window_for_bbox(
     source_crs: TerrainSourceCrs,
     max_decoded_px: usize,
 ) -> Result<Option<PixelWindow>, GisError> {
+    let cog = CogBytes::whole(tile_bytes);
     // Cap the IFD chain up front (T-08-02-02), mirroring `decode_window`.
-    header::guard_image_count(tile_bytes)?;
-    let mut dec = header::open(tile_bytes)?;
+    header::guard_image_count(&cog)?;
+    let mut dec = header::open_cog(&cog)?;
     let hdr = header::read_header(&mut dec)?;
     let geo = geo_tags::read_geotransform(&mut dec)?;
 
@@ -142,6 +151,103 @@ pub fn window_for_bbox(
 #[must_use]
 pub fn default_budget() -> usize {
     MAX_DECODED_PX
+}
+
+// --- windowed COG range planning (the TS-facing two-pass entry point) --------
+
+/// The complete plan for range-reading ONE viewport out of ONE COG tile: what the
+/// TS orchestrator must fetch, and the window it will then decode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CogReadPlan {
+    /// `Some(n)` ⇒ the header prefix supplied was too short: fetch bytes `0..n`
+    /// and plan again (converges — see [`crate::cog::plan`] invariant 2).
+    pub need_header: Option<u64>,
+    /// The pixel window of the viewport inside this tile — `None` when the
+    /// viewport covers no in-image pixel centre (the tile is adjacent, not
+    /// overlapping; never a guessed clamp). Nothing is fetched in that case.
+    pub window: Option<PixelWindow>,
+    /// The byte ranges still to fetch, sorted + coalesced, already minus the
+    /// caller's cached ranges. EMPTY when the cache covers the window — the
+    /// DATA-04 network-off replay.
+    pub fetch: Vec<ByteRange>,
+    /// Bytes in [`CogReadPlan::fetch`].
+    pub fetch_bytes: u64,
+    /// Bytes of every chunk the window needs, cached or not (the honest footprint
+    /// of the window in the file — the number to compare against the whole-tile
+    /// size when judging the range read).
+    pub window_bytes: u64,
+    /// How many COG chunks the window overlaps.
+    pub chunks: usize,
+}
+
+/// Plan the windowed range read of `bbox` out of the COG whose leading bytes are
+/// `header_prefix`: resolve the viewport to a pixel window through the tile's IFD
+/// geometry (reprojecting into `source_crs` via [`envi_geo`], GEOX-04), then emit
+/// exactly the byte ranges of the chunks that window overlaps, minus the `have`
+/// ranges the caller already holds.
+///
+/// This is the ONE call the TypeScript import path makes before fetching: it
+/// replaces the whole-tile GET that made an Amsterdam terrain import download
+/// 330 MB. `envi-gis` still performs NO I/O — it only says *which bytes*.
+///
+/// # Errors
+/// - [`GisError::HeaderTooLarge`] — the header exceeds [`plan::MAX_HEADER_BYTES`].
+/// - [`GisError::FetchBudgetExceeded`] — the window's chunks exceed `max_fetch_bytes`.
+/// - [`GisError::DecodeBudgetExceeded`] — the window exceeds `max_decoded_px`.
+/// - [`GisError::Reproject`] — the RD-New reprojection failed.
+/// - [`GisError::Tiff`] / [`GisError::MissingGeoTag`] / [`GisError::InvalidGeoTransform`]
+///   / [`GisError::TooManyImages`] — from the IFD read.
+pub fn plan_cog_reads(
+    header_prefix: &[u8],
+    bbox: Bbox,
+    source_crs: TerrainSourceCrs,
+    max_decoded_px: usize,
+    max_fetch_bytes: u64,
+    have: &[ByteRange],
+) -> Result<CogReadPlan, GisError> {
+    // (1) Header-fit FIRST: everything below reads IFD-declared geometry, so the
+    //     IFD must be fully present before any of it can be trusted.
+    if let Some(need) = plan::header_needed_bytes(header_prefix)? {
+        return Ok(CogReadPlan {
+            need_header: Some(need),
+            window: None,
+            fetch: Vec::new(),
+            fetch_bytes: 0,
+            window_bytes: 0,
+            chunks: 0,
+        });
+    }
+
+    // (2) The viewport -> pixel window, through the tile's own geotransform. This
+    //     also enforces `max_decoded_px` (T-08-02-01) — an oversized viewport is
+    //     rejected BEFORE a single byte is fetched, not after.
+    let Some(window) = window_for_bbox(header_prefix, bbox, source_crs, max_decoded_px)? else {
+        return Ok(CogReadPlan {
+            need_header: None,
+            window: None,
+            fetch: Vec::new(),
+            fetch_bytes: 0,
+            window_bytes: 0,
+            chunks: 0,
+        });
+    };
+
+    // (3) The window -> its chunks' byte ranges, minus what the caller caches.
+    let ReadPlan {
+        need_header,
+        fetch,
+        fetch_bytes,
+        window_bytes,
+        chunks,
+    } = plan::plan_window_reads(header_prefix, window, have, max_fetch_bytes)?;
+    Ok(CogReadPlan {
+        need_header,
+        window: Some(window),
+        fetch,
+        fetch_bytes,
+        window_bytes,
+        chunks,
+    })
 }
 
 /// Reproject a WGS84 `[lon, lat]` ring into a terrain tile's `source_crs` so it
@@ -182,105 +288,18 @@ pub fn reproject_ring_to_source(
 
 // --- AHN kaartblad enumeration (committed index, no runtime toml dep) --------
 
-/// A parsed AHN kaartblad row: tile name + its RD New (EPSG:28992) bbox.
-#[derive(Debug, Clone, PartialEq)]
-struct AhnTile {
-    name: String,
-    min_x: f64,
-    min_y: f64,
-    max_x: f64,
-    max_y: f64,
-}
-
-/// Parse the committed [`registry::AHN_INDEX_TOML`] into kaartblad rows with a
-/// tiny hand-rolled line reader — NO `toml`/`serde` runtime dependency (the
-/// dep-quarantine banner stays intact). The format is regular: `[[tile]]` opens a
-/// row, then `name = "M_.."` + four `rd_*` floats. The `[meta]` table and any
-/// malformed/partial row are skipped (never a panic on data).
-fn parse_ahn_index() -> Vec<AhnTile> {
-    let mut tiles = Vec::new();
-    let mut name: Option<String> = None;
-    let mut min_x: Option<f64> = None;
-    let mut min_y: Option<f64> = None;
-    let mut max_x: Option<f64> = None;
-    let mut max_y: Option<f64> = None;
-
-    let flush = |tiles: &mut Vec<AhnTile>,
-                 name: &mut Option<String>,
-                 min_x: &mut Option<f64>,
-                 min_y: &mut Option<f64>,
-                 max_x: &mut Option<f64>,
-                 max_y: &mut Option<f64>| {
-        // `take()` clears every field regardless; a complete row is pushed, an
-        // incomplete one is simply dropped (its fields already reset to `None`).
-        if let (Some(n), Some(a), Some(b), Some(c), Some(d)) = (
-            name.take(),
-            min_x.take(),
-            min_y.take(),
-            max_x.take(),
-            max_y.take(),
-        ) {
-            tiles.push(AhnTile {
-                name: n,
-                min_x: a,
-                min_y: b,
-                max_x: c,
-                max_y: d,
-            });
-        }
-    };
-
-    for raw in registry::AHN_INDEX_TOML.lines() {
-        let line = raw.trim();
-        if line.starts_with('#') || line.is_empty() {
-            continue;
-        }
-        if line.starts_with('[') {
-            // A new table (`[[tile]]` or `[meta]`) closes the current row.
-            flush(
-                &mut tiles, &mut name, &mut min_x, &mut min_y, &mut max_x, &mut max_y,
-            );
-            continue;
-        }
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        let (key, value) = (key.trim(), value.trim());
-        match key {
-            "name" => name = Some(value.trim_matches('"').to_string()),
-            "rd_min_x" => min_x = value.parse().ok(),
-            "rd_min_y" => min_y = value.parse().ok(),
-            "rd_max_x" => max_x = value.parse().ok(),
-            "rd_max_y" => max_y = value.parse().ok(),
-            _ => {}
-        }
-    }
-    // Flush the final row (the file does not end on a new table header).
-    flush(
-        &mut tiles, &mut name, &mut min_x, &mut min_y, &mut max_x, &mut max_y,
-    );
-    tiles
-}
-
-/// AHN covering tiles: reproject the WGS84 viewport to RD, then select every
-/// kaartblad whose RD bbox intersects it. A reprojection failure yields no tiles
-/// (the layer reports empty rather than panicking); the WGS84 coverage hull
-/// already gated AHN selection, so this is the exact-tile refinement.
+/// AHN covering tiles: the kaartbladen the committed index resolves for the
+/// viewport ([`registry::ahn_tiles_for`] — the SAME lookup [`registry::terrain_source`]
+/// gates on), turned into fetchable [`TileRef`]s. Non-empty whenever AHN was
+/// selected at all; a viewport with no kaartblad never reaches here (it was
+/// resolved to GLO-30 upstream).
 fn ahn_tiles(bbox: Bbox, desc: &SourceDescriptor) -> Vec<TileRef> {
-    let Ok((min_x, min_y, max_x, max_y)) = reproject_bbox_to_rd(bbox) else {
-        return Vec::new();
-    };
-    parse_ahn_index()
+    registry::ahn_tiles_for(bbox)
         .into_iter()
-        .filter(|t| {
-            intersects(
-                t.min_x, t.min_y, t.max_x, t.max_y, min_x, min_y, max_x, max_y,
-            )
-        })
         .map(|t| TileRef {
             source_id: desc.id,
             url: desc.endpoint_template.replace("{tile}", &t.name),
-            tile: t.name,
+            tile: t.name.clone(),
         })
         .collect()
 }
@@ -353,57 +372,6 @@ fn ew_label(lon: i64, width: usize) -> String {
     format!("{hemi}{:0width$}", lon.abs(), width = width)
 }
 
-// --- Shared geometry helpers ------------------------------------------------
-
-/// Reproject a WGS84 viewport to an axis-aligned RD New (EPSG:28992) bbox by
-/// transforming its four corners and taking the extent (sterea is near-conformal
-/// over NL, so the corner extent bounds the reprojected rectangle). Reprojection
-/// is the single `envi_geo` boundary (GEOX-04).
-fn reproject_bbox_to_rd(bbox: Bbox) -> Result<(f64, f64, f64, f64), GisError> {
-    let crs = RdNewCrs::new().map_err(|e| GisError::Reproject {
-        message: e.to_string(),
-    })?;
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    for (lon, lat) in [
-        (bbox.min_lon, bbox.min_lat),
-        (bbox.min_lon, bbox.max_lat),
-        (bbox.max_lon, bbox.min_lat),
-        (bbox.max_lon, bbox.max_lat),
-    ] {
-        let p = crs
-            .to_rd(LonLat {
-                lon_deg: lon,
-                lat_deg: lat,
-            })
-            .map_err(|e| GisError::Reproject {
-                message: e.to_string(),
-            })?;
-        min_x = min_x.min(p.x_m);
-        min_y = min_y.min(p.y_m);
-        max_x = max_x.max(p.x_m);
-        max_y = max_y.max(p.y_m);
-    }
-    Ok((min_x, min_y, max_x, max_y))
-}
-
-/// Whether two axis-aligned bboxes `a` and `b` overlap (closed intervals).
-#[allow(clippy::too_many_arguments)]
-fn intersects(
-    a_min_x: f64,
-    a_min_y: f64,
-    a_max_x: f64,
-    a_max_y: f64,
-    b_min_x: f64,
-    b_min_y: f64,
-    b_max_x: f64,
-    b_max_y: f64,
-) -> bool {
-    a_min_x <= b_max_x && a_max_x >= b_min_x && a_min_y <= b_max_y && a_max_y >= b_min_y
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -426,13 +394,15 @@ mod tests {
         }
     }
 
-    #[test]
-    fn ahn_index_parses_at_runtime_without_toml() {
-        let tiles = parse_ahn_index();
-        assert!(!tiles.is_empty(), "committed AHN index must parse to rows");
-        for t in &tiles {
-            assert!(t.name.starts_with("M_"), "AHN name: {}", t.name);
-            assert!(t.max_x > t.min_x && t.max_y > t.min_y, "ordered bbox");
+    /// The exact viewport of the failing in-browser import (Amsterdam centre,
+    /// Dam Square / Nieuwmarkt), which planned ZERO terrain tiles and so never
+    /// issued a single network request ("No terrain tiles cover this viewport").
+    fn amsterdam_centre() -> Bbox {
+        Bbox {
+            min_lon: 4.894,
+            min_lat: 52.363,
+            max_lon: 4.914,
+            max_lat: 52.373,
         }
     }
 
@@ -446,13 +416,53 @@ mod tests {
             max_lat: 52.40,
         };
         let tiles = ahn_tiles(bbox, registry::source("ahn4-dtm").unwrap());
-        // The Amsterdam viewport may or may not hit the subset; assert the URL
-        // shape whenever a tile is planned (no `{tile}` slot left unfilled).
+        assert!(!tiles.is_empty(), "an NL viewport must resolve kaartbladen");
         for t in &tiles {
             assert_eq!(t.source_id, "ahn4-dtm");
             assert!(t.url.starts_with("https://service.pdok.nl/"), "{}", t.url);
             assert!(!t.url.contains("{tile}"), "slot filled: {}", t.url);
             assert!(t.url.contains(&t.tile), "url names its tile: {}", t.url);
+        }
+    }
+
+    /// REGRESSION (the reported defect): the real Amsterdam-centre viewport must
+    /// plan a NON-EMPTY terrain tile list. Before the fix the committed kaartblad
+    /// index held only a 9-tile "representative subset" with fabricated RD
+    /// bboxes — no tile intersected Amsterdam, `plan_tiles` returned zero terrain
+    /// tiles, and the import died before it ever hit the network.
+    #[test]
+    fn amsterdam_centre_viewport_plans_the_real_ahn_kaartblad() {
+        let plan = plan_tiles(amsterdam_centre());
+        assert!(
+            !plan.terrain.is_empty(),
+            "Amsterdam must plan terrain tiles (it planned zero — the reported bug)"
+        );
+        assert!(plan.terrain.iter().all(|t| t.source_id == "ahn4-dtm"));
+        // Amsterdam centre sits in kaartblad M_25GN1 (RD 120000..125000 x
+        // 481250..487500) — verified live against the PDOK download endpoint.
+        assert!(
+            plan.terrain.iter().any(|t| t.tile == "M_25GN1"),
+            "expected M_25GN1, got {:?}",
+            plan.terrain.iter().map(|t| &t.tile).collect::<Vec<_>>()
+        );
+        // And the land-cover tile the same viewport needs.
+        assert_eq!(plan.landcover.len(), 1);
+        assert_eq!(plan.landcover[0].tile, "N51E003");
+    }
+
+    /// The tile plan and the descriptor TS reads MUST come from one selection —
+    /// otherwise TS fetches GLO-30 bytes with AHN's CRS/CORS. Pin that they agree.
+    #[test]
+    fn planned_terrain_tiles_always_belong_to_the_selected_terrain_source() {
+        for bbox in [amsterdam_centre(), berlin(), amsterdam()] {
+            let src = registry::terrain_source(bbox);
+            let plan = plan_tiles(bbox);
+            assert!(!plan.terrain.is_empty(), "every viewport plans terrain");
+            assert!(
+                plan.terrain.iter().all(|t| t.source_id == src.id),
+                "tiles must belong to the selected source {}",
+                src.id
+            );
         }
     }
 

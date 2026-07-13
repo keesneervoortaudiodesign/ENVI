@@ -272,17 +272,49 @@ npm run build        # both wasm crates + typecheck + vite build → web/dist/
 `wasm-bindgen-cli` must match the pinned `wasm-bindgen` version (`=0.2.126`) in
 lockstep, or the generated glue will not load.
 
+### Frontend dev server (needs the backend running)
+
+```sh
+cargo run -p envi-service      # terminal 1 — the real API on 127.0.0.1:8080
+cd web && npm run dev          # terminal 2 — Vite on :5174, proxying /api → :8080
+```
+
+The Vite dev server has **no backend of its own**, so `vite.config.ts` proxies `/api` to a
+locally-running `envi-service`. Without it, `/api/v1/proxy/**` — the byte relay for the two
+CORS-blocked S3 sources (GLO-30, WorldCover) — 404s, and a GIS import loses those layers in dev
+while working perfectly in the built bundle. (The dev server is also the only place
+`window.__enviTest` exists; the production bundle strips it.)
+
 Frontend tests:
 
 ```sh
-npm run test:unit    # Vitest (incl. the help-coverage and no-acoustic-math gates)
-npm run test:e2e     # Playwright — drives the REAL bundle + real WASM, fully offline
+npm run test:unit       # Vitest (incl. the help-coverage and no-acoustic-math gates)
+npm run test:e2e        # Playwright — the REAL bundle + real WASM, fully offline
+npm run test:e2e:journey  # just the full end-to-end journey (skips the focused specs)
+npm run test:e2e:live     # OPT-IN: the only spec that touches the real internet
 ```
 
-The dark OpenFreeMap basemap (MIT, no API key) is fetched from the network **at
-runtime** in the browser; the Playwright UAT, by contrast, route-intercepts the
-basemap and every `/api/v1` call, so the suite runs with **zero egress** — including
-a real threaded-WASM solve whose results feed the spectrum panel and isophone map.
+`npm run test:e2e` runs two **sequenced** Playwright projects. `specs` holds the
+focused per-feature specs (parallel, 4 workers); `journey` then runs
+`full-journey.spec.ts` — one continuous offline session that imports GIS + weather,
+authors every object kind, runs a **genuine threaded-WASM Nord2000 solve**, and reads
+back spectra, the isophone map, interactive conditioning, scenarios and exports. The
+journey is sequenced *after* the others rather than run alongside them because its
+`wasm-bindgen-rayon` pool saturates every core and starves the other specs'
+software-WebGL map contexts into spurious timeouts.
+
+The journey **hard-fails** (never skips) if the threaded pool does not start — a
+regression in the shared-memory WASM build must go red, not quietly green.
+
+Everything above runs with **zero network egress**: the basemap, every `/api/v1` call,
+and all four third-party GIS/weather sources are route-intercepted and served from
+committed fixtures. That hermetic discipline has one blind spot — it proves ENVI still
+*parses* what was recorded, not that it still *asks the right question* of a live API.
+`npm run test:e2e:live` closes it: an opt-in smoke (its own config; the default suite
+`testIgnore`s it, so it cannot run by accident) that hits the real OpenFreeMap basemap
+and the real Open-Meteo API — keyless, no credentials — and fails if an upstream URL,
+parameter or response shape has drifted.
+
 All frontend tooling is a `devDependency` only — none of it ships in `web/dist`.
 
 ## Why phase-preserving? (the fast-recalc tensor)
@@ -357,14 +389,37 @@ size cap). Everything else the browser fetches directly.
 | 10 | **Calculation service** — submit/progress/abort + cost estimate; chunked, memory-bounded OPFS tensor store; threaded-WASM solve | ✅ complete |
 | 11 | **Results & fast recalc** — spectra, isophone maps, interactive MAC conditioning, named what-if scenarios + diff maps, exports, help | ✅ code-complete (completion gates pending) |
 
-**Known refinements (open, non-blocking).** A solve currently produces
-**propagation-transfer** levels with auto-fitted colour breaks; absolute EU-END
-`L_den` bands await a source **emission/SWL** model (deferred with the FORCE
-coefficient blocker). The solved scene is a flat-homogeneous approximation of the
-drawn terrain/impedance — per-path terrain derivation from the DGM is deferred — and
-the scenario **difference map** is still fixture-driven pending the same. Also
-deferred beyond Milestone 2: `L_den` weather-class statistics, variable wall height,
-rail emission, DXF/SketchUp import, 2.5D BEM barrier corrections, SOFA directivity.
+## Milestone 3 — Solve the Real Scene (planned)
+
+**The drawn scene does not yet reach the solver.** `web/src/compute/marshalScene.ts` marshals
+a flat homogeneous corridor (`weather`/`forest`/`isolation` = `null`, no screens, a 2-point
+profile with a hardcoded σ), so **a wall, forest, ground zone, terrain or imported weather
+you draw cannot change the computed numbers.** Everything else about them is real — they are
+stored, styled, validated, persisted — but the solve ignores them.
+
+The wire is not the blocker: `PrepareSolveReq` already carries terrain/weather/forest/isolation,
+`PreparedScene` already threads them into the engine, and the Phase-9 extractors (`cut_profile`,
+`segment_ground`, `inject_screens`, `receiver_grid`, per-azimuth A/B/C) all exist and are
+wasm-exported. They are simply **dangling**. The two real gaps: the marshaller never reads the
+scene, and the wire carries **one profile per tensor** where the physics needs **one per path**.
+
+Closing it honestly also means paying two engine debts:
+
+| | Debt | Why it is unavoidable |
+|---|------|----------------------|
+| **ENG-11** | Sub-Model 3 convex / equivalent-wedge segments (§5.12) | Real undulating terrain trips `ConvexSegmentNotImplemented` on any hillcrest — "import terrain and solve" fails until this exists |
+| **ENG-12** | Refracted screen diffraction (Sub-Models 4/5/6 shadow-zone branches) | With weather set, **any screened path hard-errors by design**. A silently unrefracted screen — or a mixed tensor with weather on ground paths but not screen paths — is a **false result**, forbidden by the honest-green rule. There is no cheap path through it |
+
+Phases 12–17, requirements SOLV-01..07 + ENG-11/12 — see [`.planning/ROADMAP.md`](.planning/ROADMAP.md).
+
+**Other known limits.** A solve currently produces **propagation-transfer** levels with auto-fitted
+colour breaks; absolute EU-END `L_den` bands await a source **emission/SWL** model (deferred with the
+FORCE coefficient blocker), and the scenario **difference map** is still fixture-driven pending the
+same. Deferred beyond Milestone 2: `L_den` weather-class statistics, variable wall height, rail
+emission, DXF/SketchUp import, 2.5D BEM barrier corrections, SOFA directivity.
+
+> **Everything unfinished lives in one place: [`.planning/OPEN-ITEMS.md`](.planning/OPEN-ITEMS.md)** —
+> the exhaustive ledger, verified against the tree. If it is not in there, it does not exist.
 
 **Stack:** axum 0.8 / tokio / rayon backend; pure-Rust `proj4rs` / `spade` / `geo` /
 `tiff` (no GDAL/PROJ C toolchain anywhere); MapLibre GL JS 5 + react-map-gl 8 +

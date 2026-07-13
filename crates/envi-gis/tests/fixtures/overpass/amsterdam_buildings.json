@@ -1,0 +1,339 @@
+{
+ "version": 0.6,
+ "generator": "Overpass API 0.7.62 (trimmed REAL capture: Amsterdam centre bbox 4.894,52.363,4.914,52.373)",
+ "elements": [
+  {
+   "type": "way",
+   "id": 31980601,
+   "geometry": [
+    {
+     "lat": 52.3714764,
+     "lon": 4.912752
+    },
+    {
+     "lat": 52.3713683,
+     "lon": 4.9127083
+    },
+    {
+     "lat": 52.3713832,
+     "lon": 4.9126651
+    },
+    {
+     "lat": 52.3714257,
+     "lon": 4.9125927
+    },
+    {
+     "lat": 52.3715311,
+     "lon": 4.9124162
+    },
+    {
+     "lat": 52.3715674,
+     "lon": 4.9124772
+    },
+    {
+     "lat": 52.3714764,
+     "lon": 4.912752
+    }
+   ],
+   "tags": {
+    "building": "yes",
+    "height": "14.5",
+    "ref:bag": "0363100012180470",
+    "source": "BAG",
+    "source:date": "2014-03-24",
+    "source:height": "3DBAG",
+    "source:height:date": "2025-09-03",
+    "start_date": "1996",
+    "wikidata": "Q114876234",
+    "wikimedia_commons": "Category:Prins Hendrikkade 600, Amsterdam",
+    "wikipedia": "nl:Prins Hendrikkade 600"
+   }
+  },
+  {
+   "type": "way",
+   "id": 45038620,
+   "geometry": [
+    {
+     "lat": 52.369278,
+     "lon": 4.9112465
+    },
+    {
+     "lat": 52.3691113,
+     "lon": 4.9109888
+    },
+    {
+     "lat": 52.3689337,
+     "lon": 4.9107127
+    },
+    {
+     "lat": 52.3691091,
+     "lon": 4.910411
+    },
+    {
+     "lat": 52.3691417,
+     "lon": 4.9103543
+    },
+    {
+     "lat": 52.3694319,
+     "lon": 4.9108042
+    },
+    {
+     "lat": 52.369279,
+     "lon": 4.9112479
+    },
+    {
+     "lat": 52.369278,
+     "lon": 4.9112465
+    }
+   ],
+   "tags": {
+    "building": "apartments",
+    "height": "20.1",
+    "name": "Botania",
+    "ref:bag": "0363100012164954",
+    "source": "BAG",
+    "source:date": "2014-03-24",
+    "source:height": "3DBAG",
+    "source:height:date": "2025-09-03",
+    "start_date": "2002"
+   }
+  },
+  {
+   "type": "way",
+   "id": 266922821,
+   "geometry": [
+    {
+     "lat": 52.3687866,
+     "lon": 4.8962023
+    },
+    {
+     "lat": 52.3687587,
+     "lon": 4.8961762
+    },
+    {
+     "lat": 52.3687122,
+     "lon": 4.8961302
+    },
+    {
+     "lat": 52.3687716,
+     "lon": 4.8959665
+    },
+    {
+     "lat": 52.368846,
+     "lon": 4.8960385
+    },
+    {
+     "lat": 52.3688139,
+     "lon": 4.8961271
+    },
+    {
+     "lat": 52.3687866,
+     "lon": 4.8962023
+    }
+   ],
+   "tags": {
+    "building": "apartments",
+    "building:levels": "3",
+    "ref:bag": "0363100012171162",
+    "source": "BAG",
+    "source:date": "2014-02-11",
+    "start_date": "1988"
+   }
+  },
+  {
+   "type": "way",
+   "id": 266927355,
+   "geometry": [
+    {
+     "lat": 52.3680879,
+     "lon": 4.8964136
+    },
+    {
+     "lat": 52.368016,
+     "lon": 4.8966254
+    },
+    {
+     "lat": 52.3679903,
+     "lon": 4.8966019
+    },
+    {
+     "lat": 52.3680128,
+     "lon": 4.8965369
+    },
+    {
+     "lat": 52.3679918,
+     "lon": 4.8965163
+    },
+    {
+     "lat": 52.3680391,
+     "lon": 4.8963721
+    },
+    {
+     "lat": 52.3680881,
+     "lon": 4.8964122
+    },
+    {
+     "lat": 52.3680879,
+     "lon": 4.8964136
+    }
+   ],
+   "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "ref:bag": "0363100012177819",
+    "source": "BAG",
+    "source:date": "2014-02-11",
+    "start_date": "1753"
+   }
+  },
+  {
+   "type": "way",
+   "id": 31762790,
+   "geometry": [
+    {
+     "lat": 52.3667273,
+     "lon": 4.9081026
+    },
+    {
+     "lat": 52.3666168,
+     "lon": 4.907999
+    },
+    {
+     "lat": 52.3666449,
+     "lon": 4.9079192
+    },
+    {
+     "lat": 52.3667554,
+     "lon": 4.9080229
+    },
+    {
+     "lat": 52.3667273,
+     "lon": 4.9081026
+    }
+   ],
+   "tags": {
+    "building": "greenhouse",
+    "name": "Mexicaanse kas",
+    "name:de": "Mexikanisches Gewächshaus",
+    "name:en": "Mexican Greenhouse",
+    "name:nl": "Mexicaanse kas",
+    "ref:bag": "0363100012181029",
+    "source": "BAG",
+    "source:date": "2014-03-24",
+    "start_date": "1005"
+   }
+  },
+  {
+   "type": "way",
+   "id": 31762791,
+   "geometry": [
+    {
+     "lat": 52.3667619,
+     "lon": 4.9080043
+    },
+    {
+     "lat": 52.3666514,
+     "lon": 4.9079006
+    },
+    {
+     "lat": 52.3666664,
+     "lon": 4.9078579
+    },
+    {
+     "lat": 52.3667769,
+     "lon": 4.9079616
+    },
+    {
+     "lat": 52.3667619,
+     "lon": 4.9080043
+    }
+   ],
+   "tags": {
+    "building": "greenhouse",
+    "name": "Kweekkas",
+    "name:de": "Kleines Gewächshaus",
+    "name:en": "Small Greenhouse",
+    "name:nl": "Kweekkas",
+    "ref:bag": "0363100012170494",
+    "source": "BAG",
+    "source:date": "2014-03-24",
+    "start_date": "1005"
+   }
+  },
+  {
+   "type": "relation",
+   "id": 3583193,
+   "members": [
+    {
+     "type": "way",
+     "role": "outer",
+     "geometry": [
+      {
+       "lat": 52.3678116,
+       "lon": 4.8954812
+      },
+      {
+       "lat": 52.3676746,
+       "lon": 4.8951707
+      },
+      {
+       "lat": 52.3679267,
+       "lon": 4.8949061
+      },
+      {
+       "lat": 52.3679274,
+       "lon": 4.8949073
+      },
+      {
+       "lat": 52.3679313,
+       "lon": 4.8949178
+      },
+      {
+       "lat": 52.3679304,
+       "lon": 4.8949186
+      }
+     ]
+    },
+    {
+     "type": "way",
+     "role": "inner",
+     "geometry": [
+      {
+       "lat": 52.3678836,
+       "lon": 4.8951403
+      },
+      {
+       "lat": 52.3678399,
+       "lon": 4.8951855
+      },
+      {
+       "lat": 52.3678749,
+       "lon": 4.8952771
+      },
+      {
+       "lat": 52.3679175,
+       "lon": 4.8952323
+      },
+      {
+       "lat": 52.3678836,
+       "lon": 4.8951403
+      }
+     ]
+    }
+   ],
+   "tags": {
+    "amenity": "theatre",
+    "building": "yes",
+    "height": "19.6",
+    "name": "Universiteitstheater",
+    "ref:bag": "0363100012180412",
+    "source": "BAG",
+    "source:date": "2014-02-11",
+    "source:height": "3DBAG",
+    "source:height:date": "2025-09-03",
+    "start_date": "1005",
+    "type": "multipolygon"
+   }
+  }
+ ]
+}

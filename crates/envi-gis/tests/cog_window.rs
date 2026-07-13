@@ -13,7 +13,9 @@
 
 use envi_gis::GisError;
 use envi_gis::cog::header::{self, CogHeader};
-use envi_gis::cog::window::{PixelWindow, bbox_to_pixel_window, decode_window};
+use envi_gis::cog::window::{
+    PixelWindow, Raster, bbox_to_pixel_window, decode_window, decode_window_u8,
+};
 use envi_gis::cog::{MAX_DECODED_PX, geo_tags};
 use serde::Deserialize;
 
@@ -79,14 +81,19 @@ fn win(c: &Case) -> PixelWindow {
 
 /// Decode every case in a fixture and compare against the GDAL-read expected
 /// values, including the window geotransform (proves geometry is read from the
-/// IFD, never assumed — T-08-02-04).
-fn assert_fixture_matches(toml_name: &str) -> Meta {
+/// IFD, never assumed — T-08-02-04). `decode` selects the sample path (`f32`
+/// terrain vs `u8` class raster); everything else is identical, so both paths are
+/// held to the same oracle.
+fn assert_fixture_matches_with<T: Copy + Into<f64>>(
+    toml_name: &str,
+    decode: impl Fn(&[u8], PixelWindow) -> Result<Raster<T>, GisError>,
+) -> Meta {
     let fx = load_toml(toml_name);
     let bytes = load_tif(&fx.meta.fixture);
 
     for c in &fx.case {
-        let raster = decode_window(&bytes, win(c), MAX_DECODED_PX)
-            .unwrap_or_else(|e| panic!("{}: decode failed: {e:?}", c.name));
+        let raster =
+            decode(&bytes, win(c)).unwrap_or_else(|e| panic!("{}: decode failed: {e:?}", c.name));
 
         assert_eq!(
             (raster.width, raster.height),
@@ -120,20 +127,22 @@ fn assert_fixture_matches(toml_name: &str) -> Meta {
             for (col, &expected) in row.iter().enumerate() {
                 let got = raster.get(col, r);
                 if expected.is_nan() {
-                    assert_eq!(
-                        got, None,
-                        "{}: pixel ({col},{r}) expected a hole (nodata), got {got:?}",
+                    assert!(
+                        got.is_none(),
+                        "{}: pixel ({col},{r}) expected a hole (nodata)",
                         c.name
                     );
                 } else {
-                    let v = got.unwrap_or_else(|| {
-                        panic!(
-                            "{}: pixel ({col},{r}) expected {expected}, got a hole",
-                            c.name
-                        )
-                    });
+                    let v: f64 = got
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "{}: pixel ({col},{r}) expected {expected}, got a hole",
+                                c.name
+                            )
+                        })
+                        .into();
                     assert!(
-                        (f64::from(v) - expected).abs() <= fx.meta.tol,
+                        (v - expected).abs() <= fx.meta.tol,
                         "{}: pixel ({col},{r}) = {v} vs expected {expected} (tol {})",
                         c.name,
                         fx.meta.tol,
@@ -143,6 +152,16 @@ fn assert_fixture_matches(toml_name: &str) -> Meta {
         }
     }
     fx.meta
+}
+
+/// The `f32` (terrain) decode path against the GDAL oracle.
+fn assert_fixture_matches(toml_name: &str) -> Meta {
+    assert_fixture_matches_with(toml_name, |b, w| decode_window(b, w, MAX_DECODED_PX))
+}
+
+/// The `u8` (class-raster) decode path against the same GDAL oracle.
+fn assert_fixture_matches_u8(toml_name: &str) -> Meta {
+    assert_fixture_matches_with(toml_name, |b, w| decode_window_u8(b, w, MAX_DECODED_PX))
 }
 
 #[test]
@@ -227,6 +246,102 @@ fn edge_tile_padding_is_cropped() {
             assert!((f64::from(v) - expected).abs() <= fx.meta.tol);
         }
     }
+}
+
+/// The IFD0 `PhotometricInterpretation` (tag 262) of a classic little-endian
+/// TIFF — read straight from the bytes so the test asserts on the FILE, not on
+/// what the decoder chooses to believe.
+fn photometric_of(bytes: &[u8]) -> u16 {
+    assert_eq!(&bytes[0..4], &[0x49, 0x49, 0x2A, 0x00], "classic LE TIFF");
+    let ifd = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+    let n = u16::from_le_bytes(bytes[ifd..ifd + 2].try_into().unwrap()) as usize;
+    for i in 0..n {
+        let e = ifd + 2 + i * 12;
+        let tag = u16::from_le_bytes(bytes[e..e + 2].try_into().unwrap());
+        if tag == 262 {
+            return u16::from_le_bytes(bytes[e + 8..e + 10].try_into().unwrap());
+        }
+    }
+    panic!("no PhotometricInterpretation tag");
+}
+
+/// REGRESSION (the reported defect): the REAL ESA WorldCover v200 COG is a
+/// **palette** TIFF (`PhotometricInterpretation = 3`, 8-bit, + a 768-entry
+/// ColorMap). The `tiff` crate refuses such an image outright
+/// (`decoder/image.rs`: "Photometric interpretation RGBPalette with bits per
+/// sample [8] is unsupported"), so every live land-cover import failed while the
+/// offline suite passed — the committed fixture was plain grayscale.
+///
+/// The palette is presentation only: the CLASS CODE *is* the sample value, so a
+/// correct decode returns the raw index (10, 20, ..., 95) and never maps through
+/// the colour table.
+#[test]
+fn real_worldcover_palette_tiff_decodes_to_raw_class_indices() {
+    let bytes = load_tif("worldcover_palette.tif");
+    // Coverage: without this the fixture would be the too-easy grayscale one
+    // that let the bug ship.
+    assert_eq!(
+        photometric_of(&bytes),
+        3,
+        "fixture must be palette-encoded (photometric 3), like the real product"
+    );
+
+    let meta = assert_fixture_matches_u8("worldcover_palette.toml");
+    assert!(
+        meta.has_nodata && meta.nodata == 0.0,
+        "WorldCover nodata is 0"
+    );
+
+    // The decoded values must be legend CLASS CODES, not palette RGB channels.
+    let fx = load_toml("worldcover_palette.toml");
+    let c = fx
+        .case
+        .iter()
+        .find(|c| c.name == "cross-tile 8x8")
+        .expect("cross-tile case present");
+    let raster = decode_window_u8(&bytes, win(c), MAX_DECODED_PX).expect("palette decode ok");
+    const LEGEND: [u8; 11] = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100];
+    let mut seen = std::collections::BTreeSet::new();
+    for r in 0..raster.height {
+        for col in 0..raster.width {
+            let v = raster.get(col, r).expect("no nodata in this window");
+            assert!(LEGEND.contains(&v), "decoded {v} is not a WorldCover class");
+            seen.insert(v);
+        }
+    }
+    assert!(
+        seen.len() >= 3,
+        "the window must span several classes (got {seen:?}) — a decoder returning \
+         a palette channel or a constant would not"
+    );
+}
+
+#[test]
+fn palette_nodata_zero_is_a_hole_not_class_zero() {
+    // The 0 sentinel must survive the palette path as a hole — never a silent
+    // "class 0" (which is not a WorldCover class at all).
+    let fx = load_toml("worldcover_palette.toml");
+    let bytes = load_tif("worldcover_palette.tif");
+    let c = fx
+        .case
+        .iter()
+        .find(|c| c.name == "over-nodata 8x6")
+        .expect("over-nodata case present");
+    let raster = decode_window_u8(&bytes, win(c), MAX_DECODED_PX).expect("decode ok");
+    let mut saw_hole = false;
+    for (r, row) in c.samples.iter().enumerate() {
+        for (col, &expected) in row.iter().enumerate() {
+            if expected.is_nan() {
+                saw_hole = true;
+                assert_eq!(
+                    raster.get(col, r),
+                    None,
+                    "nodata ({col},{r}) must be a hole"
+                );
+            }
+        }
+    }
+    assert!(saw_hole, "the over-nodata case must contain nodata cells");
 }
 
 #[test]

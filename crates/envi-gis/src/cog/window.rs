@@ -1,8 +1,11 @@
-//! Windowed `f32` decode from a cached whole COG tile (guard-first, no-panic).
+//! Windowed `f32` decode from a cached COG tile (guard-first, no-panic).
 //!
 //! # Module I/O
-//! - **Inputs:** whole cached COG/BigTIFF tile bytes (`&[u8]`, from OPFS via TS),
-//!   a [`PixelWindow`] into the base image, and a `max_decoded_px` budget.
+//! - **Inputs:** the cached COG/BigTIFF tile bytes (from OPFS via TS) — either the
+//!   WHOLE file (`&[u8]`) or, on the range-read path, only the header prefix + the
+//!   chunk byte ranges [`crate::cog::plan`] selected, as a
+//!   [`CogBytes`](crate::cog::sparse::CogBytes) sparse view; plus a [`PixelWindow`]
+//!   into the base image and a `max_decoded_px` budget.
 //! - **Output:** a [`Raster<f32>`] of exactly the window's pixels, carrying its
 //!   own geotransform (origin shifted to the window's top-left) and holes
 //!   ([`None`]) wherever the source was nodata or non-finite.
@@ -26,6 +29,7 @@ use tiff::decoder::DecodingResult;
 use crate::GisError;
 use crate::cog::geo_tags::{self, GeoTransform};
 use crate::cog::header::{self, CogHeader};
+use crate::cog::sparse::CogBytes;
 
 /// A pixel-space window into the base image: `[col_off, col_off+width)` ×
 /// `[row_off, row_off+height)`, top-left origin. This is the deterministic
@@ -130,8 +134,26 @@ pub fn decode_window(
     window: PixelWindow,
     max_decoded_px: usize,
 ) -> Result<Raster<f32>, GisError> {
+    decode_window_cog(&CogBytes::whole(tile_bytes), window, max_decoded_px)
+}
+
+/// Decode `window` from a **partially fetched** COG (the range-read path): the
+/// header prefix plus exactly the chunk byte ranges [`crate::cog::plan`] selected.
+///
+/// Identical guards and semantics to [`decode_window`] — only the byte source
+/// differs. A chunk the plan failed to fetch is a loud
+/// [`GisError::Tiff`] (the sparse view errors on an unfetched byte rather than
+/// serving zeros), never a window quietly full of `0.0`.
+///
+/// # Errors
+/// Same set as [`decode_window`].
+pub fn decode_window_cog(
+    cog: &CogBytes<'_>,
+    window: PixelWindow,
+    max_decoded_px: usize,
+) -> Result<Raster<f32>, GisError> {
     decode_window_generic(
-        tile_bytes,
+        cog,
         window,
         max_decoded_px,
         |r| match r {
@@ -156,7 +178,7 @@ pub fn decode_window(
 /// - `keep`: whether a sample survives (vs. a hole) given the optional nodata
 ///   sentinel — f32 additionally drops non-finite values, u8 only the sentinel.
 fn decode_window_generic<T, E, K>(
-    tile_bytes: &[u8],
+    cog: &CogBytes<'_>,
     window: PixelWindow,
     max_decoded_px: usize,
     extract: E,
@@ -168,9 +190,9 @@ where
     K: Fn(T, Option<f64>) -> bool,
 {
     // Cap the IFD chain up front (T-08-02-02) before trusting any navigation.
-    header::guard_image_count(tile_bytes)?;
+    header::guard_image_count(cog)?;
 
-    let mut dec = header::open(tile_bytes)?;
+    let mut dec = header::open_cog(cog)?;
     let hdr = header::read_header(&mut dec)?;
 
     // --- (2 is cheap; do zero-extent check first) ---
@@ -288,8 +310,22 @@ pub fn decode_window_u8(
     window: PixelWindow,
     max_decoded_px: usize,
 ) -> Result<Raster<u8>, GisError> {
+    decode_window_u8_cog(&CogBytes::whole(tile_bytes), window, max_decoded_px)
+}
+
+/// Decode a `u8` class-raster `window` from a **partially fetched** COG (the
+/// range-read sibling of [`decode_window_u8`], as [`decode_window_cog`] is to
+/// [`decode_window`]). This is the path the 54 MB ESA WorldCover tile takes.
+///
+/// # Errors
+/// Same set as [`decode_window_u8`].
+pub fn decode_window_u8_cog(
+    cog: &CogBytes<'_>,
+    window: PixelWindow,
+    max_decoded_px: usize,
+) -> Result<Raster<u8>, GisError> {
     decode_window_generic(
-        tile_bytes,
+        cog,
         window,
         max_decoded_px,
         |r| match r {

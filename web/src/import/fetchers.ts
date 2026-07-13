@@ -6,14 +6,24 @@
 // - Input  a covering `TileRefDto` (absolute upstream URL + source id) plus its `CorsDto` reachability
 //   (from `plan_import`'s descriptor), or an Overpass endpoint + query body. Wire DTOs are imported from
 //   `../generated/wire` (never hand-authored).
-// - Output `fetchTile` resolves the tile's raw bytes (`ArrayBuffer`) via a whole-tile plain GET — NO
-//   `Range` header, so no CORS preflight anywhere (Pitfall 2); `fetchOverpass` resolves the raw JSON text
-//   with a 429-aware backoff retry (Overpass per-IP slots). A non-2xx response throws `ApiError` (status +
+// - Output `fetchTileRange` resolves ONE half-open byte range of a tile (`Range: bytes=start-end`), the
+//   COG range-read primitive `cogWindow.ts` drives; `fetchOverpass` resolves the raw JSON text with a
+//   429-aware backoff retry (Overpass per-IP slots). A non-2xx response throws `ApiError` (status +
 //   detail), reusing `../api/client`'s shared error type (it owns `ApiError`/`errorText` — never redeclared
 //   here). An `AbortSignal` cancels a superseded request.
 // - Valid input range: `tile.url` is the absolute upstream URL the tile planner built from the registry
 //   `endpoint_template`; for a `proxy` source its pathname must lie under the proxy's allowlisted prefix
 //   (enforced server-side — the fetcher only rewrites the URL, never fabricates a host).
+//
+// # Why ONE range per request (load-bearing — do not "optimise" into a multi-range GET)
+//
+// `Range` is a CORS-safelisted REQUEST header only while its value is a *simple range* (`bytes=N-M` /
+// `bytes=N-`). A multi-range value (`bytes=0-9,20-29`) leaves the safelist and triggers a CORS preflight —
+// and PDOK answers `OPTIONS` with `Access-Control-Allow-Headers: Content-Type` only, so the preflight FAILS
+// and the whole AHN import dies. Verified live: PDOK returns `206 Partial Content` + `Access-Control-Allow-
+// Origin: *` for a simple range, and the planner already coalesces adjacent COG tiles so the request count
+// stays small. (`Content-Range` is NOT a safelisted RESPONSE header and PDOK exposes nothing, so the total
+// file size is unreadable cross-origin — the design never needs it.)
 
 import { ApiError } from "../api/client";
 import type { CorsDto, TileRefDto } from "../generated/wire";
@@ -46,19 +56,38 @@ export async function detailOf(res: Response): Promise<string> {
   }
 }
 
-// Fetch a whole source tile's bytes, routing Direct vs the byte proxy per `cors`. Whole-tile plain GET
-// (no `Range` header → no preflight). Non-2xx → `ApiError`.
-export async function fetchTile(
+// One fetched piece of a tile: the bytes found at file offset `offset`. A server that IGNORES `Range` and
+// answers `200` with the whole body is honest about it — the bytes then start at offset 0 and the caller
+// (and the WASM planner) treat them as such, so a non-range-capable mirror still works, just without the
+// saving.
+export interface FetchedRange {
+  readonly offset: number;
+  readonly bytes: Uint8Array;
+}
+
+// Fetch ONE half-open byte range `[start, end)` of a source tile, routing Direct vs the byte proxy per
+// `cors`. Issues a single simple-range `Range: bytes=start-(end-1)` GET (see the module note on why it must
+// stay single-range). A `206` yields exactly that slice; a `200` means the server served the whole file and
+// the slice is the file itself, from offset 0. Non-2xx → `ApiError`.
+export async function fetchTileRange(
   tile: TileRefDto,
   cors: CorsDto,
+  start: number,
+  end: number,
   signal?: AbortSignal,
-): Promise<ArrayBuffer> {
+): Promise<FetchedRange> {
   const url = cors === "proxy" ? proxyUrl(tile) : tile.url;
-  const res = await fetch(url, { method: "GET", signal });
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Range: `bytes=${start}-${end - 1}` },
+    signal,
+  });
   if (!res.ok) {
     throw new ApiError(res.status, await detailOf(res));
   }
-  return res.arrayBuffer();
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  // 206 → the requested slice starts at `start`. 200 → Range was ignored; the body is the whole file.
+  return { offset: res.status === 206 ? start : 0, bytes };
 }
 
 // Build the Overpass `out geom` query for a viewport (single request per import; way + multipolygon

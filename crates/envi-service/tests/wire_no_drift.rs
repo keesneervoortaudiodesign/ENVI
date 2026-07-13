@@ -64,17 +64,17 @@ use envi_store::interpolate::Resolution;
 // The envi-gis-wasm WASM ingestion-boundary DTOs (DATA-01..03) — generated into
 // the SAME committed wire.ts as the HTTP wire (D-10).
 use envi_gis_wasm::dto::{
-    BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, ClassOccurrenceDto, CorsDto,
-    CutProfileReq, CutProfileResult, DecodeWindowReq, DecodeWindowResult, DrawnZoneDto,
-    Era5DeriveReq, Era5DeriveResult, Era5HourDto, FriendlyWeatherReq, GeoTransformDto,
-    GroundSegmentationDto, ImportPlanReq, ImportPlanResult, ImportedZoneDto, InjectScreensReq,
-    LandcoverResult, MapLandcoverReq, MergeReq, MergeResult, ParseBuildingsReq, PixelWindowDto,
-    PlanTilesReq, PlanTilesResult, ProfileSegmentDto, ProvenanceReqDto, RawProfileDto,
-    ReceiverGridReq, ReceiverGridResult, ReprojectRingReq, ReprojectRingResult, ScreenObjectDto,
-    SegmentGroundReq, SkipReportDto, SoundSpeedProfileDto, SourceDescriptorDto, SourceKindDto,
-    TerrainFeaturesReq, TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto,
-    WeatherComponentsDto, WeatherDeriveReq, WeatherDeriveResult, WindowForBboxReq,
-    WindowForBboxResult,
+    BaseElevationReq, BaseElevationResult, BboxDto, BuildingsResult, BytePartDto, ByteRangeDto,
+    ClassOccurrenceDto, CorsDto, CutProfileReq, CutProfileResult, DecodeWindowReq,
+    DecodeWindowResult, DrawnZoneDto, Era5DeriveReq, Era5DeriveResult, Era5HourDto,
+    FriendlyWeatherReq, GeoTransformDto, GroundSegmentationDto, ImportPlanReq, ImportPlanResult,
+    ImportedZoneDto, InjectScreensReq, LandcoverResult, MapLandcoverReq, MergeReq, MergeResult,
+    ParseBuildingsReq, PixelWindowDto, PlanCogReadsReq, PlanCogReadsResult, PlanTilesReq,
+    PlanTilesResult, ProfileSegmentDto, ProvenanceReqDto, RawProfileDto, ReceiverGridReq,
+    ReceiverGridResult, ReprojectRingReq, ReprojectRingResult, ScreenObjectDto, SegmentGroundReq,
+    SkipReportDto, SoundSpeedProfileDto, SourceDescriptorDto, SourceKindDto, TerrainFeaturesReq,
+    TerrainFeaturesResult, TerrainSourceCrsDto, TileRefDto, VerticalDatumDto, WeatherComponentsDto,
+    WeatherDeriveReq, WeatherDeriveResult, WindowForBboxReq, WindowForBboxResult,
 };
 
 // The envi-compute-wasm browser compute-boundary DTOs (SVC-02 / GRID-02, plan
@@ -149,6 +149,11 @@ fn export_all_wire_types(cfg: &Config) {
     // Shared value objects + enums.
     PixelWindowDto::export_all(cfg).unwrap();
     BboxDto::export_all(cfg).unwrap();
+    // Windowed COG range reads (the two-pass fetch contract).
+    ByteRangeDto::export_all(cfg).unwrap();
+    BytePartDto::export_all(cfg).unwrap();
+    PlanCogReadsReq::export_all(cfg).unwrap();
+    PlanCogReadsResult::export_all(cfg).unwrap();
     TerrainSourceCrsDto::export_all(cfg).unwrap();
     VerticalDatumDto::export_all(cfg).unwrap();
     ProvenanceReqDto::export_all(cfg).unwrap();

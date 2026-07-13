@@ -145,9 +145,89 @@ pub struct PlanTilesReq {
     pub bbox: BboxDto,
 }
 
+// --- windowed COG range reads (the two-pass fetch contract) ----------------
+//
+// Byte offsets/lengths cross the wire as `f64`, not `u64`: `serde_wasm_bindgen`
+// marshals a Rust `u64` as a JS **BigInt**, which does not survive `JSON`/structured
+// use on the TS side and would make every arithmetic call site a `BigInt` dance. A
+// COG offset is < 2^53 by many orders of magnitude (the largest tile in play is
+// 346 MB), so `f64` is exact here — and the Rust side converts through a checked
+// cast, never a silent truncation.
+
+/// A half-open byte range `[start, end)` of a source tile — what the client must
+/// `Range`-GET, and what an OPFS cache records as already held.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct ByteRangeDto {
+    /// First byte (inclusive).
+    pub start: f64,
+    /// One past the last byte (exclusive).
+    pub end: f64,
+}
+
+/// One contiguous piece of a tile the client has fetched: the bytes at file offset
+/// `offset`, `len` of them. The bytes themselves ride the `&[u8]` parameter (the
+/// concatenation of every part, in order) — never a serde field.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct BytePartDto {
+    /// File offset of this part's first byte.
+    pub offset: f64,
+    /// Byte length of this part.
+    pub len: f64,
+}
+
+/// `plan_cog_reads` request: given the tile's fetched header prefix (the `&[u8]`
+/// parameter, always from file offset 0), which byte ranges does this viewport
+/// actually need?
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export_to = "wire.ts")]
+pub struct PlanCogReadsReq {
+    /// The WGS84 import viewport to window into this tile.
+    pub bbox: BboxDto,
+    /// The tile raster's source CRS (RD New reprojects through `envi_geo`).
+    pub source_crs: TerrainSourceCrsDto,
+    /// Byte ranges the caller already holds (its OPFS cache). Ranges already
+    /// covered are omitted from the returned `fetch` list, so a warm cache plans
+    /// ZERO network reads (DATA-04).
+    #[serde(default)]
+    pub have: Vec<ByteRangeDto>,
+    /// Optional decoded-pixel budget override (defaults to `MAX_DECODED_PX`).
+    #[serde(default)]
+    pub max_decoded_px: Option<u32>,
+    /// Optional fetch-byte budget override (defaults to `DEFAULT_MAX_FETCH_BYTES`).
+    #[serde(default)]
+    pub max_fetch_bytes: Option<f64>,
+}
+
+/// `plan_cog_reads` result: the two-pass fetch instruction.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export_to = "wire.ts")]
+pub struct PlanCogReadsResult {
+    /// `n` ⇒ the header prefix supplied was too short: re-fetch bytes `0..n` and
+    /// plan again (the ask converges, and is capped at `MAX_HEADER_BYTES`).
+    pub need_header: Option<f64>,
+    /// The pixel window of the viewport in this tile — `null` when the viewport
+    /// does not overlap it (nothing to fetch, nothing to decode).
+    pub window: Option<PixelWindowDto>,
+    /// The byte ranges still to fetch: sorted, disjoint, coalesced, and already
+    /// minus everything `have` covers. Each entry is ONE single-range GET.
+    pub fetch: Vec<ByteRangeDto>,
+    /// Bytes in `fetch`.
+    pub fetch_bytes: f64,
+    /// Bytes of every chunk the window needs (cached or not) — the honest size of
+    /// the window's footprint in the file, for progress + diagnostics.
+    pub window_bytes: f64,
+    /// How many COG chunks the window overlaps.
+    pub chunks: u32,
+}
+
 /// `window_for_bbox` request (tile bytes are a separate `&[u8]` parameter): the
 /// WGS84 viewport + the tile's source CRS, resolved to a [`PixelWindowDto`].
-#[derive(Debug, Clone, Copy, Deserialize, TS)]
+#[derive(Debug, Clone, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 #[ts(export_to = "wire.ts")]
 pub struct WindowForBboxReq {
@@ -155,6 +235,10 @@ pub struct WindowForBboxReq {
     pub bbox: BboxDto,
     /// The tile raster's source CRS (RD New reprojects through `envi_geo`).
     pub source_crs: TerrainSourceCrsDto,
+    /// How the `&[u8]` parameter splits into file-offset parts (the range-read
+    /// path). `null`/absent ⇒ the bytes are the WHOLE tile from offset 0.
+    #[serde(default)]
+    pub parts: Option<Vec<BytePartDto>>,
     /// Optional decoded-pixel budget override (defaults to `MAX_DECODED_PX`).
     #[serde(default)]
     pub max_decoded_px: Option<u32>,
@@ -173,12 +257,16 @@ pub struct ReprojectRingReq {
 }
 
 /// `decode_window` request (tile bytes are a separate `&[u8]` parameter).
-#[derive(Debug, Clone, Copy, Deserialize, TS)]
+#[derive(Debug, Clone, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 #[ts(export_to = "wire.ts")]
 pub struct DecodeWindowReq {
     /// The pixel window to decode.
     pub window: PixelWindowDto,
+    /// How the `&[u8]` parameter splits into file-offset parts (the range-read
+    /// path). `null`/absent ⇒ the bytes are the WHOLE tile from offset 0.
+    #[serde(default)]
+    pub parts: Option<Vec<BytePartDto>>,
     /// Optional decoded-pixel budget override (defaults to `MAX_DECODED_PX`).
     #[serde(default)]
     pub max_decoded_px: Option<u32>,
@@ -197,6 +285,10 @@ pub struct TerrainFeaturesReq {
     pub source_crs: TerrainSourceCrsDto,
     /// Provenance to stamp on each emitted `elevation_point`.
     pub provenance: ProvenanceReqDto,
+    /// How the `&[u8]` parameter splits into file-offset parts (the range-read
+    /// path). `null`/absent ⇒ the bytes are the WHOLE tile from offset 0.
+    #[serde(default)]
+    pub parts: Option<Vec<BytePartDto>>,
     /// Optional decoded-pixel budget override.
     #[serde(default)]
     pub max_decoded_px: Option<u32>,
@@ -213,6 +305,10 @@ pub struct BaseElevationReq {
     pub ring: Vec<[f64; 2]>,
     /// Maximum boundary-sample spacing (source-CRS units).
     pub max_spacing_m: f64,
+    /// How the `&[u8]` parameter splits into file-offset parts (the range-read
+    /// path). `null`/absent ⇒ the bytes are the WHOLE tile from offset 0.
+    #[serde(default)]
+    pub parts: Option<Vec<BytePartDto>>,
     /// Optional decoded-pixel budget override.
     #[serde(default)]
     pub max_decoded_px: Option<u32>,
@@ -233,6 +329,10 @@ pub struct MapLandcoverReq {
     pub simplify_tol_px: Option<f64>,
     /// Provenance to stamp on each emitted `ground_zone`.
     pub provenance: ProvenanceReqDto,
+    /// How the `&[u8]` parameter splits into file-offset parts (the range-read
+    /// path). `null`/absent ⇒ the bytes are the WHOLE tile from offset 0.
+    #[serde(default)]
+    pub parts: Option<Vec<BytePartDto>>,
     /// Optional decoded-pixel budget override.
     #[serde(default)]
     pub max_decoded_px: Option<u32>,

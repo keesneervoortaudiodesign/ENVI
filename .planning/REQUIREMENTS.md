@@ -141,6 +141,47 @@
 - Multi-height / façade receivers; road / railway / berm emission objects
 - Report / print-sheet generation, bitmap geo-referencing, palette editor (NoizCalc ch. 4 desktop features)
 
+## Milestone 3 Requirements (v3.0 — Solve the Real Scene)
+
+**Scope:** make the drawn scene actually reach the solver. Today `marshalScene.ts` fabricates a flat,
+homogeneous corridor (`weather: null`, `forest: null`, `isolation: null`, no screens, a 2-point profile
+with a hardcoded σ=200), so a drawn wall, forest, ground zone, terrain or imported weather **cannot
+change the computed numbers**. This milestone closes that gap — and pays the two engine debts that
+doing so honestly requires.
+
+> **What is NOT the problem.** The wire already carries it: `PrepareSolveReq` has `terrain`, `weather`,
+> `forest` and `isolation`, and `PreparedScene` already threads them into the engine (native tests prove
+> forest/isolation/screen effects are live end-to-end). The Phase-9 extractors (`cut_profile`,
+> `segment_ground`, `inject_screens`, `receiver_grid`, per-azimuth A/B/C) all exist and are
+> wasm-exported. They are simply **dangling** — reachable only from a debug overlay.
+>
+> **What IS the problem.** (1) The marshaller never reads the scene. (2) The wire carries **one profile
+> per tensor**, but the physics needs **one profile per path** — each source→receiver ray has its own cut
+> profile, screen crossings, ground segmentation and wind azimuth. (3) Two engine branches the real world
+> immediately trips: convex terrain segments, and refracted screens.
+
+> **Honesty constraint (binding).** A silent unrefracted screen under a weather profile — or a *mixed*
+> tensor with weather on ground paths but not screen paths — is a **false result**, and is forbidden by
+> the honest-green rule. There is no cheap path through ENG-12: either implement it, or refuse the solve
+> loudly. Never blend, never silently downgrade.
+
+### Real-scene solve (SOLV)
+
+- [ ] **SOLV-01**: Marshal the **real drawn scene** into the solve. Project sources/receivers/objects through the one CRS seam (`project_to_utm`, GEOX-04) — never the debug equirect frame; carry the scene on the wire ONCE (`PrepareSolveReq.scene`), and derive each `(sub_source, receiver)` path's inputs **per path** inside the WASM compute boundary (TIN + rstar index built once per solve, path inputs derived per chunk). Reconcile the receiver plan so the cost estimate, tier plan and solved set are one source of truth (polygon membership + building-footprint exclusion + TIN z). Every new scene field participates in `marshalled_tensor_hash` — a field that reaches the solve but not the hash is a silent stale-cache bug.
+- [ ] **SOLV-02**: A drawn **wall / building** screens the path: screening edges derived along each ray (Fresnel corridor) and injected as `TerrainProfile` vertices, so a wall between source and receiver **lowers the level**, and a wall behind the receiver does not.
+- [ ] **SOLV-03**: A drawn **ground-effect zone** segments the path's impedance (drawn > imported > default), so soft/hard ground changes the level; σ is resolved only via `impedance_class` (never a literal), and the roughness class maps to metres at the resolution point.
+- [ ] **SOLV-04**: **DGM terrain** feeds each path's real (non-flat) cut profile, sampled from the TIN; receiver acoustic height is ground + 1.5 m (AGL, not AMSL), and source/receiver heights enter via `TerrainProfile::endpoints` — never baked into profile z (the hSv/hRv double-count trap).
+- [ ] **SOLV-05**: A drawn **forest** attenuates: the per-path through-forest length `d` is extracted in the cut plane and fed to the existing Sub-Model 10 (ENG-09). The Fig.-29 rubber-band path over screens is a **documented approximation**; forest+screen combinations either bound `d` conservatively or refuse with a typed error — never a silent wrong `d`.
+- [ ] **SOLV-06**: A **semi-transparent** screen/façade applies its own isolation spectrum on the path it actually screens (ENG-10), attached from the screening edge's provenance. Attaching a partition's `R(f)` to a path screened by a *different* object is physically wrong and the engine cannot detect it — so the attach decision must fall out of SOLV-02's edge provenance, never a proximity guess.
+- [ ] **SOLV-07**: Imported/what-if **weather** drives the solve: the per-azimuth A/B/C (METX-01) becomes each path's `SoundSpeedProfile` by source→receiver bearing, with per-path `d_m` (and turbulence inputs) rather than today's shared constant. **Gated on ENG-12** — with weather set, any screened path currently hard-errors by design.
+
+### Engine debts this milestone must pay (ENG)
+
+- [ ] **ENG-11**: **Sub-Model 3 convex segments** (§5.12, Eqs. 141–151) — the equivalent-wedge path for convex/transition terrain. Today `ConvexSegmentNotImplemented` is a typed hard error, which real undulating DGM terrain **will** trip on any hillcrest, so "import terrain and solve" fails until this exists. The `pwedge` kernel already exists; this is a bounded engine task.
+- [ ] **ENG-12**: **Refracted screen diffraction** — the shadow-zone branches under a sound-speed profile. Not one equation set but three: Sub-Model 4 (Eqs. 184–186), and the same branch pattern recurring in Sub-Model 5 (~Eqs. 215–219) and Sub-Model 6 (~Eqs. 261–267), plus threading curved-ray segment variables through the currently straight-ray screen path. Replaces the typed `WeatherScreenNotImplemented` refusal. Validated by committed scipy oracles + branch-boundary anchors (`d′ = 0.95·d_SZ` continuity; `ξ→0⁻` recovers the homogeneous result bit-for-bit). **This is the milestone's long pole** — comparable in size and test burden to the whole Phase-3 refraction effort.
+
+**Cleanup carried by this milestone:** delete the dead `SegmentedRefractionNotImplemented` variant (declared, never constructed — segmented-ground refraction was wired in Phase 4).
+
 ## Out of Scope
 
 Explicitly excluded. Documented to prevent scope creep.
@@ -246,6 +287,30 @@ Mapped during roadmap creation (Milestone 1: 2026-07-07; Milestone 2: 2026-07-08
 - Unmapped: 0 ✓ — GRID-03 and FUT-01..05 deferred beyond Milestone 2 by design (intentionally not mapped)
 
 Note on SVC-06: the `recondition`/`recompute` API split and hash-keyed tensor identity are *designed* in Phase 6 (contract-tested against a stub tensor, before any UI binds to it) and *realized* end-to-end in Phase 11 where the real MAC path exists — the requirement maps to Phase 11, where it becomes user-observable.
+
+### Milestone 3 traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| SOLV-01 | Phase 12 | Planned |
+| SOLV-02 | Phase 13 | Planned |
+| SOLV-03 | Phase 13 | Planned |
+| SOLV-06 | Phase 13 | Planned |
+| SOLV-04 | Phase 14 | Planned |
+| ENG-11  | Phase 14 | Planned |
+| SOLV-05 | Phase 15 | Planned |
+| ENG-12  | Phase 16 | Planned |
+| SOLV-07 | Phase 17 | Planned |
+
+- Milestone 3 (v3.0) requirements: 9 total (SOLV 7, ENG 2)
+- Mapped to phases: 9/9 ✓ (Phases 12–17; each requirement exactly one phase)
+- Unmapped: 0 ✓
+
+Note on ENG-12 / SOLV-07: ENG-12 is the *engine* capability (refracted screens) and SOLV-07 is the
+*user-observable* outcome (imported weather changes the solved map). SOLV-07 hard-gates on ENG-12 —
+shipping SOLV-07 without it would either hard-error on every urban scene or, far worse, serve a silently
+unrefracted screen result. ENG-12 is an independent engine track and can run in parallel with Phases
+12–15.
 
 ---
 *Requirements defined: 2026-07-07 (Milestone 1)*

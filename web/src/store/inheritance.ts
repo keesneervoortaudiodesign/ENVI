@@ -12,6 +12,7 @@
 //   clears it for deterministic tests.
 
 import type { Kind } from "../draw/kinds";
+import { EAVES_HEIGHT_KEY, WALL_HEIGHT_KEY } from "./heights";
 
 // A non-geometric property bag (the editable inspector fields for a kind). Geometry never lives here.
 export type KindProps = Record<string, unknown>;
@@ -19,11 +20,18 @@ export type KindProps = Record<string, unknown>;
 // First-of-kind documented defaults (UI-SPEC). Only kinds with editable non-geometric fields carry
 // entries; the others start empty. Ground default class 'D' + roughness 'N'; forest gets sane positive
 // means (zero density would itself be the `warn` state, so it is not a default).
+//
+// The two HEIGHTS are load-bearing, not cosmetic: the server scene contract REQUIRES a wall's `height_m`
+// and a building's `eaves_height_m` (`crates/envi-store/src/geojson.rs`), and the screening marshaller drops
+// any height-less object from the screen set — so a drawn wall with no height could never screen anything.
+// A first-of-kind object therefore starts from a plausible, clearly-visible height (3 m garden-wall screen,
+// 10 m eaves ≈ a 3-storey building) which the user edits in the inspector; the value then INHERITS to the
+// next object of that kind like every other property.
 export const KIND_DEFAULTS: Record<Kind, KindProps> = {
   source: {},
   receiver: {},
-  wall: { semi_transparent: false },
-  building: {},
+  wall: { semi_transparent: false, [WALL_HEIGHT_KEY]: 3 },
+  building: { [EAVES_HEIGHT_KEY]: 10 },
   forest: { density_per_m2: 0.1, stem_radius_m: 0.15, height_m: 15 },
   ground_zone: { impedance_class: "D", roughness_class: "N" },
   elevation_point: { z_m: 0 },
@@ -40,7 +48,27 @@ const lastByKind = new Map<Kind, KindProps>();
 // spurious "inherited" chips and briefly seed a stale `edge_ids` array (harmless, since `tagFeature`
 // overwrites it, but it leaks non-editable metadata into the WEB-04 UI). Excluded at the inheritance
 // boundary so every caller of `recordLast` is covered.
-const NON_INHERITABLE_KEYS = new Set(["kind", "id", "edge_ids", "mode"]);
+//
+// The D-11 PROVENANCE keys (stamped by `envi-gis` on import — see `crates/envi-gis/src/provenance.rs`) are
+// excluded for a stronger reason: provenance describes where THIS feature's data came from, so it is never
+// inheritable. Editing an imported building (which flows through `recordLast`) must not seed the NEXT,
+// hand-drawn building with `imported: true`, an OSM `source_ref`, or a `height_provenance` of "height_tag" —
+// that would be a fabricated pedigree, and it would make the DATA-03 provenance chip lie.
+const NON_INHERITABLE_KEYS = new Set([
+  "kind",
+  "id",
+  "edge_ids",
+  "mode",
+  // D-11 provenance (PROVENANCE_KEYS in envi-gis) — per-feature pedigree, never inherited.
+  "source",
+  "source_ref",
+  "license",
+  "retrieved_at",
+  "imported",
+  "user_modified",
+  "height_provenance",
+  "vertical_datum",
+]);
 
 export function lastOf(kind: Kind): KindProps | undefined {
   const prev = lastByKind.get(kind);

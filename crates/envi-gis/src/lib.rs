@@ -98,6 +98,36 @@ pub enum GisError {
         /// The documented maximum.
         limit: usize,
     },
+    /// The COG's byte ranges the window needs exceed the caller's fetch budget —
+    /// the NETWORK sibling of [`GisError::DecodeBudgetExceeded`], enforced before
+    /// a single range is emitted ([`cog::plan`]). This is the guard that makes a
+    /// runaway whole-tile download (the 330 MB AHN defect) impossible to reach by
+    /// accident.
+    #[error("fetch budget exceeded: window needs {requested} bytes, limit is {limit} bytes")]
+    FetchBudgetExceeded {
+        /// Bytes the window's covering chunks span.
+        requested: u64,
+        /// The documented maximum ([`cog::plan::DEFAULT_MAX_FETCH_BYTES`]).
+        limit: u64,
+    },
+    /// The TIFF header (IFD chain + out-of-line tag values) reaches past the
+    /// [`cog::plan::MAX_HEADER_BYTES`] cap. Refusing keeps the "fetch a longer
+    /// header prefix and re-plan" loop from degenerating into a whole-file
+    /// download for a file that is not really cloud-optimized.
+    #[error("COG header too large: needs {needed} bytes, limit is {limit} bytes")]
+    HeaderTooLarge {
+        /// Leading bytes the header would require.
+        needed: u64,
+        /// The documented maximum ([`cog::plan::MAX_HEADER_BYTES`]).
+        limit: u64,
+    },
+    /// The fetched byte parts handed to [`cog::sparse::CogBytes`] are not a valid
+    /// sparse view (empty, overlapping, or missing the offset-`0` header part).
+    #[error("invalid COG byte parts: {what}")]
+    InvalidByteParts {
+        /// What was wrong with the part list.
+        what: String,
+    },
     /// A required GeoTIFF tag was absent, so the geotransform could not be built.
     /// Never assume nominal pixel geometry (threat T-08-02-04, Pitfall 5).
     #[error("missing GeoTIFF tag: {tag}")]

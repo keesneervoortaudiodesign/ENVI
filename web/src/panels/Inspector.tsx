@@ -6,22 +6,26 @@
 //   field list (WEB-04). Edits go back via `updateProperties` (which clears the inherited marker on the
 //   edited field and keeps the kind's inheritance source current).
 // - Output the property panel: an empty-state when nothing is selected; otherwise `.dense` rows for the
-//   selected kind. Ground_zone / forest / source have dedicated field components (closed-enum selects,
-//   numerics, position + spectrum slot); the remaining kinds render minimal inline rows. The `kind`
-//   dispatch ends in `assertNeverKind`, so a dropped case fails `tsc` (D-09). Every value reaches the
-//   DOM as a React text child — no raw-HTML injection.
+//   selected kind. Ground_zone / forest / source / building have dedicated field components (closed-enum
+//   selects, numerics, position + spectrum slot, eaves height + provenance + façades); a wall carries its
+//   screen HEIGHT, the semi-transparent flag, and its isolation spectrum; the remaining kinds render
+//   minimal inline rows. The `kind` dispatch ends in `assertNeverKind`, so a dropped case fails `tsc`
+//   (D-09). Every value reaches the DOM as a React text child — no raw-HTML injection.
 // - Valid input range: `selection` is a feature id in the store or null.
 
 import { type ReactElement } from "react";
 
 import { assertNeverKind, type Kind } from "../draw/kinds";
 import { useSceneStore } from "../store/sceneStore";
+import { KIND_DEFAULTS } from "../store/inheritance";
+import { WALL_HEIGHT_KEY } from "../store/heights";
 import { InfoButton } from "../help/InfoButton";
 import { GroundZoneFields } from "./fields/GroundZoneFields";
 import type { FieldsProps } from "./fields/types";
+import { BuildingFields } from "./fields/BuildingFields";
 import { ForestFields } from "./fields/ForestFields";
+import { HeightField } from "./fields/HeightField";
 import { SourceFields } from "./fields/SourceFields";
-import { FacadePanel } from "./FacadePanel";
 
 // Render the field body for a kind. Exhaustive over the 9 kinds — `assertNeverKind` makes a missing
 // case a compile error (D-09).
@@ -40,7 +44,7 @@ function KindFields({ kind, props }: { kind: Kind; props: FieldsProps }): ReactE
     case "wall":
       return <WallFields {...props} />;
     case "building":
-      return <FacadePanel {...props} />;
+      return <BuildingFields {...props} />;
     case "elevation_line":
       return <BasicNote text="Elevation line — a DGM breakline. Its Z comes from its endpoints." />;
     case "calc_area":
@@ -79,14 +83,16 @@ function ElevationPointFields({ properties, update }: FieldsProps): ReactElement
   );
 }
 
-// A wall/screen (WEB-08/SCN-01). Marking it semi-transparent turns it into an acoustic screen that needs
-// an isolation spectrum: WITH a spectrum it is the acoustically-special "info" state (double-stroke
-// --color-info on the map); semi-transparent WITHOUT a spectrum is the "warn" state (--color-warn), the
-// same severity language the 07-09 validation panel will list. The state is exposed here as a chip (and
-// `data-treatment`) — the map paint keys off the identical store state.
-function WallFields({ id, properties }: FieldsProps): ReactElement {
+// A wall/screen (WEB-08/SCN-01). Its HEIGHT is the acoustically load-bearing property — the screening
+// marshaller only injects a wall's top edge into the terrain profile when the feature carries a finite
+// `height_m` (the server scene contract requires it), so a height-less wall screens nothing at all.
+// Marking it semi-transparent turns it into an acoustic screen that needs an isolation spectrum: WITH a
+// spectrum it is the acoustically-special "info" state (double-stroke --color-info on the map);
+// semi-transparent WITHOUT a spectrum is the "warn" state (--color-warn), the same severity language the
+// 07-09 validation panel will list. The state is exposed here as a chip (and `data-treatment`) — the map
+// paint keys off the identical store state.
+function WallFields({ id, properties, inherited, update }: FieldsProps): ReactElement {
   const semiTransparent = properties["semi_transparent"] === true;
-  const updateProperties = useSceneStore((s) => s.updateProperties);
   const hasSpectrum = useSceneStore((s) => Object.prototype.hasOwnProperty.call(s.spectra, id));
   const openSpectrumEditor = useSceneStore((s) => s.openSpectrumEditor);
 
@@ -95,6 +101,19 @@ function WallFields({ id, properties }: FieldsProps): ReactElement {
 
   return (
     <div className="field-group">
+      <HeightField
+        key={id}
+        field={WALL_HEIGHT_KEY}
+        label="Height"
+        controlId="wall.height"
+        testId="wall-height"
+        kind="wall"
+        properties={properties}
+        inherited={inherited}
+        defaultValue={KIND_DEFAULTS.wall[WALL_HEIGHT_KEY] as number}
+        trackProvenance={false}
+        update={update}
+      />
       <label className="field-row">
         <span className="field-label">
           Semi-transparent
@@ -104,7 +123,7 @@ function WallFields({ id, properties }: FieldsProps): ReactElement {
           type="checkbox"
           data-testid="wall-semitransparent"
           checked={semiTransparent}
-          onChange={(e) => updateProperties(id, { semi_transparent: e.target.checked })}
+          onChange={(e) => update({ semi_transparent: e.target.checked })}
         />
       </label>
       {semiTransparent ? (
